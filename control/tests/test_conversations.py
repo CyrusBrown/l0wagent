@@ -26,7 +26,7 @@ def be(tmp_path, monkeypatch):
 
 @pytest.fixture
 def c(be):
-    with TestClient(create_app(be), client=("192.168.1.20", 5000)) as c:
+    with TestClient(create_app(be), client=("192.168.1.20", 5000), headers={"x-l0w-client": "test"}) as c:
         c.post("/api/setup/owner", json={"username": "mara", "password": PW, "timezone": "UTC"})
         c.post("/api/auth/login", json={"username": "mara", "password": PW})
         yield c
@@ -100,7 +100,7 @@ def test_the_agent_cannot_decide(c):
     # No agent route answers or decides, and the owner routes refuse the agent token.
     for path in (f"/questions/{q['id']}/answer", f"/permissions/{p['id']}/decide", f"/api/questions/{q['id']}/answer"):
         assert agent(c, "POST", path, json={"value": True, "decision": "allow"}).status_code in (404, 405)
-    with TestClient(c.app, client=("10.255.255.9", 1), cookies=c.cookies) as sandbox:  # even with the owner's cookie
+    with TestClient(c.app, client=("10.255.255.9", 1), cookies=c.cookies, headers={"x-l0w-client": "test"}) as sandbox:  # even with the owner's cookie
         r = sandbox.post(f"/api/questions/{q['id']}/answer", json={"value": True}, headers=AGENT)
         assert r.status_code == 403
     # It can only withdraw its own asks.

@@ -62,7 +62,7 @@ class Stack:
         hook.chmod(0o755)
         self.bindir = bindir
         self.url = f"http://127.0.0.1:{self.ports['control']}"
-        self.client = httpx.Client(base_url=self.url, timeout=30)
+        self.client = httpx.Client(base_url=self.url, timeout=30, headers={"x-l0w-client": "test"})
 
     def _spawn(self, name: str, argv: list[str], env: dict) -> None:
         log = open(self.tmp / f"{name}.log", "ab")

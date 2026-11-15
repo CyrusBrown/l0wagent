@@ -75,6 +75,9 @@ dev/isolation-test.sh                                  # isolation probes agains
 - Files are served safely: symlink-safe containment; agent HTML/SVG only in a sandboxed frame on a separate origin; agent markdown sanitized.
 - Offline-queued actions never include approvals, secrets, settings or budget changes.
 - `/api/peer/*` and `/api/hub/*` are reserved for the hub (later).
+- Browsers send a host's cookies to every port on it, including the agent's page (8787) and the
+  files origin. So agent-web strips `Cookie`, `Authorization` and `Set-Cookie`, and control refuses
+  cookie-authenticated writes without the `X-L0W-Client` header (the web client sends it).
 
 ## Commits
 Authored by the owner only. **No AI co-author or "generated with" lines.** Commit only when the owner asks.

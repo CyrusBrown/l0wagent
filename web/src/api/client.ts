@@ -4,9 +4,13 @@ import type { components, paths } from './schema'
 export type S = components['schemas']
 
 /** Typed API client. Paths and bodies are checked against control/openapi.json. */
+/** Sent on every request: control refuses cookie-authenticated writes without it (CSRF). */
+export const CLIENT_HEADERS = { 'X-L0W-Client': 'web' }
+
 export const api = createClient<paths>({
   baseUrl: globalThis.location?.origin ?? '',
   credentials: 'include',
+  headers: CLIENT_HEADERS,
   fetch: (req) => globalThis.fetch(req), // look fetch up per call (lets tests and the desktop app swap it)
 })
 

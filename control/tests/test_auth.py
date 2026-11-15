@@ -22,7 +22,7 @@ def be(tmp_path):
 
 
 def client(be, ip=("192.168.1.20", 50000), ua="Mozilla/5.0 (Macintosh; Mac OS X) Firefox/140.0") -> TestClient:
-    return TestClient(create_app(be), client=ip, headers={"user-agent": ua})
+    return TestClient(create_app(be), client=ip, headers={"user-agent": ua, "x-l0w-client": "test"})
 
 
 def setup(c: TestClient) -> None:
@@ -159,3 +159,16 @@ def test_sync_feed(be):
         assert [(ch["entity"], ch["data"]["status"]) for ch in changes] == [("security_alert", "confirmed")]
         assert c.get("/api/inbox/counts").json()["waiting"] == 0
 
+
+def test_cookie_writes_need_the_client_header(be):
+    """A page on another port of the same host (the agent's web page) gets the session cookie
+    too; without the custom header its requests can't change anything."""
+    with TestClient(create_app(be), client=("192.168.1.20", 5000)) as c:
+        setup(c)
+        assert login(c).status_code == 200  # no cookie yet: allowed
+        assert "l0w_session" in c.cookies
+        r = c.post("/api/runs", json={})
+        assert r.status_code == 403 and r.json()["error"] == "csrf"
+        assert c.post("/api/threads", json={"title": "x"}).status_code == 403
+        assert c.get("/api/auth/me").status_code == 200  # reads are fine
+        assert c.post("/api/threads", json={"title": "x"}, headers={"x-l0w-client": "web"}).status_code == 201

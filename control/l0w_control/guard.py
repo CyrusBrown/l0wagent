@@ -4,6 +4,10 @@
 - Anything else from the sandbox subnet is refused, so the agent can never reach the
   owner API (it could approve its own requests) whatever credentials it finds.
 - `/api/peer/*` and `/api/hub/*` are reserved for the hub (signed requests, later).
+- Writes authenticated by the session cookie must carry `X-L0W-Client`. Cookies reach every
+  port on the host, including pages the agent serves (its port 8787) and agent HTML in
+  previews; a page there can't add a custom header to a cross-origin request without a CORS
+  preflight, which control refuses, so it can't act as the owner (CSRF).
 - Owner routes then authenticate themselves (session cookie or device token).
 """
 
@@ -18,6 +22,9 @@ from fastapi.responses import JSONResponse
 from .config import Env
 
 RESERVED = ("/api/peer/", "/api/hub/")
+SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
+CLIENT_HEADER = "x-l0w-client"
+SESSION_COOKIE = "l0w_session"
 
 
 def install(app: FastAPI, env: Env) -> None:
@@ -41,4 +48,7 @@ def install(app: FastAPI, env: Env) -> None:
             return JSONResponse({"error": "forbidden_from_sandbox"}, status_code=403)
         if path.startswith(RESERVED):
             return JSONResponse({"error": "reserved", "detail": "Reserved for the hub."}, status_code=404)
+        if (request.method not in SAFE_METHODS and path.startswith("/api/") and SESSION_COOKIE in request.cookies
+                and not request.headers.get(CLIENT_HEADER)):
+            return JSONResponse({"error": "csrf", "detail": f"Writes with a session cookie need the {CLIENT_HEADER} header."}, status_code=403)
         return await call_next(request)

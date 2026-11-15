@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, ApiError, newKey, ok, type S } from './client'
+import { api, ApiError, CLIENT_HEADERS, newKey, ok, type S } from './client'
 
 // Query keys start with the entity name so live events can invalidate by prefix (see live.ts).
 
@@ -151,7 +151,7 @@ export async function uploadFile(file: File, project: string | null): Promise<S[
   form.append('file', file)
   if (project) form.append('project', project)
   form.append('idempotency_key', newKey())
-  const res = await globalThis.fetch('/api/uploads', { method: 'POST', body: form, credentials: 'include' })
+  const res = await globalThis.fetch('/api/uploads', { method: 'POST', body: form, credentials: 'include', headers: CLIENT_HEADERS })
   const body = await res.json().catch(() => null)
   if (!res.ok) throw new ApiError(res.status, body)
   return body as S['Upload']

@@ -43,8 +43,11 @@ export function invalidateFor(qc: QueryClient, e: S['LiveEvent']) {
     case 'inbox_counts':
       return inv(['inbox'], ['thread'], ['threads'], ['projects'], ['status'])
     case 'run':
-    case 'timeline':
     case 'status':
+      // A run starting or ending changes what a thread's composer offers (Reply now).
+      qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'thread' && q.queryKey[2] === 'delivery' })
+      return inv(['runs'], ['run'], ['status'], ['system'])
+    case 'timeline':
       return inv(['runs'], ['run'], ['status'], ['system'])
     case 'job':
       return inv(['jobs'])
