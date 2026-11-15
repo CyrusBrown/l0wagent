@@ -98,6 +98,7 @@ From the current assistant's workspace (run 94, 934 commits, 481 MB):
 | **Outside chat services** | Claude.ai/Desktop, ChatGPT, opencode and others act as the 1:1 chat through an MCP connector plus a skill. Links lead back to the UI and the desktop app. |
 | **Secrets** | Delivered only to the agent (worker) by default. The assistant can't set them. The 1:1 chat or a coding agent helps, and values only go through secure input. Built-in integration presets: GitHub only at first. |
 | **Notifications** | On by default: anything needing approval, new-device logins. Everything else is opt-in. |
+| **Backend stack** | Control stays **Python 3.12 + FastAPI + SQLite** (no ORM), as today. |
 | **Frontend** | React + TypeScript + Vite single-page app with an OpenAPI contract. |
 | **Apps** | Mobile: installable web app. Desktop: Tauri, loading the UI from the server but caching it, working offline with an outbox. Unsigned CI-built installers; building it yourself stays documented. |
 | **CAD** | Nothing CAD-specific in core beyond a 3D viewer. Onshape/Fusion support comes from shared extensions. |

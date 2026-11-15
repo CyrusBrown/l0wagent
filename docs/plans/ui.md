@@ -17,14 +17,33 @@ Everything the owner sees, written so mockups can be built from it. Layout detai
 ## Layout
 
 **Sidebar**, top to bottom:
+- **Home** and **Search** (also a command palette, below)
 - **Assistant**
   - General (threads without a project)
   - projects, collapsible, each listing its threads (archived threads hidden behind a toggle)
 - **Chats**: the 1:1 agent chats, optionally grouped by project
-- **Network** (later, with the hub): friends, the board (read-only), services
-- Footer: **Inbox** (with a count), **Runs**, **Calendar**, **Tools & Secrets**, **Settings**
+- **Hub** (later): friends, the board (read-only), services
+- Footer: **Inbox** (with a count), **Runs**, **Calendar**, **Files**, **Tools & Secrets**, **Settings**
 
 A **status chip** in the header shows asleep / working (with the "now" sentence) / next wakeup and the budget left, plus a Stop button while running.
+
+## Home
+What opens first. At a glance:
+- the assistant's status: asleep / working (the "now" sentence and active claims) / next wakeup
+- what's waiting on you (top Inbox items, answerable in place)
+- recent assistant messages across threads
+- upcoming wakeups and routines
+- budget left this week, and **you vs. the assistant** usage
+- long jobs running
+- update or system notices
+
+## Search and command palette
+- **Search** across threads, messages, chats, projects, shelf items, runs (notes, about text) and the workspace, with filters by kind, project and date.
+- A **command palette** (Ctrl/Cmd-K): jump to a thread, project, file or run, or start an action (new thread, Reply now, new chat, pause the assistant).
+
+## Projects list
+- All projects, with status (active / stale / archived), summary, unread count, open asks and last activity.
+- Create a project, filter by status, and see archived projects and archived threads.
 
 ## Thread view
 - **Messages** from the owner, the assistant, "via chat" (from the 1:1 chat or an outside chat service) and system notices.
@@ -64,7 +83,7 @@ Tabs:
 - **Safety**: agent-made HTML/SVG renders in a sandboxed frame on a separate origin. That's a design constraint for the preview panel.
 
 ## Inbox
-Everything waiting on the owner, filterable:
+Everything waiting on the owner, filterable. A **History** tab shows what was decided before (answers, approvals, denials, done tasks, accepted suggestions), searchable.
 - questions, permissions, tasks
 - thread suggestions ("Accept all" available)
 - promote requests
@@ -72,6 +91,27 @@ Everything waiting on the owner, filterable:
 - later: friend requests, peer-wake requests, outbound emails awaiting approval, spend-breaker cards
 
 Each item links to its thread.
+
+## Files (the assistant's computer)
+A read-only **file browser** for the agent's storage, beyond any one project's shelf:
+- **Roots**: `/workspace` (its notes and memory), `/work` (project work), and later `/shared` (shared spaces). `/cache` is hidden.
+- **Browse** folders with name, size, modified time and last change by which run; **preview** files with the same previewers as the shelf; **download** files or folders (zip).
+- **Git-aware for `/workspace`** (and for project folders that are repos): file history and diffs, "changed in run #123".
+- **Add to a project's shelf** (live or snapshot) from any file.
+- **Upload** into a project's inbox folder.
+- Read-only, except uploads. Symlink-safe, with agent-made HTML in the sandboxed frame.
+- Markdown links between the assistant's notes work, so its notes can be read like a wiki.
+
+## Long jobs
+The job registry: what the assistant has running in the background (label, started by which run, expected end, "don't interrupt"), with its log tail. Shown on Home and as a tab on Runs. A job marked "don't interrupt" holds updates until it ends.
+
+## Network
+- **Egress log**: every request the assistant made, with host, method, status, bytes and blocked ones highlighted. Filters, and top hosts.
+- **Rules**: block / allow / allow read-only, add and remove. Approving a permission that adds a rule shows up here.
+- (This is today's Network page, kept as its own page, linked from Tools & Secrets.)
+
+## The assistant's web page
+Whatever the assistant serves on its web port (today's "Agent web"): opened in a panel or a new tab, in the sandboxed frame. It's linked from Home if the assistant has something running there.
 
 ## Calendar
 - The assistant's **planned wakeups** (time, budget, model, reason), routines, the fallback wakeup, sweep slots, and your protected hours.
@@ -123,6 +163,18 @@ Every item has a deep link.
 - **Extensions**: installed, enabled, errors. Extensions can add their own pages, sidebar sections, cards and settings panels, so leave room in the layout for them.
 - **System**: updates, the self-test, host resources help.
 - Later: **Hub**: membership, address, published services, peer policies and spend-breaker limits.
+
+## Login and setup
+- **Login**: username + password, then a 2FA code if enabled. Rate-limit and lockout messages, and a "new device" notice to your other devices.
+- **First-run wizard**: create the owner, timezone, connect a provider (the login flow runs through the server), pick a level, optionally join a hub (later). It ends with the self-test result.
+- **Update available** banner, with release notes and "update after the current run".
+
+## Throughout
+- **Empty states** that explain what goes there ("No projects yet: the assistant creates them as work grows, or create one").
+- **Light and dark themes**.
+- **Keyboard shortcuts** (palette, new thread, next unread, Reply now).
+- **Unread counts** per thread, project and Inbox.
+- **Extension slots**: pages, sidebar sections, project tabs, card and thread types, previewers, settings panels (see [server-platform.md](server-platform.md#extensions)).
 
 ## Mobile (installable web app)
 - Thread view, Inbox and cards are designed for one thumb. The sidebar becomes a drawer.
