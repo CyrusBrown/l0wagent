@@ -13,21 +13,25 @@ Status: **planning only** (as of 2026-11-14). Nothing here is built. Decisions a
 | [data-model.md](data-model.md) | Tables and API conventions that the server and UI share | Phase 0 |
 | [hub.md](hub.md) | Hubs: core, trust, hub services, friends, published services, streams, board, email, shared projects and spaces | **Later**, after the server side |
 | [migration.md](migration.md) | Moving your current instance to l0wagent | Later |
+| [development.md](development.md) | **The development plan**: milestones M0–M9 with deliverables and "done when" checks; hub and extras later | Start here to build |
 
 ## Build order
 
-Server side first, hub later.
+**The assistant and its UI first; the hub and other optional extras later.** The milestones, with deliverables and acceptance checks, are in [development.md](development.md):
 
-| Phase | Contents |
+| Milestone | Contents |
 |---|---|
-| **0. Decide** | The answers to the open questions; the data model and OpenAPI contract; your React mockups against mock data; a quick test of opencode with any API key. |
-| **1. Foundation** | Prebuilt images, compose, installer and setup wizard; per-user resources; login, sessions and device tokens; runs that survive restarts; update check; API + live-update skeleton; the React app scaffold; CI. Providers, runtimes and roles with **Claude Code + opencode**, and per-provider usage tracking. |
-| **2. Conversations** | Threads, claims, suggestions; project files (the shelf) with previews and uploads; typed links; Inbox; installable web app + push notifications; offline cache and outbox. |
-| **3. Budgets and runs** | Budgets, level presets and Boost; the reply budget and promote-to-run; agent wakeup planning with the calendar, fallback and sweep; reviewer settings; new prompts; the job registry; both run views; the new workspace seed. |
-| **4. Chat, tools and extensions** | The 1:1 chat, hand-off and waking the assistant from it; Tools & Secrets (GitHub preset); the MCP connector for outside chat services; the **extension SDK v1 with UI support** and its guide (needed before the hub, since hub features are extensions). |
-| **5. Desktop** | The Tauri app: connect screen, login, native notifications, tray, `l0wagent://` links, drag-and-drop, CI-built installers. |
-| **6–7. Hub** | See [hub.md](hub.md#build-order). |
-| **8. Breadth** | More providers (Google AI Studio, others), extension catalog, backups, an optional planner model, an adaptive reserve, a CAD visual diff. |
+| M0 | Setup and contract: repo, mockup import, data model, OpenAPI, mock server |
+| M1 | Core platform: login, live runs, runs that survive restarts, Claude Code adapter, egress |
+| M2 | Conversations: projects, threads, asks, claims, suggestions, Inbox, search |
+| M3 | Files: shelf, uploads, file browser, previews |
+| M4 | Budgets, wakeups and runs: providers, budgets, wakeup planning, routines, reviewer, run views, prompts |
+| M5 | Installable and shareable: images, installer, wizard, updates, `l0w` CLI, web app + push, offline |
+| M6 | Chat, tools and the connector: 1:1 chat, Tools & Secrets, MCP connector |
+| M7 | Migrate your instance (when you choose) |
+| M8 | Extension SDK v1 (with UI) and the opencode adapter |
+| M9 | Desktop app (Tauri) |
+| Later | Hub, more providers, catalog, backups and other extras, only when you say |
 
 ## Principles
 
