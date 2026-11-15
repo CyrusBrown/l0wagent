@@ -2,6 +2,26 @@
 
 Providers, budgets and wakeups, the reviewer, prompts, runs, threads from the agent's side, and the workspace layout. Part of the [overhaul plan](README.md).
 
+## Carried over from today's assistant
+These keep working as they do now (reworked only where this plan says so):
+- **Asks**, all non-blocking: the agent files them and moves on.
+  - **Questions**: yes/no, single choice, multiple choice or free text, always with a default and an optional note from the owner.
+  - **Permissions**: yes/no, with **actions applied on approval**: an egress rule, a secret the owner types in, a setting. Later, more action kinds (e.g. publishing a service).
+  - **Tasks**: things only the owner can do, marked done or won't-do with a note.
+
+  The agent can withdraw but never resolve them. Responses are pushed mid-run (after its next tool call) or delivered in the next wakeup brief.
+- **Mid-run delivery**: new messages, decisions, answers, finished tasks and new secrets reach the agent after its next tool call (the hook, or the runtime's equivalent).
+- **`assistant wait N`**: pause (no tokens spent) until the owner responds, up to a limit.
+- **`assistant notify`**: a note to its future self, delivered once at the next inbox check, e.g. as the last line of a background job.
+- **Holding a run open for replies**: if the agent messaged the owner or asked something during a run, the run waits a few minutes before ending, and resumes the same conversation if the owner responds. Under the new budgets this counts against the run's own budget, and the owner's reply goes through the reply budget if the run already ended.
+- **Run notes** (`assistant note`), now alongside `status` and `run describe`.
+- **Harness news**: dated entries shown once in a wakeup brief, always readable with `assistant news`.
+- **Its own machine**: passwordless sudo, cron, `system/provision.sh` (replayed after image rebuilds), `system/boot.sh` (every start), `system/pre-run.sh` (output becomes the pre-run report), and its web port (8787) for pages it serves to the owner.
+- **The egress proxy**: every request logged, owner-managed block/allow rules, the LAN blocked by default, and model-provider access only under a lease.
+- **The usage gate fails closed**: if usage can't be read, nothing starts (configurable).
+- **Safety-net commit** of `/workspace` at the end of every run.
+- **The `ops` CLI** becomes the **`l0w` CLI** on the host: everything the UI does (status, waiting, read and send, answer, approve and deny, tasks, secrets, runs, start and stop), for the owner or a coding agent working with them.
+
 ## Providers, runtimes and roles
 
 ### Providers
@@ -37,6 +57,7 @@ Each role has a provider, model and effort, plus allowed ranges:
 ### Usage
 - **Budgets are per provider, in that provider's unit**: % of the week (Claude subscription), $ (API keys), requests/day (free tiers), unlimited (local). The agent sees, for example: *"Claude: 11 pts left this week (reserve 40%); Zen: $3.10 of $5."*
 - **Agent-only usage**: token counts per session, priced per provider. For a Claude subscription, tokens are converted to % with a calibration learned while only the agent was running. The dashboard shows **you vs. the assistant**.
+- **Adaptive reserve** (later): learn how much the owner typically uses per weekday and protect that automatically.
 - **Credentials across containers**: check early whether two runtimes refreshing one Claude login invalidate each other. Fallback: control keeps the full login (to read usage), and runtimes get a long-lived inference token.
 
 ## Budgets and agent-planned wakeups
@@ -57,6 +78,7 @@ This replaces today's nightly, review, turbo and chat modes.
 | **Leftover sweep** | Near the weekly reset, may it spend what you didn't use, down to your reserve? |
 | **Reviewer** | **On by default, in Monitor mode** (below). |
 | **Planner** | Script only (default) / planner model (below). |
+| **Peer wake** (later, with the hub) | Per friend: never (default) / ask me / allow. See [hub.md](hub.md#friends-groups-and-presence-done-by-instances). |
 
 **Level presets** fill these in from one choice, scaled to the plan size:
 
@@ -81,6 +103,7 @@ This replaces today's nightly, review, turbo and chat modes.
 - At the end of each wakeup, or when re-planning, it writes its **wakeup plan**:
   - `assistant wake plan` (list / replace)
   - `assistant wake at 2026-11-15T19:05 --budget 1.5 --tier sonnet/medium --reason "race results posted at 19:00"`
+- Later, with the hub: it coordinates with friends' assistants through their presence (their next wakeup) rather than waking them.
 - `assistant budget` and `assistant wake plan --check` show what's left, what's scheduled, a suggested pace (*"7 pts unscheduled, 4.5 days left: ~1.5/day"*), conflicts and gaps. Control does the arithmetic; the agent decides what's worth it.
 
 ### What control does
@@ -122,16 +145,17 @@ This replaces today's nightly, review, turbo and chat modes.
 - **Routines** are scheduled prompts with their own model and budget.
   - **Built-in**: the **weekly review**, shortly before the weekly reset. It's **on by default only with a Claude subscription** (the only provider with a weekly reset), off otherwise.
   - **New routines** can be created by the owner (Settings or Calendar), or proposed by the agent (the owner approves anything that adds spend).
-- **The 1:1 chat prompt** and **the reviewer prompt** are covered in their own sections.
+- **The 1:1 chat prompt** is described in [chat-and-tools.md](chat-and-tools.md#prompt).
+- **The reviewer prompt** keeps today's substance (stay quiet unless needed; verify claimed completions; help pick the next task; the owner's decisions outrank its own), parameterized by its mode and the tiers it may set.
 - The archive-before-edit rule stays. Harness news carries the migration notes for existing agents.
 
 ## Threads and projects, from the agent's side
 
 - The agent **creates** threads and projects directly.
-- On **any existing thread** it can only **suggest** actions: archive, rename, move, split, merge. Each suggestion is a card the owner accepts or dismisses. Deleting is owner-only.
+- On **any existing thread** it can only **suggest** actions: archive, rename, move to a project, split, merge. It can also suggest **project-level** changes: split a project, merge projects, mark one stale or archived, move threads out of General. Each suggestion is a card the owner accepts or dismisses ("Accept all" in the Inbox). Deleting is owner-only.
 - **Claims** (encouraged, not required): `assistant claim <thread> "plan"` posts a card; `assistant claim done <thread> "result"` closes it with the outcome and a link to the run. They're mainly for **concrete tasks the owner gave in a thread** ("make this…", "build this…"), so the owner sees it was picked up and what came of it. Ordinary replies don't need one.
 - **Shelf**: `assistant shelf add <path> --project P [--label …] [--snapshot]` puts a deliverable in front of the owner (see [ui.md](ui.md#project-files-the-shelf)).
-- **Typed links**: `l0wagent://thread/…`, `…/project/…`, `…/file/…`, `…/run/…#t=…`, written with `assistant link …` or plain markdown.
+- **Typed links**: `l0wagent://thread/…`, `…/project/…`, `…/chat/…`, `…/file/…`, `…/run/…#t=…`, written with `assistant link …` or plain markdown.
 - **Search**: `assistant search` covers threads, asks, runs and the workspace.
 
 ## Runs

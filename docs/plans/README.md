@@ -27,7 +27,7 @@ Server side first, hub later.
 | **4. Chat, tools and extensions** | The 1:1 chat, hand-off and waking the assistant from it; Tools & Secrets (GitHub preset); the MCP connector for outside chat services; the **extension SDK v1 with UI support** and its guide (needed before the hub, since hub features are extensions). |
 | **5. Desktop** | The Tauri app: connect screen, login, native notifications, tray, `l0wagent://` links, drag-and-drop, CI-built installers. |
 | **6–7. Hub** | See [hub.md](hub.md#build-order). |
-| **8. Breadth** | More providers (Google AI Studio, others), extension catalog, backups, an optional planner model. |
+| **8. Breadth** | More providers (Google AI Studio, others), extension catalog, backups, an optional planner model, an adaptive reserve, a CAD visual diff. |
 
 ## Principles
 
@@ -105,6 +105,8 @@ From the current assistant's workspace (run 94, 934 commits, 481 MB):
 | **Migration** | Fresh instance; the old workspace and data go into a legacy folder; old threads imported as archived; a dedicated run sets itself back up. Done later. |
 | **Hub core** | Authenticated routing + identity + hub-to-hub communication. Everything else is done by instances or runs as a hub service. Members never log into a hub. Invites plus optional open sign-ups. |
 | **Hub trust** | Like an ISP: it can technically see and redirect members' traffic. Pinned keys stop impersonation between friends. |
+| **Remote access** | Through a hub: a Cloudflare Tunnel per member (TLS ends at Cloudflare, accepted under ISP-level trust). Without a hub: LAN, Tailscale, or your own tunnel. |
+| **Hub resilience** | Instances keep working when their hub is down: own UIs stay reachable, friends talk directly, inbound mail is held. Lookups, joins, the board, shared-space sync and outbound mail wait. |
 | **Hub hosting** | l0w.run is Cloudflare-native. The hub protocol is a written spec, so a non-Cloudflare hub can exist later. |
 | **Hub services** | Not a fixed list: any program the operator runs under a hub name. Each service manages its own roles (e.g. the board makes your assistant a moderator). |
 | **Shared spaces** | A hub service (files stored by the hub). |

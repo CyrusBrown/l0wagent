@@ -50,7 +50,7 @@ What opens first. At a glance:
 - **Inline cards**:
   - **asks**: questions, permissions, tasks, answered in place
   - **claims**: "Planned in run #123: …", updating live to in progress / done / partial / dropped with a result line and a link to the run
-  - **suggestions**: move / rename / split / merge / archive, with Accept and Dismiss
+  - **suggestions**: move / rename / split / merge / archive a thread, or split / merge / archive a project, with Accept and Dismiss
   - **promote requests**: "turn this reply into a full run, ~3 pts", with Approve and Deny
   - **secure input**: a secret field that never goes through a model
   - file and link chips
@@ -62,7 +62,7 @@ What opens first. At a glance:
   - *Waiting for connection* (offline, on this device)
 
   **Reply now** shows its cost and what's left of the reply budget.
-- **Typed links** open in a side panel: threads, projects, files, runs (at a timestamp).
+- **Typed links** open in a side panel: threads, projects, chats, files, runs (at a timestamp). Links can be pasted or inserted from autocomplete, by you or the assistant.
 
 ## Project view
 Tabs:
@@ -78,7 +78,7 @@ Tabs:
   - **Live**: always the current file, so a script output stays fresh.
   - **Snapshot**: copied when shelved.
   - Live items can **keep versions** (on each change, up to N), with a version picker.
-- **Uploads** (drag in, or attach in the composer) land in the project's inbox folder on the agent's computer and appear as "from you".
+- **Uploads** (drag in, or attach in the composer) land in `/work/<project>/_inbox/` on the agent's computer (the only place control may write there) and appear as "from you". Uploads to General threads go to `/work/_inbox/`.
 - **Previews**: markdown, code, images, PDF, CSV tables, audio, video, **STL/STEP/3MF in a 3D viewer**, HTML and notebooks. Extensions can add previewers.
 - **Safety**: agent-made HTML/SVG renders in a sandboxed frame on a separate origin. That's a design constraint for the preview panel.
 
@@ -181,15 +181,18 @@ Every item has a deep link.
 - **Push notifications** need HTTPS with a valid certificate (a hub, or Tailscale HTTPS). iOS supports push for home-screen web apps. ntfy stays as a fallback for plain-HTTP installs.
 
 ## Desktop (Tauri)
-- **Connect screen** on first launch: the server URL (LAN, Tailscale, or later a hub address), then username + password (+ 2FA). The app gets a revocable device token, stored in the OS keychain.
+- **Connect screen** on first launch: the server URL (LAN, Tailscale, or later a hub address; LAN discovery and hub lookup can fill it in), then username + password (+ 2FA). The app gets a revocable device token, stored in the OS keychain.
+- **Why server-loaded**: a UI compiled into the app would drift from the server and need a signed desktop release for every UI change. Loading it from the server keeps them in step, and caching it locally keeps offline use.
 - **The UI comes from the server, cached locally**: the app downloads the server's versioned UI bundle, serves it from a local app protocol, updates it when the server's version changes, and uses the cached copy offline. So the UI always matches the server, and native permissions are granted only to the local copy.
-- **Native features**, used only inside Tauri: notifications, a tray icon with the assistant's status, `l0wagent://` links, drag-and-drop to the shelf, a global shortcut, multiple windows.
+- **Native features**, used only inside Tauri: notifications (from the live stream while the app runs; web push isn't needed), a tray icon with the assistant's status, `l0wagent://` links, drag-and-drop to the shelf, a global shortcut, multiple windows.
+- **Agent-made content** (HTML previews, the assistant's web page) still renders in a sandboxed frame from the server's separate files origin, which never gets Tauri's native permissions.
 - **Distribution**:
   - CI builds unsigned installers (`.dmg`, `.msi`/`.exe`, `.AppImage`/`.deb`).
   - Mac: approve once in System Settings → Privacy & Security → "Open Anyway". Windows: SmartScreen → "Run anyway".
-  - The app binary rarely changes, since the UI comes from the server.
+  - The app binary rarely changes, since the UI comes from the server. Its own updates use Tauri's updater, signed with a free Tauri key; whether those updates trigger the Mac prompt again is to be checked in phase 5.
   - Building it yourself stays documented.
-  - The installable web app also works on desktop.
+  - The installable web app also works on desktop (Chrome/Edge "Install app", Safari "Add to Dock"): app window, dock icon and push notifications, with no installer.
+- **Later, optionally**: the app could install and start a local Docker stack for friends without a server.
 
 ## Offline (web app and desktop)
 - **Local cache** of projects, threads, recent messages, the Inbox, shelf metadata, and optionally files you opened.

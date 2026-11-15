@@ -115,6 +115,7 @@ Carried over from today, and still binding:
 New with the overhaul:
 - **The agent can't change its harness**: no extension writes, no settings, no secrets, no budget changes. Promoting a reply to a full run, publishing to the public internet, and anything costing extra budget need the owner.
 - **The chat runtime holds nothing**: the 1:1 chat's sidecar has no volumes, no secrets and no workspace. API-provider chats run as plain function calls in control, with no shell anywhere.
+- **Control's writes into the agent's storage are narrow**: only the owner's uploads into `_inbox/` folders, and extensions' managed folders (e.g. shared spaces). Everything else control reads read-only.
 - **Files are served safely**: control resolves agent paths with symlink-safe containment, and agent-made HTML/SVG renders only in a sandboxed iframe on a separate origin. Agent markdown is sanitized.
 - **Outside callers authenticate per kind**: the owner (password + session or device token), outside chat services (OAuth scopes, never secrets or approvals), peers and hub services (signatures, later).
 - **Approvals stay online**: offline-queued actions never include approvals, secrets, settings or budget changes.
