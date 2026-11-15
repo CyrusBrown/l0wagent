@@ -73,6 +73,12 @@ From the current assistant's workspace (run 94, 934 commits, 481 MB):
 | **Control** | The trusted server: UI, API, scheduler, vault, gateway. |
 | **Agent / assistant** | The long-running model working in its sandboxed computer. |
 | **Wakeup** | One budgeted work session (may include several CLI sessions). |
+| **Allowance** | The share of a provider's usage the assistant may plan with each week. |
+| **Reserve** | Limits protecting the owner's own use (never start above 80% weekly; keep the 5-hour window below 70%). |
+| **Reply budget** | A small weekly budget for Reply-now runs, separate from the allowance. |
+| **Level / Boost** | Presets that set the allowance and limits in one choice; Boost raises the level temporarily. |
+| **Sweep** | Extra wakeups in the last hours before a weekly reset that spend usage the owner didn't use (which would otherwise be lost), up to a ceiling (default 95%). |
+| **Chat usage** | The owner's own use of the 1:1 chat: no budget by default, not gated by the reserve, tracked separately, with an optional cap. |
 | **Run** | A wakeup, a reply, a routine, or the reviewer's turns, as shown on the Runs page. |
 | **Claim** | The assistant's card in a thread saying what it'll do this run, updated live to the result. |
 | **Shelf** | A project's curated file list: links to files on the agent's computer, live or snapshotted. |
@@ -94,6 +100,8 @@ From the current assistant's workspace (run 94, 934 commits, 481 MB):
 | **Budgets** | The owner sets budgets and limits per provider; **the agent plans its own wakeups**, including timed ones. Control checks plans, adds a fallback wakeup (on by default, after 2 nights without one) and can sweep leftovers. A script helps the agent plan; a planner model is optional. |
 | **Reply now** | Draws on a small separate reply budget (about 3% of the week for Claude subscriptions, $1/week for API providers). Turning a reply into a full run needs the owner's approval. |
 | **Reserve** | Never start a wakeup above 80% weekly usage; keep the 5-hour window below 70%. When they apply comes from the schedule's allowed hours. |
+| **Sweep** | Near a weekly reset, extra wakeups spend usage the owner didn't use: last **5 hours**, up to **95%** weekly (the 80% reserve doesn't apply there; the 5-hour cap does). Claude subscriptions only. On by default for High and Max. Replaces the old weekly review campaign. |
+| **Chat usage** | The 1:1 chat is the owner's own use: no budget by default, not gated by the reserve, tracked separately, optional weekly cap. Waking the assistant from a chat uses the reply budget. |
 | **Routines** | Scheduled prompts. The weekly review is built in, on by default only with a Claude subscription. Owners create new routines; the agent can propose them. |
 | **Claims** | Encouraged, mainly for concrete tasks the owner gives in a thread. |
 | **Reviewer** | **On by default in Monitor mode**, with its own model, mode (advisor / monitor / gate) and limits on changing the worker's model. |

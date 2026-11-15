@@ -1,0 +1,56 @@
+{
+  "assistantState": {
+    "editor": "enum",
+    "options": [
+      "working",
+      "asleep",
+      "dormant",
+      "offline"
+    ],
+    "default": "working",
+    "tsType": "string"
+  },
+  "theme": {
+    "editor": "enum",
+    "options": [
+      "light",
+      "dark"
+    ],
+    "default": "dark",
+    "tsType": "string"
+  },
+  "startScreen": {
+    "editor": "enum",
+    "options": [
+      "home",
+      "new",
+      "thread",
+      "projects",
+      "project",
+      "inbox",
+      "calendar",
+      "runs",
+      "run",
+      "files",
+      "network",
+      "web",
+      "chat",
+      "tools",
+      "settings",
+      "login",
+      "setup"
+    ],
+    "default": "home",
+    "tsType": "string"
+  },
+  "showEmpty": {
+    "editor": "boolean",
+    "default": false,
+    "tsType": "boolean"
+  },
+  "showUpdate": {
+    "editor": "boolean",
+    "default": true,
+    "tsType": "boolean"
+  }
+}

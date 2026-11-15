@@ -64,6 +64,21 @@ Each role has a provider, model and effort, plus allowed ranges:
 
 This replaces today's nightly, review, turbo and chat modes.
 
+### Budget terms
+
+| Term | Meaning |
+|---|---|
+| **Allowance** | The share of a provider's usage the assistant may plan with this week (e.g. 15% of a Claude subscription's week, or $5 of an API key). It comes out of usage the owner might otherwise use, so the owner sets it. |
+| **Reserve** | Limits that protect the owner's own use: never start a wakeup above 80% weekly usage; keep the 5-hour window below 70%. |
+| **Reply budget** | A small separate weekly budget for Reply-now runs, so quick replies never eat into the assistant's planned wakeups. |
+| **Level** | A preset (Dormant, Light, Standard, High, Max) that fills in the allowance, wakeup limits and tiers in one choice. |
+| **Boost** | A temporary raise of the level (until a time, or until the weekly reset). |
+| **Wakeup plan** | The assistant's own schedule of upcoming wakeups, each with a time, budget, tier and reason, validated by control and shown on the Calendar. |
+| **Fallback wakeup** | One default night wakeup control adds if nothing is planned for 2 nights, so the assistant can't strand itself. |
+| **Routine** | A scheduled prompt with its own model and budget (e.g. the weekly review). |
+| **Sweep** | Extra wakeups near a weekly reset that spend usage the owner didn't use, which would otherwise be lost (below). |
+| **Chat usage** | The owner's own use of the 1:1 chat. It's not part of any assistant budget (below). |
+
 ### What the owner sets (per provider)
 
 | Setting | Meaning |
@@ -75,7 +90,7 @@ This replaces today's nightly, review, turbo and chat modes.
 | **Allowed tiers** | Which models/efforts the worker may use. |
 | **Reply budget** | A small separate weekly budget for Reply-now runs (default: about 3% of the week for Claude subscriptions, $1/week for API providers). |
 | **Fallback wakeup** | On by default: if nothing is planned for 2 nights, control schedules one. |
-| **Leftover sweep** | Near the weekly reset, may it spend what you didn't use, down to your reserve? |
+| **Sweep** | On/off, with its own ceiling and window (below). |
 | **Reviewer** | **On by default, in Monitor mode** (below). |
 | **Planner** | Script only (default) / planner model (below). |
 | **Peer wake** (later, with the hub) | Per friend: never (default) / ask me / allow. See [hub.md](hub.md#friends-groups-and-presence-done-by-instances). |
@@ -88,7 +103,7 @@ This replaces today's nightly, review, turbo and chat modes.
 | **Light** | ~5% of the week; a few short night wakeups; a small model. |
 | **Standard** | ~15%; about one wakeup a night; a mid model. |
 | **High** | ~40%; nightly plus off-hours wakeups; sweep on. |
-| **Max** | ~85%; around the clock, paced per 5-hour window; reviewer recommended. |
+| **Max** | ~85%; around the clock, paced per 5-hour window; sweep on. |
 
 **Boost** is a temporary raise ("High until Friday's reset", "Max for 6 hours").
 
@@ -111,8 +126,17 @@ This replaces today's nightly, review, turbo and chat modes.
 - Starts wakeups, gives each its budget and deadline, and stops it at the budget, the deadline or a cap.
 - Shrinks the allowance automatically if the owner's own usage pushes the week toward their reserve.
 - **Fallback**: schedules one default night wakeup (and tells the agent why) when nothing is planned for 2 nights.
-- **Sweep** (if enabled): near the reset, offers leftover budget as extra wakeups.
+- **Sweep** (if enabled): adds sweep wakeups near the weekly reset (below).
 - **Stopping**: the agent works until stopped, or ends with `IDLE: <reason>`. A gate-mode reviewer must agree first. No stop or budget rules belong in the agent's own manual.
+
+### Sweep
+**What it's for:** a Claude subscription's weekly usage resets at a fixed time, and whatever is unused is lost. If the week is at 55% with 5 hours to go because the owner was busy, that 45% is gone at the reset. The sweep turns it into work.
+- **When**: in the **sweep window**, the last few hours before the weekly reset (default **5 hours**).
+- **How much**: up to the **sweep ceiling**, a weekly usage level it won't go past (default **95%**). The everyday reserve (80%) doesn't apply inside the window, since there's no week left to protect it for. The 5-hour cap still applies, so the owner keeps some room in the current window.
+- **How**: control adds sweep wakeups to the calendar. The assistant uses them for the most valuable work in its backlog (or the weekly review, if it's scheduled there). If there's nothing worthwhile, it ends with `IDLE` and the leftover goes unused. Control doesn't push it to make busywork.
+- **On top of the allowance**: the sweep uses only what the owner demonstrably didn't use, so it never reduces the owner's own room during the week.
+- **Only for resetting limits**: Claude subscriptions (and any provider with a reset window). For API keys and other dollar budgets, nothing is lost by not spending, so there's no sweep.
+- **Defaults**: the setting is on for High and Max, and off for Dormant, Light and Standard (owners can turn it on). This replaces the old weekly review campaign, which started 5 hours before the reset and stopped near 98%.
 
 ### Planner (optional)
 - **Default: the script above.** Free.

@@ -1,0 +1,1179 @@
+<div style="display:flex;flex-direction:column;height:100vh;min-height:640px;overflow:hidden;background:var(--bg)">
+  <header style="flex:none;height:52px;display:flex;align-items:center;gap:5px;padding:0 10px 0 14px;border-bottom:1px solid var(--line);background:var(--side);min-width:0">
+    <div sc-camel-on-click="{{ goHome }}" title="Home" style="flex:none;display:flex;align-items:center;gap:8px;padding:5px 10px 5px 8px;margin-right:2px;border-radius:9px;cursor:pointer;background:{{ homeBtn.bg }}" style-hover="background:var(--hover)"><span style="font:500 19px/1 'Source Serif 4',Georgia,serif;letter-spacing:-.01em">l0wagent</span><svg width="16" height="16" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:{{ homeBtn.color }};flex:none"><path d="M3.5 10.5 12 3.5l8.5 7V20a1 1 0 0 1-1 1H15v-6.5H9V21H4.5a1 1 0 0 1-1-1z"></path></svg></div>
+    <button sc-camel-on-click="{{ sideNew.open }}" title="New chat or thread (N)" style="flex:none;width:30px;height:30px;border:none;border-radius:8px;background:var(--fg);color:var(--bg);font:400 18px/1 Geist;display:flex;align-items:center;justify-content:center;cursor:pointer">+</button>
+    <span style="width:1px;height:20px;background:var(--line2);margin:0 6px;flex:none"></span>
+    <nav style="display:flex;align-items:center;gap:0;flex:none">
+      <sc-for list="{{ topNav }}" as="n" hint-placeholder-count="6">
+        <div sc-camel-on-click="{{ n.open }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;align-items:center;gap:6px;padding:6px 9px;border-radius:8px;font:500 13px Geist;cursor:pointer;white-space:nowrap;color:{{ n.color }};background:{{ n.bg }}" style-hover="background:var(--hover)">{{ n.label }}<sc-if value="{{ n.count }}" hint-placeholder-val="{{ false }}"><span style="animation:dcFade .22s ease both;font:500 11px Geist;background:#c4673f;color:#fff;border-radius:10px;padding:1px 7px">{{ n.count }}</span></sc-if></div>
+      </sc-for>
+    <div style="position:relative">
+        <div sc-camel-on-click="{{ more.toggle }}" style="display:flex;align-items:center;gap:5px;padding:6px 9px;border-radius:8px;font:500 13px Geist;cursor:pointer;white-space:nowrap;color:{{ more.color }};background:{{ more.bg }}" style-hover="background:var(--hover)">{{ more.label }}<span style="font-size:10px">▾</span></div>
+        
+          <div sc-camel-on-click="{{ more.toggle }}" style="position:fixed;inset:0;z-index:40;display:{{ more.disp }}"></div>
+          <div style="position:absolute;top:calc(100% + 6px);left:0;z-index:41;transform-origin:top left;opacity:{{ more.op }};visibility:{{ more.vis }};transform:{{ more.tf }};transition:opacity .16s ease,transform .16s ease,visibility .16s;min-width:200px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 40px rgba(20,19,17,.16);padding:6px;display:flex;flex-direction:column;gap:1px">
+            <sc-for list="{{ more.items }}" as="m" hint-placeholder-count="3">
+              <div sc-camel-on-click="{{ m.open }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;flex-direction:column;gap:1px;padding:8px 10px;border-radius:8px;cursor:pointer;background:{{ m.bg }}" style-hover="background:var(--rowh)"><span style="font:500 13.5px Geist">{{ m.label }}</span><span style="font:400 12px Geist;color:var(--faint)">{{ m.desc }}</span></div>
+            </sc-for>
+          </div>
+        
+      </div>
+    </nav>
+    <div style="flex:1 1 0;min-width:4px"></div>
+<div sc-camel-on-click="{{ openPalette }}" title="Search (⌘K)" style="flex:0 3 200px;min-width:40px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;border:1px solid var(--line2);background:var(--bg);border-radius:8px;font:400 13px Geist;color:var(--faint);cursor:pointer" style-hover="border-color:var(--dim)"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Search</span><span style="font:400 11px 'Geist Mono';color:var(--faint2);flex:none">⌘K</span></div>
+    <div sc-camel-on-click="{{ chipOpen }}" title="Open runs" style="display:flex;align-items:center;gap:8px;border:1px solid var(--line2);background:var(--card);border-radius:999px;padding:5px 10px 5px 10px;font:400 12.5px Geist;flex:0 1 auto;min-width:96px;overflow:hidden;cursor:pointer" style-hover="border-color:var(--dim)">
+        <span style="width:7px;height:7px;border-radius:50%;flex:none;background:{{ chip.dot }};animation:{{ chip.anim }}"></span>
+        <span style="font-weight:500;flex:none">{{ chip.state }}</span>
+        <span style="color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">{{ chip.text }}</span>
+        <span style="color:var(--dim);flex:none">·</span>
+        <span style="color:var(--muted);white-space:nowrap;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis">{{ chip.budget }}</span>
+        
+      </div>
+      <sc-if value="{{ chip.running }}" hint-placeholder-val="{{ false }}">
+        <button style="animation:dcFade .22s ease both;flex:none;border:1px solid var(--line2);background:var(--card);border-radius:999px;padding:5px 12px;font:500 12.5px Geist;color:var(--badInk)" style-hover="background:var(--badSoft)">Stop</button>
+      </sc-if>
+      
+      <div sc-camel-on-click="{{ goSettings }}" title="Settings" style="width:30px;height:30px;border-radius:8px;flex:none;display:flex;align-items:center;justify-content:center;color:var(--fg2);cursor:pointer;background:{{ settingsBg }}" style-hover="background:var(--hover)"><svg width="17" height="17" sc-camel-view-box="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="17" x2="20" y2="17"></line><circle cx="9" cy="7" r="2.4" fill="var(--side)"></circle><circle cx="15" cy="17" r="2.4" fill="var(--side)"></circle></svg></div>
+    </header>
+  <div style="flex:none;display:grid;grid-template-rows:{{ bannerA.rows }};opacity:{{ bannerA.op }};transition:grid-template-rows .3s ease,opacity .2s ease"><div style="overflow:hidden;min-height:0;display:flex;flex-direction:column">
+      <div style="flex:none;display:flex;align-items:center;gap:12px;padding:8px 14px 8px 20px;background:var(--accentSoft);border-bottom:1px solid var(--accentLine2);font:400 13px Geist;flex-wrap:wrap">
+        <span style="font-weight:500">l0wagent 0.14 is available</span>
+        <span style="color:var(--muted)">Search filters, a Files browser and dark mode.</span>
+        <a style="cursor:pointer">Release notes</a>
+        <span style="flex:1"></span>
+        <button style="border:none;background:var(--fg);color:var(--bg);border-radius:7px;padding:5px 11px;font:500 12.5px Geist">Update after the current run</button>
+        <button sc-camel-on-click="{{ closeBanner }}" style="border:none;background:none;color:var(--muted);font:400 14px Geist;padding:2px 6px">✕</button>
+      </div>
+    </div></div>
+  <div style="flex:1;min-height:0;display:flex">
+
+  <sc-if value="{{ side.rail }}" hint-placeholder-val="{{ false }}">
+    <div style="animation:dcFade .3s ease .1s both;width:44px;flex:none;border-right:1px solid var(--line);background:var(--side);display:flex;flex-direction:column;align-items:center;padding-top:12px">
+      <button sc-camel-on-click="{{ side.expand }}" title="Show conversations" style="width:30px;height:30px;border:1px solid var(--line2);background:var(--card);border-radius:8px;color:var(--fg2);font:400 14px/1 Geist">»</button>
+    </div>
+  </sc-if>
+  <div style="flex:none;display:flex;overflow:hidden;width:{{ side.w }};transition:width .32s cubic-bezier(.2,.7,.3,1)">
+          <aside style="opacity:{{ side.op }};transition:opacity .25s ease;width:260px;flex:none;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0">
+    
+    <div style="flex:1 1 0;min-height:0;overflow-y:auto;overflow-x:hidden;padding:6px 8px 10px;display:flex;flex-direction:column;gap:1px">
+      <div sc-camel-on-click="{{ goProjects }}" style="display:flex;justify-content:space-between;align-items:center;font:500 11.5px Geist;color:var(--faint);padding:3px 4px 3px 10px;border-radius:7px;cursor:pointer;background:{{ projectsBg }}" style-hover="background:var(--hover)"><span>Assistant</span><span style="display:flex;align-items:center;gap:6px"><span style="font-weight:400">All projects</span><span sc-camel-on-click="{{ newGeneral }}" title="New thread in General" style="width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:var(--faint2);font:400 16px/1 Geist;cursor:pointer" style-hover="background:var(--line2);color:var(--fg)">+</span></span></div>
+      <div sc-camel-on-click="{{ goGeneral }}" style="padding:6px 10px;border-radius:7px;font:400 13.5px Geist;cursor:pointer;background:{{ generalBg }}" style-hover="background:var(--hover)">General</div>
+      <sc-for list="{{ projects }}" as="p" hint-placeholder-count="3">
+        <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;flex-direction:column;gap:1px">
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 4px 4px 10px;border-radius:7px;font:500 13.5px Geist;cursor:pointer;background:{{ p.bg }}" style-hover="background:var(--hover)">
+            <span sc-camel-on-click="{{ p.toggle }}" style="width:14px;color:var(--faint);font-size:10px;display:inline-flex;justify-content:center">{{ p.caret }}</span>
+            <span sc-camel-on-click="{{ p.open }}" style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:2px 0">{{ p.name }}</span>
+            <sc-if value="{{ p.unread }}" hint-placeholder-val="{{ false }}"><span style="animation:dcFade .22s ease both;font:600 11px Geist;color:var(--accentInk)">{{ p.unread }}</span></sc-if>
+            <span sc-camel-on-click="{{ p.newThread }}" title="New thread in this project" style="width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:var(--faint2);font:400 15px/1 Geist" style-hover="background:var(--line2);color:var(--fg)">+</span>
+          </div>
+          <div style="display:grid;grid-template-rows:{{ p.rows }};opacity:{{ p.op }};transition:grid-template-rows .26s ease,opacity .2s ease"><div style="overflow:hidden;min-height:0">
+            <div style="display:flex;flex-direction:column;gap:1px;padding-left:20px">
+              <sc-for list="{{ p.threads }}" as="t" hint-placeholder-count="3">
+                <div sc-camel-on-click="{{ t.open }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:7px;font:400 13px Geist;color:var(--fg2);cursor:pointer;background:{{ t.bg }}" style-hover="background:var(--hover)"><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:{{ t.fw }};color:{{ t.color }}">{{ t.name }}</span><sc-if value="{{ t.unread }}" hint-placeholder-val="{{ false }}"><span style="animation:dcFade .22s ease both;flex:none;font:600 10.5px Geist;background:#c4673f;color:#fff;border-radius:8px;padding:0 6px;line-height:16px">{{ t.unread }}</span></sc-if></div>
+              </sc-for>
+            </div>
+          </div></div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="flex:1 1 0;min-height:0;display:flex;flex-direction:column;border-top:1px solid var(--line)">
+      <div style="flex:none;display:flex;align-items:center;justify-content:space-between;font:500 11.5px Geist;color:var(--faint);padding:7px 12px 0 18px"><span>Chats</span><span sc-camel-on-click="{{ newChat }}" title="New chat" style="width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:var(--faint2);font:400 16px/1 Geist;cursor:pointer" style-hover="background:var(--line2);color:var(--fg)">+</span></div>
+      <div style="flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 8px 10px">
+        <sc-for list="{{ chatGroups }}" as="g" hint-placeholder-count="3">
+          <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);padding:12px 10px 4px;font:500 12px Geist;color:var(--faint)">{{ g.label }}</div>
+          <sc-for list="{{ g.items }}" as="c" hint-placeholder-count="3">
+            <div sc-camel-on-click="{{ c.open }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;align-items:baseline;gap:8px;min-width:0;padding:6px 10px;border-radius:7px;cursor:pointer;background:{{ c.bg }}" style-hover="background:var(--hover)">
+              <span style="flex:1;min-width:0;font:400 13.5px Geist;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.name }}</span>
+              <span style="flex:none;font:400 12px Geist;color:var(--faint2)">{{ c.meta }}</span>
+            </div>
+          </sc-for>
+        </sc-for>
+      </div>
+    </div>
+    <div sc-camel-on-click="{{ side.collapse }}" style="flex:none;padding:10px 18px;border-top:1px solid var(--line);font:400 12.5px Geist;color:var(--faint);cursor:pointer" style-hover="color:var(--fg)">« Collapse list</div>
+  </aside>
+        </div>
+
+  <main style="flex:1;min-width:0;display:flex;flex-direction:column;min-height:0">
+    
+    
+
+    <div style="flex:1;min-height:0;display:flex">
+
+      <!-- HOME -->
+      <sc-if value="{{ is.home }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:dcRise .28s cubic-bezier(.2,.7,.3,1) both;flex:1;min-width:0;overflow:auto">
+          <div style="max-width:1080px;margin:0 auto;padding:32px 28px 48px;display:flex;flex-direction:column;gap:28px">
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <h1 style="margin:0;font:400 32px/1.2 'Source Serif 4',Georgia,serif;letter-spacing:-.01em">Good evening, Mara</h1>
+              <div style="display:flex;align-items:center;gap:8px;font:400 14.5px Geist;color:var(--muted)"><span style="width:8px;height:8px;border-radius:50%;background:{{ chip.dot }};animation:{{ chip.anim }}"></span><span style="color:var(--fg);font-weight:500">{{ chip.state }}</span><span>{{ chip.text }}</span></div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:28px;align-items:start">
+              <div style="display:flex;flex-direction:column;gap:28px">
+                <div style="display:flex;flex-direction:column;gap:10px">
+                  <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:500 12px Geist;color:var(--faint)">Waiting on you</div><a sc-camel-on-click="{{ goInbox }}" style="font:400 12.5px Geist;cursor:pointer">Open Inbox · 7</a></div>
+                  <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px"><div style="display:flex;justify-content:space-between;gap:8px;font:500 11.5px Geist;color:var(--faint)"><span>Question · #Pump controller firmware</span><span style="font-weight:400"></span></div><div style="font:400 15px/1.5 'Source Serif 4',Georgia,serif">Should I flash the fix to the controller myself once tests pass?</div><sc-if value="{{ c.q1.open }}" hint-placeholder-val="{{ true }}"><div style="display:grid;grid-template-rows:{{ c.q1.cmRows }};opacity:{{ c.q1.cmOp }};margin-top:{{ c.q1.cmMt }};transition:grid-template-rows .24s ease,opacity .2s ease,margin-top .24s ease"><div style="overflow:hidden;min-height:0;display:flex;flex-direction:column"><textarea rows="2" value="{{ c.q1.cmText }}" sc-camel-on-change="{{ c.q1.cmChange }}" placeholder="Add a comment for the assistant. It's sent along with your response." style="border:1px solid var(--line2);border-radius:8px;padding:8px 11px;font:400 13.5px/1.45 Geist;background:var(--bg);color:var(--fg);outline:none;resize:vertical"></textarea></div></div><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button sc-camel-on-click="{{ c.q1.a }}" style="border:none;background:var(--fg);color:var(--bg);border-radius:8px;padding:7px 13px;font:500 13px Geist">Flash it</button><button sc-camel-on-click="{{ c.q1.b }}" style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:7px 13px;font:500 13px Geist;color:var(--fg)">Leave it for me</button><button sc-camel-on-click="{{ c.q1.cmToggle }}" style="margin-left:auto;border:none;background:none;padding:6px 2px;font:400 12.5px Geist;color:var(--muted)">{{ c.q1.cmLabel }}</button></div></sc-if><sc-if value="{{ c.q1.done }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:4px;animation:dcRise .25s ease both"><div style="font:500 13px Geist;color:var(--okInk)">✓ {{ c.q1.answer }}</div><sc-if value="{{ c.q1.hasCm }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;font:400 13px/1.5 Geist;color:var(--fg2)"><span style="color:var(--faint)">Your comment · </span>{{ c.q1.cmText }}</div></sc-if></div></sc-if></div>
+                  <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px"><div style="display:flex;justify-content:space-between;gap:8px;font:500 11.5px Geist;color:var(--faint)"><span>Permission · #Pump controller firmware</span><span style="font-weight:400">needs connection</span></div><div style="font:400 14px/1.5 Geist">Write access to <code style="font:400 13px 'Geist Mono';background:var(--soft);border-radius:4px;padding:1px 5px">~/garden/firmware/</code></div><sc-if value="{{ c.perm.open }}" hint-placeholder-val="{{ true }}"><div style="display:grid;grid-template-rows:{{ c.perm.cmRows }};opacity:{{ c.perm.cmOp }};margin-top:{{ c.perm.cmMt }};transition:grid-template-rows .24s ease,opacity .2s ease,margin-top .24s ease"><div style="overflow:hidden;min-height:0;display:flex;flex-direction:column"><textarea rows="2" value="{{ c.perm.cmText }}" sc-camel-on-change="{{ c.perm.cmChange }}" placeholder="Add a comment for the assistant. It's sent along with your response." style="border:1px solid var(--line2);border-radius:8px;padding:8px 11px;font:400 13.5px/1.45 Geist;background:var(--bg);color:var(--fg);outline:none;resize:vertical"></textarea></div></div><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button sc-camel-on-click="{{ c.perm.a }}" style="border:none;background:var(--fg);color:var(--bg);border-radius:8px;padding:7px 13px;font:500 13px Geist">Allow for project</button><button sc-camel-on-click="{{ c.perm.c }}" style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:7px 13px;font:500 13px Geist;color:var(--fg)">Deny</button><button sc-camel-on-click="{{ c.perm.cmToggle }}" style="margin-left:auto;border:none;background:none;padding:6px 2px;font:400 12.5px Geist;color:var(--muted)">{{ c.perm.cmLabel }}</button></div></sc-if><sc-if value="{{ c.perm.done }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:4px;animation:dcRise .25s ease both"><div style="font:500 13px Geist;color:var(--okInk)">✓ {{ c.perm.answer }}</div><sc-if value="{{ c.perm.hasCm }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;font:400 13px/1.5 Geist;color:var(--fg2)"><span style="color:var(--faint)">Your comment · </span>{{ c.perm.cmText }}</div></sc-if></div></sc-if></div>
+                  <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px"><div style="display:flex;justify-content:space-between;gap:8px;font:500 11.5px Geist;color:var(--faint)"><span>Promote request</span><span style="font-weight:400">about 3 pts</span></div><div style="font:400 14px/1.5 Geist">Turn a reply into a full run: audit every timer for DST issues</div><sc-if value="{{ c.promo.open }}" hint-placeholder-val="{{ true }}"><div style="display:grid;grid-template-rows:{{ c.promo.cmRows }};opacity:{{ c.promo.cmOp }};margin-top:{{ c.promo.cmMt }};transition:grid-template-rows .24s ease,opacity .2s ease,margin-top .24s ease"><div style="overflow:hidden;min-height:0;display:flex;flex-direction:column"><textarea rows="2" value="{{ c.promo.cmText }}" sc-camel-on-change="{{ c.promo.cmChange }}" placeholder="Add a comment for the assistant. It's sent along with your response." style="border:1px solid var(--line2);border-radius:8px;padding:8px 11px;font:400 13.5px/1.45 Geist;background:var(--bg);color:var(--fg);outline:none;resize:vertical"></textarea></div></div><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button sc-camel-on-click="{{ c.promo.a }}" style="border:none;background:var(--fg);color:var(--bg);border-radius:8px;padding:7px 13px;font:500 13px Geist">Approve</button><button sc-camel-on-click="{{ c.promo.b }}" style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:7px 13px;font:500 13px Geist;color:var(--fg)">Deny</button><button sc-camel-on-click="{{ c.promo.cmToggle }}" style="margin-left:auto;border:none;background:none;padding:6px 2px;font:400 12.5px Geist;color:var(--muted)">{{ c.promo.cmLabel }}</button></div></sc-if><sc-if value="{{ c.promo.done }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:4px;animation:dcRise .25s ease both"><div style="font:500 13px Geist;color:var(--okInk)">✓ {{ c.promo.answer }}</div><sc-if value="{{ c.promo.hasCm }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;font:400 13px/1.5 Geist;color:var(--fg2)"><span style="color:var(--faint)">Your comment · </span>{{ c.promo.cmText }}</div></sc-if></div></sc-if></div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <div style="font:500 12px Geist;color:var(--faint)">Recent from the assistant</div>
+                  <sc-for list="{{ recent }}" as="r" hint-placeholder-count="3">
+                    <div sc-camel-on-click="{{ goThread }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;flex-direction:column;gap:4px;padding:12px 0;border-bottom:1px solid var(--lineSoft);cursor:pointer">
+                      <div style="display:flex;justify-content:space-between;font:400 12.5px Geist;color:var(--faint)"><span style="color:var(--accentInk)">{{ r.thread }}</span><span>{{ r.when }}</span></div>
+                      <div style="font:400 15px/1.55 'Source Serif 4',Georgia,serif;color:var(--fg2);text-wrap:pretty">{{ r.text }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:24px">
+                <sc-if value="{{ chip.running }}" hint-placeholder-val="{{ false }}">
+                  <div style="animation:dcFade .22s ease both;display:flex;flex-direction:column;gap:10px"><div style="font:500 12px Geist;color:var(--faint)">Working on</div><sc-for list="{{ claims }}" as="c" hint-placeholder-count="2"><div sc-camel-on-click="{{ openRun }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 13px;display:flex;flex-direction:column;gap:4px;cursor:pointer"><div style="display:flex;justify-content:space-between;gap:8px;font:400 12px Geist;color:var(--faint)"><span>{{ c.thread }}</span><span style="color:{{ c.sColor }}">{{ c.status }}</span></div><span style="font:500 13.5px Geist">{{ c.title }}</span></div></sc-for></div>
+                </sc-if>
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:500 12px Geist;color:var(--faint)">Coming up</div><a sc-camel-on-click="{{ goCalendar }}" style="font:400 12.5px Geist;cursor:pointer">Calendar</a></div>
+                  <sc-for list="{{ scheduled }}" as="s" hint-placeholder-count="3"><div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:grid;grid-template-columns:78px minmax(0,1fr) auto;gap:10px;padding:8px 0;border-bottom:1px solid var(--lineSoft);font:400 13px Geist;align-items:baseline"><span style="font-weight:500">{{ s.when }}</span><span style="color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.reason }}</span><span style="color:var(--faint);font-size:12px">{{ s.budget }}</span></div></sc-for>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <div style="font:500 12px Geist;color:var(--faint)">Budget this week</div>
+                  <div style="display:flex;align-items:baseline;gap:6px"><span style="font:500 26px 'Source Serif 4',serif">42</span><span style="font:400 13px Geist;color:var(--muted)">of 120 pts left</span></div>
+                  <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--track)"><div style="width:25%;background:#6b8fb8"></div><div style="width:40%;background:#c4673f"></div></div>
+                  <div style="display:flex;gap:14px;font:400 12.5px Geist;color:var(--muted)"><span style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:2px;background:#6b8fb8"></span>You · 30</span><span style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:2px;background:#c4673f"></span>Assistant · 48</span></div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:500 12px Geist;color:var(--faint)">Long jobs</div><a sc-camel-on-click="{{ goJobs }}" style="font:400 12.5px Geist;cursor:pointer">All jobs</a></div>
+                  <sc-for list="{{ jobs }}" as="j" hint-placeholder-count="2"><div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;justify-content:space-between;gap:10px;font:400 13px Geist;padding:6px 0"><span style="display:flex;align-items:center;gap:8px;min-width:0"><span style="width:6px;height:6px;border-radius:50%;background:#c4673f;flex:none"></span><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ j.label }}</span></span><span style="font:400 12px 'Geist Mono';color:var(--muted);flex:none">{{ j.state }}</span></div></sc-for>
+                </div>
+                <div sc-camel-on-click="{{ goWeb }}" style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 13px;cursor:pointer" style-hover="border-color:var(--dim)"><div style="display:flex;flex-direction:column;gap:2px"><span style="font:500 13.5px Geist">Assistant's web page</span><span style="font:400 12px 'Geist Mono';color:var(--faint)">moisture dashboard · port 8080</span></div><span style="color:var(--faint)">›</span></div>
+                <div style="display:flex;flex-direction:column;gap:6px"><div style="font:500 12px Geist;color:var(--faint)">System</div><div style="font:400 13px/1.5 Geist;color:var(--muted)">Self-test passed Nov 12 · disk 61% used · l0wagent 0.14 available</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- NEW -->
+      <sc-if value="{{ is.new }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:dcRise .28s cubic-bezier(.2,.7,.3,1) both;flex:1;min-width:0;overflow:auto;display:flex;flex-direction:column">
+          <div style="flex:1;width:100%;max-width:680px;margin:0 auto;padding:12vh 24px 40px;box-sizing:border-box;display:flex;flex-direction:column;gap:28px">
+            <h1 style="margin:0;text-align:center;font:400 34px/1.2 'Source Serif 4',Georgia,serif;letter-spacing:-.01em">Good evening, Mara</h1>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="background:var(--card);border:1px solid var(--line2);border-radius:18px;box-shadow:0 1px 2px rgba(31,30,29,.04),0 6px 20px rgba(31,30,29,.05);padding:14px 12px 10px 18px;display:flex;flex-direction:column;gap:12px">
+                <textarea rows="3" value="{{ home.text }}" sc-camel-on-change="{{ home.change }}" placeholder="{{ home.placeholder }}" style="border:none;outline:none;resize:none;font:400 16px/1.5 Geist;background:transparent;color:var(--fg)"></textarea>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;width:32px;height:32px;font:400 16px/1 Geist;color:var(--fg2)">+</button>
+                  <div style="display:flex;background:var(--bubble);border-radius:9px;padding:3px">
+                    <button sc-camel-on-click="{{ home.pickChat }}" style="border:none;border-radius:7px;padding:5px 11px;font:500 12.5px Geist;color:var(--fg);background:{{ home.chatBg }}">1:1 chat</button>
+                    <button sc-camel-on-click="{{ home.pickGen }}" style="border:none;border-radius:7px;padding:5px 11px;font:500 12.5px Geist;color:var(--fg);background:{{ home.genBg }}">Assistant · General</button>
+                  </div>
+                  <span style="flex:1"></span>
+                  <sc-if value="{{ home.isChat }}" hint-placeholder-val="{{ true }}"><span style="animation:dcFade .22s ease both;font:400 12.5px Geist;color:var(--muted)">Sonnet ▾</span></sc-if>
+                  <button sc-camel-on-click="{{ home.send }}" style="border:none;background:#c4673f;color:#fff;border-radius:9px;width:32px;height:32px;font:500 15px Geist">↑</button>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:7px;padding:0 8px;font:400 12.5px Geist;color:var(--muted)"><span style="width:6px;height:6px;border-radius:50%;background:{{ home.dot }}"></span>{{ home.note }}</div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px">
+              <div sc-camel-on-click="{{ chipOpen }}" style="display:flex;flex-direction:column;gap:6px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;cursor:pointer" style-hover="background:var(--rowh)">
+                <span style="font:500 11.5px Geist;color:var(--faint)">Assistant</span>
+                <span style="display:flex;align-items:center;gap:7px;font:500 14px Geist"><span style="width:7px;height:7px;border-radius:50%;background:{{ chip.dot }};animation:{{ chip.anim }}"></span>{{ chip.state }}</span>
+                <span style="font:400 12px Geist;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ chip.text }}</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;padding:12px 14px;border:1px solid var(--line);border-radius:12px">
+                <span style="font:500 11.5px Geist;color:var(--faint)">Budget this week</span>
+                <span style="font:500 14px Geist">42 <span style="font-weight:400;color:var(--muted)">of 120 pts left</span></span>
+                <div style="height:5px;border-radius:3px;background:var(--track);overflow:hidden"><div style="width:35%;height:100%;background:#c4673f"></div></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;padding:12px 14px;border:1px solid var(--line);border-radius:12px">
+                <span style="font:500 11.5px Geist;color:var(--faint)">You vs. assistant</span>
+                <span style="font:500 14px Geist">30 <span style="font-weight:400;color:var(--muted)">/ 48 pts</span></span>
+                <div style="display:flex;height:5px;border-radius:3px;overflow:hidden"><div style="width:38%;background:#6b8fb8"></div><div style="flex:1;background:#c4673f"></div></div>
+              </div>
+              <div sc-camel-on-click="{{ goInbox }}" style="display:flex;flex-direction:column;gap:6px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;cursor:pointer" style-hover="background:var(--rowh)">
+                <span style="font:500 11.5px Geist;color:var(--faint)">Waiting on you</span>
+                <span style="font:500 14px Geist">7 <span style="font-weight:400;color:var(--muted)">items</span></span>
+                <span style="font:400 12px Geist;color:var(--accentInk)">Open Inbox</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- PROJECTS -->
+      <sc-if value="{{ is.projects }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:dcRise .28s cubic-bezier(.2,.7,.3,1) both;flex:1;min-width:0;overflow:auto">
+          <div style="max-width:960px;margin:0 auto;padding:28px 28px 40px;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><h1 style="margin:0;font:500 28px/1.2 'Source Serif 4',Georgia,serif">Projects</h1><button sc-camel-on-click="{{ undefined }}" style="border:none;background:var(--fg);color:var(--bg);border-radius:8px;padding:7px 13px;font:500 13px Geist">+ New project</button></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ projFilters }}" as="f" hint-placeholder-count="4"><button sc-camel-on-click="{{ f.pick }}" style="border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.color }};border-radius:999px;padding:5px 12px;font:500 12.5px Geist">{{ f.label }}</button></sc-for></div>
+            <sc-if value="{{ projListEmpty }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;border:1.5px dashed var(--line3);border-radius:14px;padding:44px 24px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center"><div style="font:500 18px 'Source Serif 4',Georgia,serif">No projects yet</div><div style="font:400 13.5px/1.55 Geist;color:var(--muted);max-width:420px;text-wrap:pretty">The assistant creates projects as work grows, or you can create one yourself.</div><div style="margin-top:8px"><button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:7px 13px;font:500 13px Geist;color:var(--fg)">Create a project</button></div></div></sc-if>
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{ projList }}" as="p" hint-placeholder-count="4">
+                <div sc-camel-on-click="{{ p.open }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;padding:16px 6px;border-bottom:1px solid var(--lineSoft);cursor:pointer;opacity:{{ p.op }}" style-hover="background:var(--rowh)">
+                  <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+                    <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap"><span style="font:500 17px 'Source Serif 4',Georgia,serif">{{ p.name }}</span><span style="font:500 11px Geist;border-radius:999px;padding:1px 8px;color:{{ p.sColor }};background:{{ p.sBg }}">{{ p.status }}</span></div>
+                    <span style="font:400 13.5px/1.5 Geist;color:var(--muted)">{{ p.summary }}</span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;font:400 12.5px Geist;color:var(--faint);white-space:nowrap">
+                    <span>{{ p.last }}</span>
+                    <div style="display:flex;gap:6px"><sc-if value="{{ p.unread }}" hint-placeholder-val="{{ false }}"><span style="animation:dcFade .22s ease both;font:600 11px Geist;background:#c4673f;color:#fff;border-radius:8px;padding:1px 7px">{{ p.unread }} unread</span></sc-if><sc-if value="{{ p.asks }}" hint-placeholder-val="{{ false }}"><span style="animation:dcFade .22s ease both;font:500 11px Geist;background:var(--soft);color:var(--muted);border-radius:8px;padding:1px 7px">{{ p.asks }} asks</span></sc-if></div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- FILES -->
+      <sc-if value="{{ is.files }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:dcRise .28s cubic-bezier(.2,.7,.3,1) both;flex:1;min-width:0;display:flex;min-height:0">
+          <aside style="width:260px;flex:none;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0">
+            <div style="padding:12px 10px 8px;flex:none;display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;background:var(--hover);border-radius:9px;padding:3px">
+                <sc-for list="{{ roots }}" as="r" hint-placeholder-count="3"><button sc-camel-on-click="{{ r.pick }}" title="{{ r.desc }}" style="flex:1;border:none;border-radius:7px;padding:6px 4px;font:500 12.5px Geist;color:{{ r.color }};background:{{ r.bg }};box-shadow:{{ r.shadow }};opacity:{{ r.op }};cursor:{{ r.cursor }}">{{ r.label }}</button></sc-for>
+              </div>
+              <div style="font:400 11.5px Geist;color:var(--faint);padding:0 4px">{{ fsRootDesc }}</div>
+            </div>
+            <div style="flex:1;min-height:0;overflow:auto;padding:2px 8px 16px">
+              <sc-for list="{{ fsTree }}" as="r" hint-placeholder-count="10">
+                <div key="{{ r.key }}" style="display:grid;grid-template-rows:{{ r.rows }};opacity:{{ r.op }};transition:grid-template-rows .22s ease,opacity .18s ease"><div style="overflow:hidden;min-height:0"><div sc-camel-on-click="{{ r.open }}" style="display:flex;align-items:center;gap:6px;padding:5px 8px 5px {{ r.pad }};border-radius:7px;cursor:pointer;background:{{ r.bg }}" style-hover="background:var(--hover)">
+                  <span style="width:14px;flex:none;font:400 11px/1 Geist;color:var(--faint);text-align:center">{{ r.caret }}</span>
+                  <span style="flex:1;min-width:0;font:400 13.5px/20px Geist;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{{ r.color }};font-weight:{{ r.fw }}">{{ r.name }}</span>
+                  <span style="flex:none;font:400 11px Geist;color:var(--faint2)">{{ r.ext }}</span>
+                </div></div></div>
+              </sc-for>
+            </div>
+          </aside>
+          <div style="flex:1;min-width:0;overflow:auto;display:flex;flex-direction:column">
+            <div style="flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 24px;border-bottom:1px solid var(--lineSoft);flex-wrap:wrap">
+              <div style="display:flex;align-items:center;gap:2px;flex-wrap:wrap;font:400 13.5px 'Geist Mono';min-width:0">
+                <sc-for list="{{ fs.crumbs }}" as="c" hint-placeholder-count="3">
+                  <span sc-camel-on-click="{{ c.go }}" style="padding:3px 5px;border-radius:5px;cursor:pointer;color:{{ c.color }}" style-hover="background:var(--hover)">{{ c.name }}</span><span style="color:var(--dim)">{{ c.sep }}</span>
+                </sc-for>
+                <sc-if value="{{ fs.isFile }}" hint-placeholder-val="{{ false }}"><span style="animation:dcFade .22s ease both;color:var(--dim)">/</span><span style="padding:3px 5px;color:var(--fg)">{{ fs.sel.name }}</span></sc-if>
+                <sc-if value="{{ fs.git }}" hint-placeholder-val="{{ false }}"><span style="animation:dcFade .22s ease both;margin-left:8px;font:500 11px Geist;color:var(--okInk);background:var(--okSoft);border-radius:999px;padding:1px 8px">git · main</span></sc-if>
+              </div>
+              <sc-if value="{{ fs.isFolder }}" hint-placeholder-val="{{ true }}"><div style="animation:dcFade .22s ease both;display:flex;gap:8px"><button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:6px 11px;font:500 12.5px Geist;color:var(--fg);white-space:nowrap">Upload to a project</button><button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:6px 11px;font:500 12.5px Geist;color:var(--fg);white-space:nowrap">Download as zip</button></div></sc-if>
+              <sc-if value="{{ fs.isFile }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;display:flex;gap:8px;position:relative">
+                <div style="display:flex;background:var(--bubble);border-radius:8px;padding:2px"><sc-for list="{{ fsViews }}" as="v" hint-placeholder-count="2"><button sc-camel-on-click="{{ v.pick }}" style="border:none;border-radius:6px;padding:5px 10px;font:500 12px Geist;color:var(--fg);background:{{ v.bg }}">{{ v.label }}</button></sc-for></div>
+                <sc-if value="{{ fs.git }}" hint-placeholder-val="{{ false }}"><button sc-camel-on-click="{{ fsHist.toggle }}" style="animation:dcFade .22s ease both;border:1px solid var(--line2);background:{{ fsHist.bg }};border-radius:8px;padding:6px 11px;font:500 12.5px Geist;color:var(--fg);white-space:nowrap">History ▾</button></sc-if>
+                
+                  <div style="position:absolute;top:calc(100% + 6px);left:0;z-index:20;transform-origin:top left;opacity:{{ fsHist.op }};visibility:{{ fsHist.vis }};transform:{{ fsHist.tf }};transition:opacity .16s ease,transform .16s ease,visibility .16s;width:min(340px,calc(100vw - 320px));background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 40px rgba(20,19,17,.16);padding:6px;display:flex;flex-direction:column">
+                    <div style="font:500 11.5px Geist;color:var(--faint);padding:6px 10px">Versions of {{ fs.sel.name }}</div>
+                    <sc-for list="{{ fs.history }}" as="v" hint-placeholder-count="3">
+                      <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:grid;grid-template-columns:72px minmax(0,1fr) auto;gap:10px;align-items:baseline;padding:8px 10px;border-radius:8px;font:400 13px Geist;cursor:pointer" style-hover="background:var(--rowh)"><a sc-camel-on-click="{{ openRun }}" style="cursor:pointer">{{ v.run }}</a><span style="color:var(--muted)">{{ v.when }}</span><span style="font:400 12px 'Geist Mono';color:var(--okInk)">{{ v.diff }}</span></div>
+                    </sc-for>
+                    <div style="display:flex;gap:6px;padding:8px 10px 6px;border-top:1px solid var(--lineSoft);margin-top:4px;font:500 12.5px Geist"><a style="cursor:pointer">View diff with previous</a></div>
+                  </div>
+                <button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:6px 11px;font:500 12.5px Geist;color:var(--fg);white-space:nowrap">Add to shelf ▾</button><button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:6px 11px;font:500 12.5px Geist;color:var(--fg);white-space:nowrap">Download</button></div></sc-if>
+            </div>
+
+            <sc-if value="{{ fs.isFolder }}" hint-placeholder-val="{{ true }}">
+              <div key="{{ fsKey }}" style="animation:dcRise .24s ease both;padding:20px 24px 32px;display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;align-items:baseline;gap:10px"><span style="font:500 22px 'Source Serif 4',Georgia,serif">{{ fs.folderName }}</span><span style="font:400 13px Geist;color:var(--faint)">{{ fs.summary }}</span></div>
+                <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+                  <div style="display:grid;grid-template-columns:minmax(0,1fr) 80px 110px 60px;gap:12px;padding:9px 16px;font:500 11.5px Geist;color:var(--faint);border-bottom:1px solid var(--lineSoft)"><span>Name</span><span>Size</span><span>Modified</span><span>Run</span></div>
+                  <sc-if value="{{ fs.canUp }}" hint-placeholder-val="{{ true }}"><div sc-camel-on-click="{{ fs.up }}" style="animation:dcFade .22s ease both;display:grid;grid-template-columns:minmax(0,1fr) 80px 110px 60px;gap:12px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--soft);cursor:pointer" style-hover="background:var(--rowh)"><span style="display:flex;align-items:center;gap:10px;font:400 13px 'Geist Mono';color:var(--muted)"><span style="width:32px;text-align:center;color:var(--faint)">↑</span>..</span><span></span><span></span><span></span></div></sc-if>
+                  <sc-for list="{{ fs.items }}" as="f" hint-placeholder-count="6"><div sc-camel-on-click="{{ f.open }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:grid;grid-template-columns:minmax(0,1fr) 80px 110px 60px;gap:12px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--soft);cursor:pointer" style-hover="background:var(--rowh)"><span style="display:flex;align-items:center;gap:10px;min-width:0"><span style="font:500 9.5px 'Geist Mono';border-radius:4px;padding:2px 0;flex:none;width:32px;text-align:center;color:{{ f.tagColor }};background:{{ f.tagBg }}">{{ f.tag }}</span><span style="font:400 13.5px 'Geist Mono';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{{ f.color }}">{{ f.name }}</span></span><span style="font:400 12.5px Geist;color:var(--muted)">{{ f.size }}</span><span style="font:400 12.5px Geist;color:var(--muted);white-space:nowrap">{{ f.mod }}</span><span style="font:400 12.5px 'Geist Mono';color:var(--accentInk)">{{ f.run }}</span></div></sc-for>
+                  <sc-if value="{{ fs.empty }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;padding:32px;text-align:center;font:400 13.5px Geist;color:var(--faint)">This folder is empty.</div></sc-if>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ fs.isFile }}" hint-placeholder-val="{{ false }}">
+              <div key="{{ fsKey }}" style="animation:dcRise .24s ease both;padding:20px 24px 32px;display:flex;flex-direction:column;gap:16px;max-width:920px;width:100%;box-sizing:border-box">
+                <div style="display:flex;flex-direction:column;gap:4px"><span style="font:500 20px 'Geist Mono'">{{ fs.sel.name }}</span><span style="font:400 13px Geist;color:var(--faint)">{{ fs.sel.meta }}</span></div>
+                <sc-if value="{{ fs.sel.showMd }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px 28px;font:400 16px/1.75 'Source Serif 4',Georgia,serif;color:var(--fg2);display:flex;flex-direction:column;gap:12px"><div style="font:600 22px 'Source Serif 4',serif;color:var(--fg);text-transform:capitalize">{{ fs.sel.title }}</div><p style="margin:0">{{ fs.sel.body }}</p><p style="margin:0">Linked notes: <a style="cursor:pointer">projects/home-lab</a> · <a style="cursor:pointer">people/mara</a></p></div></sc-if>
+                <sc-if value="{{ fs.sel.showCode }}" hint-placeholder-val="{{ false }}"><pre style="animation:dcFade .22s ease both;margin:0;padding:18px 20px;font:400 13px/1.7 'Geist Mono';color:var(--fg2);background:var(--code);border:1px solid var(--line);border-radius:12px;overflow:auto">{{ codeText }}</pre></sc-if>
+                <sc-if value="{{ fs.sel.showCsv }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;display:grid;grid-template-columns:auto 1fr auto;font:400 13px 'Geist Mono';border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)"><sc-for list="{{ csvRows }}" as="r" hint-placeholder-count="6"><div style="padding:7px 12px;border-bottom:1px solid var(--soft);background:{{ r.bg }}">{{ r.a }}</div><div style="padding:7px 12px;border-bottom:1px solid var(--soft);background:{{ r.bg }}">{{ r.b }}</div><div style="padding:7px 12px;border-bottom:1px solid var(--soft);text-align:right;background:{{ r.bg }}">{{ r.c }}</div></sc-for></div></sc-if>
+                <sc-if value="{{ fs.sel.showPh }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;height:420px;border:1px solid var(--line);border-radius:12px;background:repeating-linear-gradient(135deg,var(--stripe) 0 8px,var(--track) 8px 16px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px"><span style="font:500 12.5px 'Geist Mono';color:var(--muted);background:var(--bg);border-radius:5px;padding:4px 9px">{{ fs.sel.ph }}</span><span style="font:400 12px Geist;color:var(--faint)">{{ fs.sel.phHint }}</span></div></sc-if>
+                <sc-if value="{{ fs.sel.showJson }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden"><sc-for list="{{ fs.sel.jsonRows }}" as="r" hint-placeholder-count="5"><div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:grid;grid-template-columns:200px minmax(0,1fr);gap:14px;padding:9px 16px;border-bottom:1px solid var(--soft);font:400 13px 'Geist Mono'"><span style="color:var(--muted);padding-left:{{ r.pad }}">{{ r.k }}</span><span style="color:{{ r.color }}">{{ r.v }}</span></div></sc-for></div></sc-if>
+                <sc-if value="{{ fs.sel.showRaw }}" hint-placeholder-val="{{ false }}"><pre style="animation:dcFade .22s ease both;margin:0;padding:18px 20px;font:400 13px/1.7 'Geist Mono';color:var(--fg2);background:var(--code);border:1px solid var(--line);border-radius:12px;overflow:auto;white-space:pre-wrap">{{ fs.sel.rawText }}</pre></sc-if>
+                <sc-if value="{{ fs.sel.showBinary }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;border:1.5px dashed var(--line3);border-radius:12px;padding:40px 24px;text-align:center;display:flex;flex-direction:column;gap:6px"><span style="font:500 14px 'Geist Mono'">Binary data</span><span style="font:400 13px Geist;color:var(--faint)">{{ fs.sel.binNote }}</span></div></sc-if>
+                
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- NETWORK -->
+      <sc-if value="{{ is.network }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:dcRise .28s cubic-bezier(.2,.7,.3,1) both;flex:1;min-width:0;overflow:auto">
+          <div style="max-width:1080px;margin:0 auto;padding:28px 28px 40px;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><h1 style="margin:0;font:500 28px/1.2 'Source Serif 4',Georgia,serif">Network</h1><span style="font:400 13px Geist;color:var(--faint)">Last 24 hours · 361 requests · 3 blocked</span></div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:20px;align-items:start">
+              <div style="grid-column:span 2;min-width:0;display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ netFilters }}" as="f" hint-placeholder-count="4"><button sc-camel-on-click="{{ f.pick }}" style="border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.color }};border-radius:999px;padding:5px 12px;font:500 12.5px Geist">{{ f.label }}</button></sc-for></div>
+                <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;"><div style="display:grid;grid-template-columns:70px 52px minmax(0,1fr) 46px 60px;gap:10px;padding:9px 14px;font:500 11.5px Geist;color:var(--faint);border-bottom:1px solid var(--lineSoft)"><span>Time</span><span>Method</span><span>Host</span><span>Status</span><span>Bytes</span></div><sc-for list="{{ egress }}" as="e" hint-placeholder-count="8"><div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:grid;grid-template-columns:70px 52px minmax(0,1fr) 46px 60px;gap:10px;padding:8px 14px;border-bottom:1px solid var(--soft);font:400 12.5px 'Geist Mono';background:{{ e.bg }};color:{{ e.color }}"><span>{{ e.t }}</span><span>{{ e.m }}</span><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ e.host }}</span><span>{{ e.s }}</span><span>{{ e.b }}</span></div></sc-for></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:20px">
+                <div style="display:flex;flex-direction:column;gap:8px"><div style="font:500 12px Geist;color:var(--faint)">Top hosts</div><sc-for list="{{ topHosts }}" as="t" hint-placeholder-count="4"><div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;flex-direction:column;gap:4px"><div style="display:flex;justify-content:space-between;font:400 12.5px 'Geist Mono'"><span>{{ t.host }}</span><span style="color:var(--faint)">{{ t.n }}</span></div><div style="height:4px;border-radius:2px;background:var(--track)"><div style="height:100%;border-radius:2px;background:#c4673f;width:{{ t.w }};transition:width .5s ease"></div></div></div></sc-for></div>
+                <div style="display:flex;flex-direction:column;gap:8px"><div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font:500 12px Geist;color:var(--faint)">Rules</div><a style="font:400 12.5px Geist;cursor:pointer">+ Add rule</a></div><div style="background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;"><sc-for list="{{ netRules2 }}" as="n" hint-placeholder-count="4"><div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;flex-direction:column;gap:2px;padding:9px 12px;border-bottom:1px solid var(--soft)"><div style="display:flex;gap:10px;align-items:baseline"><span style="font:500 11px Geist;color:{{ n.color }};width:88px;flex:none">{{ n.rule }}</span><span style="font:400 12.5px 'Geist Mono';flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">{{ n.host }}</span><span style="color:var(--faint2);font-size:12px">✕</span></div><sc-if value="{{ n.note }}" hint-placeholder-val="{{ false }}"><span style="animation:dcFade .22s ease both;font:400 11.5px Geist;color:var(--faint);padding-left:98px">{{ n.note }}</span></sc-if></div></sc-for></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- WEB -->
+      <sc-if value="{{ is.web }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:dcRise .28s cubic-bezier(.2,.7,.3,1) both;flex:1;min-width:0;display:flex;flex-direction:column;padding:16px 20px 20px;gap:10px;min-height:0">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="flex:1;min-width:0;display:flex;align-items:center;gap:8px;border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:6px 11px;font:400 12.5px 'Geist Mono';color:var(--muted)"><span style="font:500 10.5px Geist;color:var(--okInk);background:var(--okSoft);border-radius:4px;padding:1px 6px">sandboxed</span>http://agent-web.l0wagent.local:8080/</div>
+            <button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:7px 13px;font:500 13px Geist;color:var(--fg)">Reload</button><button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:7px 13px;font:500 13px Geist;color:var(--fg)">Open in new tab</button>
+          </div>
+          <div style="flex:1;min-height:320px;border:1px solid var(--line);border-radius:12px;background:repeating-linear-gradient(135deg,var(--stripe) 0 8px,var(--track) 8px 16px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px"><span style="font:500 12px 'Geist Mono';color:var(--muted);background:var(--bg);border-radius:5px;padding:4px 8px">assistant's web page</span><span style="font:400 12px Geist;color:var(--faint)">rendered in a sandboxed frame on a separate origin</span></div>
+        </div>
+      </sc-if>
+
+      <!-- THREAD -->
+      <sc-if value="{{ is.thread }}" hint-placeholder-val="{{ true }}">
+        <div style="animation:dcRise .28s cubic-bezier(.2,.7,.3,1) both;flex:1;min-width:0;display:flex;flex-direction:column;min-height:0">
+        <div ref="{{ scrollRef }}" style="flex:1;overflow:auto;position:relative"><sc-if value="{{ nt.no }}" hint-placeholder-val="{{ true }}">
+            <div key="{{ threadKey }}" style="animation:dcRise .26s ease both;max-width:880px;margin:0 auto;padding:28px 24px 24px;display:flex;flex-direction:column;gap:22px">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px"><div style="display:flex;flex-direction:column;gap:4px;min-width:0"><h1 style="margin:0;font:500 26px/1.2 'Source Serif 4',Georgia,serif;letter-spacing:-.01em">{{ threadTitle }}</h1><div style="font:400 12.5px Geist;color:var(--faint)">Garden irrigation · 21 messages · started Nov 2</div></div><button sc-camel-on-click="{{ tfiles.toggle }}" style="flex:none;display:flex;align-items:center;gap:7px;border:1px solid var(--line2);background:{{ tfiles.btnBg }};border-radius:999px;padding:6px 12px;font:500 12.5px Geist;color:var(--fg);margin-top:4px">Project files <span style="font-weight:400;color:var(--faint)">6</span></button></div>
+              <div style="align-self:center;font:400 12px Geist;color:var(--faint);background:var(--side);border-radius:999px;padding:4px 12px">Moved here from General · accepted suggestion · Nov 12</div>
+              <div style="align-self:flex-end;max-width:80%;display:flex;flex-direction:column;gap:8px;align-items:flex-end"><div style="background:var(--bubble);border-radius:14px;padding:11px 15px;font:400 14.5px/1.55 Geist">Can you check why the pump runs twice on Sunday mornings? Log from last week attached.</div><div sc-camel-on-click="{{ openLog }}" style="display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line2);border-radius:10px;padding:7px 11px;cursor:pointer" style-hover="border-color:var(--dim)"><span style="font:500 10px 'Geist Mono';background:var(--okSoft);color:var(--okInk);border-radius:4px;padding:2px 5px">CSV</span><span style="font:400 13px Geist">pump-log-1102.csv</span><span style="font:400 12px Geist;color:var(--faint2)">18 KB</span></div></div>
+              <div style="display:flex;flex-direction:column;gap:12px"><div style="font:400 16px/1.65 'Source Serif 4',Georgia,serif;color:var(--fg);text-wrap:pretty">The log shows two triggers at 06:00 and 06:00:04 on both Sundays. The second one comes from the fallback timer in <code style="font:400 13px 'Geist Mono';background:var(--soft);border-radius:4px;padding:1px 5px">scheduler.py</code>, which re-arms after the DST change because it compares local times instead of UTC. I've planned a fix for the next run.</div><div style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px"><div style="display:flex;align-items:center;gap:8px;font:400 12.5px Geist;color:var(--muted)"><span style="width:7px;height:7px;border-radius:50%;background:#c4673f;animation:pulse 1.6s ease-in-out infinite"></span>Planned in <a sc-camel-on-click="{{ openRun }}" style="cursor:pointer;font-weight:500">run #123</a></div><span style="font:500 11.5px Geist;color:var(--accentInk);background:var(--accentSoft);border-radius:999px;padding:2px 9px">In progress</span></div><div style="font:500 14px/1.4 Geist">Switch fallback timer to UTC and add a 10-minute debounce</div><div style="font:400 12.5px/1.5 Geist;color:var(--muted)">Patched scheduler.py, running the DST test suite (4 of 7 passed so far).</div></div></div>
+              <div id="card-q1" style="background:var(--card);border:1px solid {{ c.q1.border }};border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;transition:border-color .4s"><div style="display:flex;justify-content:space-between;gap:8px;font:500 11.5px Geist;color:var(--faint)"><span>Question</span><span style="font-weight:400"></span></div><div style="font:400 15px/1.5 'Source Serif 4',Georgia,serif">Should I flash the fix to the controller myself once tests pass, or leave the firmware for you to install?</div><sc-if value="{{ c.q1.open }}" hint-placeholder-val="{{ true }}"><div style="display:grid;grid-template-rows:{{ c.q1.cmRows }};opacity:{{ c.q1.cmOp }};margin-top:{{ c.q1.cmMt }};transition:grid-template-rows .24s ease,opacity .2s ease,margin-top .24s ease"><div style="overflow:hidden;min-height:0;display:flex;flex-direction:column"><textarea rows="2" value="{{ c.q1.cmText }}" sc-camel-on-change="{{ c.q1.cmChange }}" placeholder="Add a comment for the assistant. It's sent along with your response." style="border:1px solid var(--line2);border-radius:8px;padding:8px 11px;font:400 13.5px/1.45 Geist;background:var(--bg);color:var(--fg);outline:none;resize:vertical"></textarea></div></div><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button sc-camel-on-click="{{ c.q1.a }}" style="border:none;background:var(--fg);color:var(--bg);border-radius:8px;padding:7px 13px;font:500 13px Geist">Flash it</button><button sc-camel-on-click="{{ c.q1.b }}" style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:7px 13px;font:500 13px Geist;color:var(--fg)">Leave it for me</button><button sc-camel-on-click="{{ c.q1.cmToggle }}" style="margin-left:auto;border:none;background:none;padding:6px 2px;font:400 12.5px Geist;color:var(--muted)">{{ c.q1.cmLabel }}</button></div></sc-if><sc-if value="{{ c.q1.done }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:4px;animation:dcRise .25s ease both"><div style="font:500 13px Geist;color:var(--okInk)">✓ {{ c.q1.answer }}</div><sc-if value="{{ c.q1.hasCm }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;font:400 13px/1.5 Geist;color:var(--fg2)"><span style="color:var(--faint)">Your comment · </span>{{ c.q1.cmText }}</div></sc-if></div></sc-if></div>
+              <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end"><div style="font:400 11.5px Geist;color:var(--faint)">via chat · Telegram</div><div style="max-width:80%;background:var(--bubble);border-radius:14px;padding:11px 15px;font:400 14.5px/1.55 Geist">Also only started after the clocks changed, if that helps.</div></div>
+              <div style="font:400 16px/1.65 'Source Serif 4',Georgia,serif;color:var(--fg);text-wrap:pretty">That confirms it. A few choices before I ship the fix:</div>
+              <div id="card-mc" style="background:var(--card);border:1px solid {{ c.mc.border }};border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;transition:border-color .4s"><div style="display:flex;justify-content:space-between;gap:8px;font:500 11.5px Geist;color:var(--faint)"><span>Question · pick one</span><span style="font-weight:400"></span></div><div style="font:400 15px/1.5 'Source Serif 4',Georgia,serif">Which schedule should the fixed firmware use on Sundays?</div><sc-if value="{{ c.mc.open }}" hint-placeholder-val="{{ true }}"><div style="animation:dcFade .22s ease both;display:flex;flex-direction:column;gap:6px"><sc-for list="{{ c.mc.opts }}" as="o" hint-placeholder-count="4"><div sc-camel-on-click="{{ o.pick }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid {{ o.border }};border-radius:9px;cursor:pointer;font:400 14px Geist;background:{{ o.bg }}"><span style="width:16px;height:16px;box-sizing:border-box;border-radius:50%;border:1.5px solid {{ o.ring }};transition:border-color .15s ease;display:flex;align-items:center;justify-content:center;flex:none"><span style="width:7px;height:7px;border-radius:50%;background:{{ o.dot }};transition:background .15s ease,transform .15s ease"></span></span>{{ o.label }}</div></sc-for></div><div style="display:grid;grid-template-rows:{{ c.mc.cmRows }};opacity:{{ c.mc.cmOp }};margin-top:{{ c.mc.cmMt }};transition:grid-template-rows .24s ease,opacity .2s ease,margin-top .24s ease"><div style="overflow:hidden;min-height:0;display:flex;flex-direction:column"><textarea rows="2" value="{{ c.mc.cmText }}" sc-camel-on-change="{{ c.mc.cmChange }}" placeholder="Add a comment for the assistant. It's sent along with your response." style="border:1px solid var(--line2);border-radius:8px;padding:8px 11px;font:400 13.5px/1.45 Geist;background:var(--bg);color:var(--fg);outline:none;resize:vertical"></textarea></div></div><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button sc-camel-on-click="{{ c.mc.submit }}" style="border:none;background:var(--fg);color:var(--bg);border-radius:8px;padding:7px 13px;font:500 13px Geist">Submit</button><button sc-camel-on-click="{{ c.mc.cmToggle }}" style="margin-left:auto;border:none;background:none;padding:6px 2px;font:400 12.5px Geist;color:var(--muted)">{{ c.mc.cmLabel }}</button></div></sc-if><sc-if value="{{ c.mc.done }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:4px;animation:dcRise .25s ease both"><div style="font:500 13px Geist;color:var(--okInk)">✓ {{ c.mc.answer }}</div><sc-if value="{{ c.mc.hasCm }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;font:400 13px/1.5 Geist;color:var(--fg2)"><span style="color:var(--faint)">Your comment · </span>{{ c.mc.cmText }}</div></sc-if></div></sc-if></div>
+              <div id="card-ms" style="background:var(--card);border:1px solid {{ c.ms.border }};border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;transition:border-color .4s"><div style="display:flex;justify-content:space-between;gap:8px;font:500 11.5px Geist;color:var(--faint)"><span>Question · pick any</span><span style="font-weight:400">{{ c.ms.count }}</span></div><div style="font:400 15px/1.5 'Source Serif 4',Georgia,serif">Which zones should get the 10-minute debounce?</div><sc-if value="{{ c.ms.open }}" hint-placeholder-val="{{ true }}"><div style="animation:dcFade .22s ease both;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px"><sc-for list="{{ c.ms.opts }}" as="o" hint-placeholder-count="4"><div sc-camel-on-click="{{ o.pick }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid {{ o.border }};border-radius:9px;cursor:pointer;font:400 14px Geist;background:{{ o.bg }}"><span style="width:16px;height:16px;box-sizing:border-box;border-radius:4px;border:1.5px solid {{ o.boxLine }};background:{{ o.box }};transition:background .15s ease,border-color .15s ease;display:flex;align-items:center;justify-content:center;flex:none;font:600 10px/1 Geist;color:#fff">{{ o.check }}</span>{{ o.label }}</div></sc-for></div><div style="display:grid;grid-template-rows:{{ c.ms.cmRows }};opacity:{{ c.ms.cmOp }};margin-top:{{ c.ms.cmMt }};transition:grid-template-rows .24s ease,opacity .2s ease,margin-top .24s ease"><div style="overflow:hidden;min-height:0;display:flex;flex-direction:column"><textarea rows="2" value="{{ c.ms.cmText }}" sc-camel-on-change="{{ c.ms.cmChange }}" placeholder="Add a comment for the assistant. It's sent along with your response." style="border:1px solid var(--line2);border-radius:8px;padding:8px 11px;font:400 13.5px/1.45 Geist;background:var(--bg);color:var(--fg);outline:none;resize:vertical"></textarea></div></div><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button sc-camel-on-click="{{ c.ms.submit }}" style="border:none;background:var(--fg);color:var(--bg);border-radius:8px;padding:7px 13px;font:500 13px Geist">Submit</button><button sc-camel-on-click="{{ c.ms.cmToggle }}" style="margin-left:auto;border:none;background:none;padding:6px 2px;font:400 12.5px Geist;color:var(--muted)">{{ c.ms.cmLabel }}</button></div></sc-if><sc-if value="{{ c.ms.done }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:4px;animation:dcRise .25s ease both"><div style="font:500 13px Geist;color:var(--okInk)">✓ {{ c.ms.answer }}</div><sc-if value="{{ c.ms.hasCm }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;font:400 13px/1.5 Geist;color:var(--fg2)"><span style="color:var(--faint)">Your comment · </span>{{ c.ms.cmText }}</div></sc-if></div></sc-if></div>
+              <div id="card-txt" style="background:var(--card);border:1px solid {{ c.txt.border }};border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;transition:border-color .4s"><div style="display:flex;justify-content:space-between;gap:8px;font:500 11.5px Geist;color:var(--faint)"><span>Question · written answer</span><span style="font-weight:400"></span></div><div style="font:400 15px/1.5 'Source Serif 4',Georgia,serif">Is there a minimum rest time the pump needs between cycles? I couldn't find it in the datasheet.</div><sc-if value="{{ c.txt.open }}" hint-placeholder-val="{{ true }}"><textarea rows="3" value="{{ c.txt.value }}" sc-camel-on-change="{{ c.txt.change }}" placeholder="Type your answer" style="animation:dcFade .22s ease both;border:1px solid var(--line2);border-radius:8px;padding:9px 11px;font:400 14px/1.5 Geist;background:var(--bg);color:var(--fg);outline:none;resize:vertical"></textarea><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button sc-camel-on-click="{{ c.txt.submit }}" style="border:none;background:var(--fg);color:var(--bg);border-radius:8px;padding:7px 13px;font:500 13px Geist">Send answer</button><span style="font:400 12px Geist;color:var(--faint2)">Queued with your next message if the assistant is asleep</span></div></sc-if><sc-if value="{{ c.txt.done }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:4px;animation:dcRise .25s ease both"><div style="font:500 13px Geist;color:var(--okInk)">✓ {{ c.txt.answer }}</div><sc-if value="{{ c.txt.hasCm }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;font:400 13px/1.5 Geist;color:var(--fg2)"><span style="color:var(--faint)">Your comment · </span>{{ c.txt.cmText }}</div></sc-if></div></sc-if></div>
+              <div id="card-perm" style="background:var(--card);border:1px solid {{ c.perm.border }};border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;transition:border-color .4s"><div style="display:flex;justify-content:space-between;gap:8px;font:500 11.5px Geist;color:var(--faint)"><span>Permission</span><span style="font-weight:400">needs connection</span></div><div style="font:400 14px/1.5 Geist">Write access to <code style="font:400 13px 'Geist Mono';background:var(--soft);border-radius:4px;padding:1px 5px">~/garden/firmware/</code> for this project</div><sc-if value="{{ c.perm.open }}" hint-placeholder-val="{{ true }}"><div style="display:grid;grid-template-rows:{{ c.perm.cmRows }};opacity:{{ c.perm.cmOp }};margin-top:{{ c.perm.cmMt }};transition:grid-template-rows .24s ease,opacity .2s ease,margin-top .24s ease"><div style="overflow:hidden;min-height:0;display:flex;flex-direction:column"><textarea rows="2" value="{{ c.perm.cmText }}" sc-camel-on-change="{{ c.perm.cmChange }}" placeholder="Add a comment for the assistant. It's sent along with your response." style="border:1px solid var(--line2);border-radius:8px;padding:8px 11px;font:400 13.5px/1.45 Geist;background:var(--bg);color:var(--fg);outline:none;resize:vertical"></textarea></div></div><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button sc-camel-on-click="{{ c.perm.a }}" style="border:none;background:var(--fg);color:var(--bg);border-radius:8px;padding:7px 13px;font:500 13px Geist">Allow for project</button><button sc-camel-on-click="{{ c.perm.b }}" style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:7px 13px;font:500 13px Geist;color:var(--fg)">Allow once</button><button sc-camel-on-click="{{ c.perm.c }}" style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:7px 13px;font:500 13px Geist;color:var(--fg)">Deny</button><button sc-camel-on-click="{{ c.perm.cmToggle }}" style="margin-left:auto;border:none;background:none;padding:6px 2px;font:400 12.5px Geist;color:var(--muted)">{{ c.perm.cmLabel }}</button></div></sc-if><sc-if value="{{ c.perm.done }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:4px;animation:dcRise .25s ease both"><div style="font:500 13px Geist;color:var(--okInk)">✓ {{ c.perm.answer }}</div><sc-if value="{{ c.perm.hasCm }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;font:400 13px/1.5 Geist;color:var(--fg2)"><span style="color:var(--faint)">Your comment · </span>{{ c.perm.cmText }}</div></sc-if></div></sc-if></div>
+              <div id="card-sug" style="background:var(--card);border:1px solid {{ c.sug.border }};border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;transition:border-color .4s"><div style="display:flex;justify-content:space-between;gap:8px;font:500 11.5px Geist;color:var(--faint)"><span>Suggestion · split</span><span style="font-weight:400"></span></div><div style="font:400 14px/1.5 Geist">Move the 6 sensor calibration messages into a new thread, “Moisture sensor calibration”</div><sc-if value="{{ c.sug.open }}" hint-placeholder-val="{{ true }}"><div style="display:grid;grid-template-rows:{{ c.sug.cmRows }};opacity:{{ c.sug.cmOp }};margin-top:{{ c.sug.cmMt }};transition:grid-template-rows .24s ease,opacity .2s ease,margin-top .24s ease"><div style="overflow:hidden;min-height:0;display:flex;flex-direction:column"><textarea rows="2" value="{{ c.sug.cmText }}" sc-camel-on-change="{{ c.sug.cmChange }}" placeholder="Add a comment for the assistant. It's sent along with your response." style="border:1px solid var(--line2);border-radius:8px;padding:8px 11px;font:400 13.5px/1.45 Geist;background:var(--bg);color:var(--fg);outline:none;resize:vertical"></textarea></div></div><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button sc-camel-on-click="{{ c.sug.a }}" style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:7px 13px;font:500 13px Geist;color:var(--fg)">Accept</button><button sc-camel-on-click="{{ c.sug.b }}" style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:7px 13px;font:500 13px Geist;color:var(--fg)">Dismiss</button><button sc-camel-on-click="{{ c.sug.cmToggle }}" style="margin-left:auto;border:none;background:none;padding:6px 2px;font:400 12.5px Geist;color:var(--muted)">{{ c.sug.cmLabel }}</button></div></sc-if><sc-if value="{{ c.sug.done }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:4px;animation:dcRise .25s ease both"><div style="font:500 13px Geist;color:var(--okInk)">✓ {{ c.sug.answer }}</div><sc-if value="{{ c.sug.hasCm }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;font:400 13px/1.5 Geist;color:var(--fg2)"><span style="color:var(--faint)">Your comment · </span>{{ c.sug.cmText }}</div></sc-if></div></sc-if></div>
+              <div style="display:flex;flex-direction:column;gap:12px"><div style="font:400 16px/1.65 'Source Serif 4',Georgia,serif;color:var(--fg);text-wrap:pretty">Before the next wakeup I can only give a short answer. A proper review of the other timers needs a full run.</div><div id="card-promo" style="background:var(--card);border:1px solid {{ c.promo.border }};border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;transition:border-color .4s"><div style="display:flex;justify-content:space-between;gap:8px;font:500 11.5px Geist;color:var(--faint)"><span>Promote request</span><span style="font-weight:400">about 3 pts · runs now</span></div><div style="display:flex;flex-direction:column;gap:3px"><div style="font:500 14px Geist">Turn this reply into a full run</div><div style="font:400 12.5px Geist;color:var(--muted)">Audit every timer for DST issues</div></div><sc-if value="{{ c.promo.open }}" hint-placeholder-val="{{ true }}"><div style="display:grid;grid-template-rows:{{ c.promo.cmRows }};opacity:{{ c.promo.cmOp }};margin-top:{{ c.promo.cmMt }};transition:grid-template-rows .24s ease,opacity .2s ease,margin-top .24s ease"><div style="overflow:hidden;min-height:0;display:flex;flex-direction:column"><textarea rows="2" value="{{ c.promo.cmText }}" sc-camel-on-change="{{ c.promo.cmChange }}" placeholder="Add a comment for the assistant. It's sent along with your response." style="border:1px solid var(--line2);border-radius:8px;padding:8px 11px;font:400 13.5px/1.45 Geist;background:var(--bg);color:var(--fg);outline:none;resize:vertical"></textarea></div></div><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button sc-camel-on-click="{{ c.promo.a }}" style="border:none;background:var(--fg);color:var(--bg);border-radius:8px;padding:7px 13px;font:500 13px Geist">Approve</button><button sc-camel-on-click="{{ c.promo.b }}" style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:7px 13px;font:500 13px Geist;color:var(--fg)">Deny</button><button sc-camel-on-click="{{ c.promo.cmToggle }}" style="margin-left:auto;border:none;background:none;padding:6px 2px;font:400 12.5px Geist;color:var(--muted)">{{ c.promo.cmLabel }}</button></div></sc-if><sc-if value="{{ c.promo.done }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:4px;animation:dcRise .25s ease both"><div style="font:500 13px Geist;color:var(--okInk)">✓ {{ c.promo.answer }}</div><sc-if value="{{ c.promo.hasCm }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;font:400 13px/1.5 Geist;color:var(--fg2)"><span style="color:var(--faint)">Your comment · </span>{{ c.promo.cmText }}</div></sc-if></div></sc-if></div></div>
+              <div id="card-sec" style="background:var(--card);border:1px solid {{ c.sec.border }};border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;transition:border-color .4s"><div style="display:flex;justify-content:space-between;gap:8px;font:500 11.5px Geist;color:var(--faint)"><span>Secure input</span><span style="font-weight:400">stored as a secret, never sent to a model</span></div><div style="font:400 14px Geist">MQTT broker password for <code style="font:400 13px 'Geist Mono';background:var(--soft);border-radius:4px;padding:1px 5px">garden-broker.local</code></div><sc-if value="{{ c.sec.open }}" hint-placeholder-val="{{ true }}"><input type="password" placeholder="Paste password" style="animation:dcFade .22s ease both;border:1px solid var(--line2);border-radius:8px;padding:8px 11px;font:400 13.5px Geist;background:var(--bg);color:var(--fg);outline:none"><div style="display:grid;grid-template-rows:{{ c.sec.cmRows }};opacity:{{ c.sec.cmOp }};margin-top:{{ c.sec.cmMt }};transition:grid-template-rows .24s ease,opacity .2s ease,margin-top .24s ease"><div style="overflow:hidden;min-height:0;display:flex;flex-direction:column"><textarea rows="2" value="{{ c.sec.cmText }}" sc-camel-on-change="{{ c.sec.cmChange }}" placeholder="Add a comment for the assistant. It's sent along with your response." style="border:1px solid var(--line2);border-radius:8px;padding:8px 11px;font:400 13.5px/1.45 Geist;background:var(--bg);color:var(--fg);outline:none;resize:vertical"></textarea></div></div><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><button sc-camel-on-click="{{ c.sec.a }}" style="border:none;background:var(--fg);color:var(--bg);border-radius:8px;padding:7px 13px;font:500 13px Geist">Save</button><button sc-camel-on-click="{{ c.sec.cmToggle }}" style="margin-left:auto;border:none;background:none;padding:6px 2px;font:400 12.5px Geist;color:var(--muted)">{{ c.sec.cmLabel }}</button></div></sc-if><sc-if value="{{ c.sec.done }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:4px;animation:dcRise .25s ease both"><div style="font:500 13px Geist;color:var(--okInk)">✓ {{ c.sec.answer }}</div><sc-if value="{{ c.sec.hasCm }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;font:400 13px/1.5 Geist;color:var(--fg2)"><span style="color:var(--faint)">Your comment · </span>{{ c.sec.cmText }}</div></sc-if></div></sc-if></div>
+            </div></sc-if>
+            <sc-if value="{{ nt.yes }}" hint-placeholder-val="{{ false }}">
+              <div style="animation:dcFade .22s ease both;max-width:880px;margin:0 auto;padding:32px 24px;display:flex;flex-direction:column;gap:10px">
+                <div style="font:400 12.5px Geist;color:var(--faint)">{{ nt.project }} · new thread</div>
+                <input placeholder="Untitled thread" style="border:none;outline:none;background:transparent;font:500 26px/1.2 'Source Serif 4',Georgia,serif;color:var(--fg);padding:0">
+                <div style="font:400 14px/1.6 Geist;color:var(--muted);max-width:520px">Write the first message below. The assistant can rename the thread once it knows what it's about.</div>
+              </div>
+            </sc-if>
+          </div>
+          <div style="flex:none;padding:0 24px 18px">
+            <div style="max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:8px">
+              <div style="background:var(--card);border:1px solid var(--line2);border-radius:16px;box-shadow:0 1px 2px rgba(31,30,29,.04),0 4px 14px rgba(31,30,29,.04);padding:12px 12px 10px 16px;display:flex;flex-direction:column;gap:10px">
+                <textarea rows="2" placeholder="Reply… use @project, #thread or /file to link" style="border:none;outline:none;resize:none;font:400 15px/1.5 Geist;background:transparent;color:var(--fg)"></textarea>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                  <div style="display:flex;gap:6px">
+                    <button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:5px 10px;font:400 12.5px Geist;color:var(--fg2)">+ Attach</button>
+                    <button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:5px 10px;font:400 12.5px Geist;color:var(--fg2)">From project files</button>
+                  </div>
+                  <button style="border:none;background:#c4673f;color:#fff;border-radius:9px;width:32px;height:32px;font:500 15px Geist">↑</button>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 6px;font:400 12.5px Geist;color:var(--muted);flex-wrap:wrap">
+                <span style="display:flex;align-items:center;gap:7px"><span style="width:6px;height:6px;border-radius:50%;background:{{ delivery.dot }}"></span>{{ delivery.text }}</span>
+                <sc-if value="{{ delivery.canReply }}" hint-placeholder-val="{{ true }}">
+                  <button style="animation:dcFade .22s ease both;border:none;background:none;padding:0;font:500 12.5px Geist;color:var(--accentInk)">Reply now · 1 pt <span style="font-weight:400;color:var(--faint)">(14 of 20 reply pts left)</span></button>
+                </sc-if>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="flex:none;display:flex;overflow:hidden;width:{{ tfiles.w }};transition:width .32s cubic-bezier(.2,.7,.3,1)">
+          <aside style="opacity:{{ tfiles.op }};transition:opacity .25s ease;width:310px;flex:none;border-left:1px solid var(--line);background:var(--card);display:flex;flex-direction:column;min-height:0">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid var(--lineSoft)">
+              <div style="display:flex;flex-direction:column;gap:2px"><span style="font:500 14px Geist">Project files</span><span style="font:400 12px Geist;color:var(--faint)">Garden irrigation · shelf</span></div>
+              <button sc-camel-on-click="{{ tfiles.toggle }}" style="border:none;background:var(--side);border-radius:7px;width:28px;height:28px;color:var(--muted)">✕</button>
+            </div>
+            <div style="flex:none;max-height:45%;overflow:auto;border-bottom:1px solid var(--lineSoft)">
+              <sc-for list="{{ files }}" as="f" hint-placeholder-count="6">
+                <div sc-camel-on-click="{{ f.select }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;align-items:center;gap:10px;padding:9px 16px;cursor:pointer;background:{{ f.bg }}" style-hover="background:var(--rowh)">
+                  <span style="font:500 9.5px 'Geist Mono';background:var(--soft);color:var(--muted);border-radius:4px;padding:2px 5px;flex:none;width:30px;text-align:center">{{ f.ext }}</span>
+                  <span style="flex:1;min-width:0;font:400 13px Geist;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.name }}</span>
+                  <span style="flex:none;font:500 11px Geist;color:{{ f.modeColor }}">{{ f.mode }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 16px"><span style="font:500 13px Geist;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ file.name }}</span><span style="font:400 12px Geist;color:var(--faint);flex:none">{{ file.when }}</span></div>
+              <sc-if value="{{ file.isCode }}" hint-placeholder-val="{{ false }}"><pre style="animation:dcFade .22s ease both;margin:0;padding:12px 16px;font:400 11.5px/1.6 'Geist Mono';color:var(--fg2);background:var(--code);overflow:auto">{{ codeText }}</pre></sc-if>
+              <sc-if value="{{ file.isPlaceholder }}" hint-placeholder-val="{{ true }}"><div style="animation:dcFade .22s ease both;margin:0 16px;height:200px;border-radius:8px;background:repeating-linear-gradient(135deg,var(--stripe) 0 8px,var(--track) 8px 16px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px"><span style="font:500 11.5px 'Geist Mono';color:var(--muted);background:var(--bg);border-radius:5px;padding:3px 7px">{{ file.placeholder }}</span><span style="font:400 11.5px Geist;color:var(--faint)">{{ file.hint }}</span></div></sc-if>
+              <sc-if value="{{ file.isMd }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;padding:4px 16px;font:400 14px/1.65 'Source Serif 4',serif;color:var(--fg2)">Drip irrigation for the back garden: an ESP32 controller driving two pumps, four moisture sensors, and a weekly schedule that adapts to rain forecasts.</div></sc-if>
+              <div style="display:flex;gap:8px;padding:12px 16px">
+                <button style="border:1px solid var(--line2);background:var(--card);border-radius:7px;padding:5px 10px;font:400 12.5px Geist;color:var(--fg)">Link in reply</button>
+                <button style="border:1px solid var(--line2);background:var(--card);border-radius:7px;padding:5px 10px;font:400 12.5px Geist;color:var(--fg)">Download</button>
+                <button sc-camel-on-click="{{ tfiles.openProject }}" style="border:1px solid var(--line2);background:var(--card);border-radius:7px;padding:5px 10px;font:400 12.5px Geist;color:var(--fg)">Open in project</button>
+              </div>
+            </div>
+          </aside>
+        </div>
+        <div style="flex:none;display:flex;overflow:hidden;width:{{ csvPanel.w }};transition:width .32s cubic-bezier(.2,.7,.3,1)">
+          <aside style="opacity:{{ csvPanel.op }};transition:opacity .25s ease;width:400px;flex:none;border-left:1px solid var(--line);background:var(--card);display:flex;flex-direction:column;min-height:0">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--lineSoft)">
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <span style="font:500 14px Geist">pump-log-1102.csv</span>
+                <span style="font:400 12px Geist;color:var(--faint)">Snapshot · from you · Nov 12</span>
+              </div>
+              <button sc-camel-on-click="{{ closePanel }}" style="border:none;background:var(--side);border-radius:7px;width:28px;height:28px;color:var(--muted)">✕</button>
+            </div>
+            <div style="flex:1;overflow:auto;padding:12px 16px">
+              <div style="display:grid;grid-template-columns:auto 1fr auto;font:400 12.5px 'Geist Mono';border:1px solid var(--lineSoft);border-radius:8px;overflow:hidden">
+                <sc-for list="{{ csvRows }}" as="r" hint-placeholder-count="8">
+                  <div style="padding:6px 10px;border-bottom:1px solid var(--soft);background:{{ r.bg }}">{{ r.a }}</div>
+                  <div style="padding:6px 10px;border-bottom:1px solid var(--soft);background:{{ r.bg }}">{{ r.b }}</div>
+                  <div style="padding:6px 10px;border-bottom:1px solid var(--soft);text-align:right;background:{{ r.bg }}">{{ r.c }}</div>
+                </sc-for>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </sc-if>
+
+      <!-- PROJECT -->
+      <sc-if value="{{ is.project }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:dcRise .28s cubic-bezier(.2,.7,.3,1) both;flex:1;min-width:0;overflow:auto">
+          <div style="max-width:1040px;margin:0 auto;padding:28px 28px 40px;display:flex;flex-direction:column;gap:20px">
+            <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <h1 style="margin:0;font:500 28px/1.2 'Source Serif 4',Georgia,serif;letter-spacing:-.01em">Garden irrigation</h1>
+                  <span style="font:500 11.5px Geist;color:var(--okInk);background:var(--okSoft);border-radius:999px;padding:2px 9px">Active</span>
+                </div>
+                <div style="font:400 13px Geist;color:var(--faint)">4 threads · 6 files · 2 open asks · last run 12 min ago</div>
+              </div>
+              <button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:7px 13px;font:500 13px Geist;color:var(--fg)">New thread in project</button>
+            </div>
+            <div style="display:flex;gap:4px;border-bottom:1px solid var(--line)">
+              <sc-for list="{{ projTabs }}" as="t" hint-placeholder-count="5">
+                <div sc-camel-on-click="{{ t.open }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);padding:9px 12px;font:500 13.5px Geist;cursor:pointer;margin-bottom:-1px;color:{{ t.color }};border-bottom:2px solid {{ t.line }}">{{ t.label }}</div>
+              </sc-for>
+            </div>
+
+            <sc-if value="{{ pt.overview }}" hint-placeholder-val="{{ true }}">
+              <div style="animation:dcFade .22s ease both;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:28px">
+                <div style="display:flex;flex-direction:column;gap:14px">
+                  <div style="font:500 11.5px Geist;color:var(--faint)">Project doc · kept by the assistant · updated 1 h ago</div>
+                  <div style="font:400 16px/1.7 'Source Serif 4',Georgia,serif;display:flex;flex-direction:column;gap:12px;text-wrap:pretty">
+                    <p style="margin:0">Drip irrigation for the back garden: an ESP32 controller driving two pumps, four moisture sensors, and a weekly schedule that adapts to rain forecasts.</p>
+                    <h3 style="margin:6px 0 0;font:600 17px 'Source Serif 4',serif">Current state</h3>
+                    <ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px">
+                      <li>Firmware v0.9.2 on the controller. A DST fix is in progress (run #123).</li>
+                      <li>Sensors 3 and 4 read about 8% high; calibration notes are in their own thread.</li>
+                      <li>Enclosure v3 printed and fitted, Nov 10.</li>
+                    </ul>
+                    <h3 style="margin:6px 0 0;font:600 17px 'Source Serif 4',serif">Open decisions</h3>
+                    <ul style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px">
+                      <li>Whether to add a flow meter before winter.</li>
+                    </ul>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:18px">
+                  <div style="display:flex;flex-direction:column;gap:8px">
+                    <div style="font:500 11.5px Geist;color:var(--faint)">Summary</div>
+                    <div style="font:400 13.5px/1.55 Geist;color:var(--fg2)">Working well apart from the Sunday double-run. Next wakeup Sat 02:00 will finish the fix.</div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <div style="font:500 11.5px Geist;color:var(--faint)">Links</div>
+                    <a style="font:400 13.5px Geist">#Pump controller firmware</a>
+                    <a style="font:400 13.5px Geist">/enclosure-v3.stl</a>
+                    <a style="font:400 13.5px Geist">@Home lab</a>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ pt.threads }}" hint-placeholder-val="{{ false }}">
+              <div style="animation:dcFade .22s ease both;display:flex;flex-direction:column">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 4px 8px">
+                  <span style="font:400 13px Geist;color:var(--faint)">4 active threads</span>
+                  <div sc-camel-on-click="{{ toggleArchived }}" style="display:flex;align-items:center;gap:8px;font:400 13px Geist;color:var(--fg2);cursor:pointer">
+                    <span style="width:28px;height:16px;border-radius:8px;position:relative;background:{{ archToggle.track }};transition:background .18s ease"><span style="position:absolute;top:2px;width:12px;height:12px;border-radius:50%;background:var(--card);left:{{ archToggle.knob }};transition:left .18s ease"></span></span>
+                    Show archived (2)
+                  </div>
+                </div>
+                <sc-for list="{{ projThreads }}" as="t" hint-placeholder-count="4">
+                  <div sc-camel-on-click="{{ goThread }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;align-items:center;gap:16px;padding:14px 4px;border-bottom:1px solid var(--lineSoft);cursor:pointer;opacity:{{ t.op }}" style-hover="background:var(--rowh)">
+                    <div style="flex:1;display:flex;flex-direction:column;gap:3px;min-width:0">
+                      <div style="display:flex;align-items:center;gap:8px"><span style="font:500 14.5px Geist">{{ t.name }}</span><sc-if value="{{ t.archived }}" hint-placeholder-val="{{ false }}"><span style="animation:dcFade .22s ease both;font:500 11px Geist;color:var(--muted);background:var(--soft);border-radius:5px;padding:1px 7px">Archived</span></sc-if></div>
+                      <span style="font:400 13px Geist;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.last }}</span>
+                    </div>
+                    <span style="font:400 12.5px Geist;color:var(--faint);flex:none">{{ t.when }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ pt.files }}" hint-placeholder-val="{{ false }}">
+              <div style="animation:dcFade .22s ease both;display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:20px;align-items:start">
+                <div style="display:flex;flex-direction:column;gap:12px">
+                  <div style="border:1.5px dashed var(--line3);border-radius:12px;padding:14px;text-align:center;font:400 13px Geist;color:var(--faint)">Drop files to add them to the project inbox folder</div>
+                  <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+                    <div style="display:grid;grid-template-columns:minmax(0,1fr) 72px 84px;gap:12px;padding:9px 14px;font:500 11.5px Geist;color:var(--faint);border-bottom:1px solid var(--lineSoft)">
+                      <span>Label</span><span>Mode</span><span>Updated</span>
+                    </div>
+                    <sc-for list="{{ files }}" as="f" hint-placeholder-count="6">
+                      <div sc-camel-on-click="{{ f.select }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:grid;grid-template-columns:minmax(0,1fr) 72px 84px;gap:12px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--soft);cursor:pointer;background:{{ f.bg }}" style-hover="background:var(--rowh)">
+                        <div style="display:flex;align-items:center;gap:9px;min-width:0">
+                          <span style="font:500 9.5px 'Geist Mono';background:var(--soft);color:var(--muted);border-radius:4px;padding:2px 5px;flex:none;width:30px;text-align:center">{{ f.ext }}</span>
+                          <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+                            <span style="font:500 13.5px Geist;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.name }}</span>
+                            <span style="font:400 11.5px 'Geist Mono';color:var(--faint2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.by }} · {{ f.source }}</span>
+                          </div>
+                        </div>
+                        <span style="font:500 11.5px Geist;color:{{ f.modeColor }}">{{ f.mode }}</span>
+                                                <span style="font:400 12.5px Geist;color:var(--muted)">{{ f.when }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+                <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;border-bottom:1px solid var(--lineSoft)">
+                    <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+                      <span style="font:500 14px Geist">{{ file.name }}</span>
+                      <span style="font:400 12px Geist;color:var(--faint)">{{ file.mode }} · {{ file.by }}</span>
+                    </div>
+                    <sc-if value="{{ file.versions }}" hint-placeholder-val="{{ false }}">
+                      <div style="animation:dcFade .22s ease both;font:400 12px Geist;border:1px solid var(--line2);border-radius:7px;padding:4px 9px;color:var(--fg2);flex:none">{{ file.versions }} ▾</div>
+                    </sc-if>
+                  </div>
+                  <sc-if value="{{ file.isCode }}" hint-placeholder-val="{{ false }}">
+                    <pre style="animation:dcFade .22s ease both;margin:0;padding:14px;font:400 12px/1.65 'Geist Mono';color:var(--fg2);background:var(--code);overflow:auto">{{ codeText }}</pre>
+                  </sc-if>
+                  <sc-if value="{{ file.isPlaceholder }}" hint-placeholder-val="{{ true }}">
+                    <div style="animation:dcFade .22s ease both;height:280px;background:repeating-linear-gradient(135deg,var(--stripe) 0 8px,var(--track) 8px 16px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
+                      <span style="font:500 12px 'Geist Mono';color:var(--muted);background:var(--bg);border-radius:5px;padding:4px 8px">{{ file.placeholder }}</span>
+                      <span style="font:400 11.5px Geist;color:var(--faint)">{{ file.hint }}</span>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ file.isMd }}" hint-placeholder-val="{{ false }}">
+                    <div style="animation:dcFade .22s ease both;padding:16px;font:400 14.5px/1.65 'Source Serif 4',serif;color:var(--fg2)">Drip irrigation for the back garden: an ESP32 controller driving two pumps, four moisture sensors, and a weekly schedule that adapts to rain forecasts.</div>
+                  </sc-if>
+                  <div style="padding:10px 14px;border-top:1px solid var(--lineSoft);display:flex;gap:8px">
+                    <button style="border:1px solid var(--line2);background:var(--card);border-radius:7px;padding:5px 10px;font:400 12.5px Geist;color:var(--fg)">Open in thread</button>
+                    <button style="border:1px solid var(--line2);background:var(--card);border-radius:7px;padding:5px 10px;font:400 12.5px Geist;color:var(--fg)">Download</button>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ pt.asks }}" hint-placeholder-val="{{ false }}">
+              <div style="animation:dcFade .22s ease both;display:flex;flex-direction:column;gap:10px;max-width:720px">
+                <sc-for list="{{ projAsks }}" as="a" hint-placeholder-count="2">
+                  <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 14px;display:flex;align-items:center;gap:12px">
+                    <span style="font:500 11px Geist;color:var(--muted);background:var(--soft);border-radius:5px;padding:2px 7px;flex:none">{{ a.kind }}</span>
+                    <span style="flex:1;font:400 14px/1.45 Geist">{{ a.text }}</span>
+                    <a sc-camel-on-click="{{ goThread }}" style="font:400 12.5px Geist;cursor:pointer;flex:none">Open thread</a>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ pt.ext }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;border:1.5px dashed var(--line3);border-radius:14px;padding:44px 24px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center"><div style="font:500 18px 'Source Serif 4',Georgia,serif">Plant log</div><div style="font:400 13.5px/1.55 Geist;color:var(--muted);max-width:420px;text-wrap:pretty">This tab comes from the Plant log extension. Extensions can add project tabs, sidebar sections, cards, previewers and settings panels.</div></div></sc-if>
+            <sc-if value="{{ pt.activity }}" hint-placeholder-val="{{ false }}">
+              <div style="animation:dcFade .22s ease both;display:flex;flex-direction:column;max-width:720px">
+                <sc-for list="{{ projActivity }}" as="a" hint-placeholder-count="5">
+                  <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:grid;grid-template-columns:90px 70px minmax(0,1fr);gap:12px;padding:11px 0;border-bottom:1px solid var(--lineSoft);font:400 13.5px Geist;align-items:baseline">
+                    <span style="color:var(--faint);font-size:12.5px">{{ a.when }}</span>
+                    <span style="font:500 11.5px Geist;color:var(--muted)">{{ a.kind }}</span>
+                    <span>{{ a.text }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- INBOX -->
+      <sc-if value="{{ is.inbox }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:dcRise .28s cubic-bezier(.2,.7,.3,1) both;flex:1;min-width:0;overflow:auto">
+          <div style="max-width:760px;margin:0 auto;padding:28px 24px 40px;display:flex;flex-direction:column;gap:18px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+              <h1 style="margin:0;font:500 28px/1.2 'Source Serif 4',Georgia,serif">Inbox</h1>
+              <span style="font:400 13px Geist;color:var(--faint)">{{ inboxCountLabel }}</span>
+            </div>
+            <div style="display:flex;gap:4px;border-bottom:1px solid var(--line)"><sc-for list="{{ inboxTabs }}" as="t" hint-placeholder-count="2"><div sc-camel-on-click="{{ t.open }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);padding:9px 12px;font:500 13.5px Geist;cursor:pointer;margin-bottom:-1px;color:{{ t.color }};border-bottom:2px solid {{ t.line }}">{{ t.label }}</div></sc-for></div>
+            <sc-if value="{{ ib.history }}" hint-placeholder-val="{{ false }}">
+              <div style="animation:dcFade .22s ease both;display:flex;flex-direction:column;gap:12px">
+                <input value="{{ histQ }}" sc-camel-on-change="{{ histChange }}" placeholder="Search past decisions" style="border:1px solid var(--line2);border-radius:8px;padding:8px 12px;font:400 13.5px Geist;background:var(--card);color:var(--fg);outline:none">
+                <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;"><sc-for list="{{ history }}" as="it" hint-placeholder-count="5"><div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:14px;padding:12px 14px;border-bottom:1px solid var(--soft);align-items:start"><div style="display:flex;flex-direction:column;gap:3px"><span style="font:400 12px Geist;color:var(--faint)">{{ it.when }}</span><span style="font:500 11px Geist;color:var(--muted)">{{ it.kind }}</span></div><div style="display:flex;flex-direction:column;gap:4px;min-width:0"><span style="font:400 14px/1.45 Geist">{{ it.text }}</span><sc-if value="{{ it.comment }}" hint-placeholder-val="{{ false }}"><span style="animation:dcFade .22s ease both;font:400 13px/1.45 Geist;color:var(--fg2)"><span style="color:var(--faint)">Your comment · </span>{{ it.comment }}</span></sc-if><a sc-camel-on-click="{{ goThread }}" style="font:400 12.5px Geist;cursor:pointer">{{ it.where }}</a></div><span style="font:500 11.5px Geist;border-radius:999px;padding:2px 9px;white-space:nowrap;color:{{ it.oColor }};background:{{ it.oBg }}">{{ it.outcome }}</span></div></sc-for><sc-if value="{{ historyEmpty }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;padding:28px;text-align:center;font:400 13.5px Geist;color:var(--faint)">No past decisions match “{{ histQ }}”.</div></sc-if></div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ ib.waitingEmpty }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;border:1.5px dashed var(--line3);border-radius:14px;padding:44px 24px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center"><div style="font:500 18px 'Source Serif 4',Georgia,serif">Nothing waiting on you</div><div style="font:400 13.5px/1.55 Geist;color:var(--muted);max-width:420px;text-wrap:pretty">Questions, permissions, tasks and suggestions from the assistant land here. Answers you give offline are queued and sent when you reconnect.</div></div></sc-if>
+            <sc-if value="{{ ib.waiting }}" hint-placeholder-val="{{ true }}"><div style="animation:dcFade .22s ease both;display:flex;flex-direction:column;gap:18px">
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <sc-for list="{{ inboxFilters }}" as="f" hint-placeholder-count="5">
+                <button sc-camel-on-click="{{ f.pick }}" style="border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.color }};border-radius:999px;padding:5px 12px;font:500 12.5px Geist">{{ f.label }}</button>
+              </sc-for>
+            </div>
+            <sc-for list="{{ inboxGroups }}" as="g" hint-placeholder-count="3">
+              <div style="animation:dcFade .2s ease both;display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 2px">
+                  <span style="font:500 12px Geist;color:var(--faint)">{{ g.title }}</span>
+                  <sc-if value="{{ g.acceptAll }}" hint-placeholder-val="{{ false }}"><button style="animation:dcFade .22s ease both;border:none;background:none;padding:0;font:500 12.5px Geist;color:var(--accentInk)">Accept all</button></sc-if>
+                </div>
+                <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="2">
+                  <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 14px;display:flex;flex-direction:column;gap:9px">
+                    <div style="display:flex;justify-content:space-between;gap:12px;font:400 12px Geist;color:var(--faint)">
+                      <a sc-camel-on-click="{{ goThread }}" style="cursor:pointer">{{ it.where }}</a><span>{{ it.when }}</span>
+                    </div>
+                    <div style="font:400 14.5px/1.5 Geist">{{ it.text }}</div>
+                    <sc-if value="{{ it.open }}" hint-placeholder-val="{{ true }}">
+                      <sc-if value="{{ it.isSingle }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;display:flex;flex-direction:column;gap:6px"><sc-for list="{{ it.opts }}" as="o" hint-placeholder-count="3"><div sc-camel-on-click="{{ o.pick }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;align-items:center;gap:10px;padding:8px 11px;border:1px solid {{ o.border }};border-radius:9px;cursor:pointer;font:400 13.5px Geist;background:{{ o.bg }}"><span style="width:16px;height:16px;box-sizing:border-box;border-radius:50%;border:1.5px solid {{ o.ring }};transition:border-color .15s ease;display:flex;align-items:center;justify-content:center;flex:none"><span style="width:7px;height:7px;border-radius:50%;background:{{ o.dot }};transition:background .15s ease,transform .15s ease"></span></span>{{ o.label }}</div></sc-for></div></sc-if>
+                      <sc-if value="{{ it.isMulti }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px"><sc-for list="{{ it.opts }}" as="o" hint-placeholder-count="4"><div sc-camel-on-click="{{ o.pick }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;align-items:center;gap:10px;padding:8px 11px;border:1px solid {{ o.border }};border-radius:9px;cursor:pointer;font:400 13.5px Geist;background:{{ o.bg }}"><span style="width:16px;height:16px;box-sizing:border-box;border-radius:4px;border:1.5px solid {{ o.ring }};transition:border-color .15s ease;background:{{ o.box }};transition:background .15s ease,border-color .15s ease;display:flex;align-items:center;justify-content:center;flex:none;font:600 10px/1 Geist;color:#fff">{{ o.check }}</span>{{ o.label }}</div></sc-for></div></sc-if>
+                      <sc-if value="{{ it.isText }}" hint-placeholder-val="{{ false }}"><textarea rows="3" value="{{ it.textVal }}" sc-camel-on-change="{{ it.textChange }}" placeholder="Type your answer" style="animation:dcFade .22s ease both;border:1px solid var(--line2);border-radius:8px;padding:9px 11px;font:400 14px/1.5 Geist;background:var(--bg);color:var(--fg);outline:none;resize:vertical"></textarea></sc-if>
+                      <sc-if value="{{ it.isScale }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;display:flex;flex-direction:column;gap:6px"><div style="display:flex;gap:6px"><sc-for list="{{ it.opts }}" as="o" hint-placeholder-count="5"><button sc-camel-on-click="{{ o.pick }}" style="flex:1;border:1px solid {{ o.border }};background:{{ o.bg }};color:var(--fg);border-radius:9px;padding:9px 0;font:500 14px Geist">{{ o.label }}</button></sc-for></div><div style="display:flex;justify-content:space-between;font:400 12px Geist;color:var(--faint)"><span>{{ it.lo }}</span><span>{{ it.hi }}</span></div></div></sc-if>
+                      <sc-if value="{{ it.isSlot }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;display:flex;flex-wrap:wrap;gap:6px"><sc-for list="{{ it.opts }}" as="o" hint-placeholder-count="4"><button sc-camel-on-click="{{ o.pick }}" style="border:1px solid {{ o.border }};background:{{ o.bg }};color:var(--fg);border-radius:999px;padding:6px 13px;font:500 12.5px Geist">{{ o.label }}</button></sc-for></div></sc-if>
+                      <div style="display:grid;grid-template-rows:{{ it.cmRows }};opacity:{{ it.cmOp }};margin-top:{{ it.cmMt }};transition:grid-template-rows .24s ease,opacity .2s ease,margin-top .24s ease"><div style="overflow:hidden;min-height:0;display:flex;flex-direction:column"><textarea rows="2" value="{{ it.cmText }}" sc-camel-on-change="{{ it.cmChange }}" placeholder="Add a comment for the assistant. It's sent along with your response." style="border:1px solid var(--line2);border-radius:8px;padding:8px 11px;font:400 13.5px/1.45 Geist;background:var(--bg);color:var(--fg);outline:none;resize:vertical"></textarea></div></div>
+                      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                        <button sc-camel-on-click="{{ it.a }}" style="border:none;background:var(--fg);color:var(--bg);border-radius:8px;padding:6px 12px;font:500 12.5px Geist">{{ it.primary }}</button>
+                        <button sc-camel-on-click="{{ it.b }}" style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:6px 12px;font:500 12.5px Geist;color:var(--fg)">{{ it.secondary }}</button>
+                        <button sc-camel-on-click="{{ it.cmToggle }}" style="margin-left:auto;border:none;background:none;padding:6px 2px;font:400 12.5px Geist;color:var(--muted)">{{ it.cmLabel }}</button>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ it.done }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;flex-direction:column;gap:4px;animation:dcRise .25s ease both"><div style="font:500 13px Geist;color:var(--okInk)">✓ {{ it.answer }}</div><sc-if value="{{ it.hasCm }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;font:400 13px/1.5 Geist;color:var(--fg2)"><span style="color:var(--faint)">Your comment · </span>{{ it.cmText }}</div></sc-if></div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-for>
+            </div></sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- CALENDAR -->
+      <sc-if value="{{ is.calendar }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:dcRise .28s cubic-bezier(.2,.7,.3,1) both;flex:1;min-width:0;overflow:auto;padding:24px 24px 32px;display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div style="display:flex;align-items:baseline;gap:12px">
+              <h1 style="margin:0;font:500 28px/1.2 'Source Serif 4',Georgia,serif">Calendar</h1>
+              <span style="font:400 14px Geist;color:var(--muted)">Nov 9 – 15, 2026</span>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:6px 10px;font:400 13px Geist">‹</button>
+              <button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:6px 12px;font:500 13px Geist">This week</button>
+              <button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:6px 10px;font:400 13px Geist">›</button>
+              <button style="border:none;background:var(--fg);color:var(--bg);border-radius:8px;padding:6px 12px;font:500 13px Geist">+ Add wakeup</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:14px;flex-wrap:wrap;font:400 12px Geist;color:var(--muted)">
+            <sc-for list="{{ legend }}" as="l" hint-placeholder-count="5">
+              <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:3px;background:{{ l.bg }};border:1px solid {{ l.border }}"></span>{{ l.label }}</span>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;min-width:0">
+            <div style="flex:1 1 560px;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+              <div style="display:grid;grid-template-columns:44px repeat(7,minmax(0,1fr));border-bottom:1px solid var(--lineSoft)">
+                <div></div>
+                <sc-for list="{{ days }}" as="d" hint-placeholder-count="7">
+                  <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);padding:9px 8px;display:flex;align-items:baseline;gap:6px;border-left:1px solid var(--soft);font:500 12.5px Geist;color:{{ d.color }}"><span>{{ d.name }}</span><span style="font-weight:400">{{ d.date }}</span></div>
+                </sc-for>
+              </div>
+              <div style="display:grid;grid-template-columns:44px repeat(7,minmax(0,1fr))">
+                <div style="position:relative;height:672px">
+                  <sc-for list="{{ hours }}" as="h" hint-placeholder-count="8">
+                    <span style="position:absolute;right:6px;top:{{ h.top }};font:400 10.5px 'Geist Mono';color:var(--faint2)">{{ h.label }}</span>
+                  </sc-for>
+                </div>
+                <sc-for list="{{ days }}" as="d" hint-placeholder-count="7">
+                  <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);position:relative;height:672px;border-left:1px solid var(--soft);background:{{ d.bg }};background-image:repeating-linear-gradient(to bottom,transparent 0 83px,var(--soft) 83px 84px)">
+                    <sc-for list="{{ d.events }}" as="e" hint-placeholder-count="2">
+                      <div title="{{ e.title }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);position:absolute;left:3px;right:3px;top:{{ e.top }};height:{{ e.h }};background:{{ e.bg }};border:1px {{ e.borderStyle }} {{ e.border }};border-radius:6px;padding:1px 6px;overflow:hidden;cursor:grab;display:flex;flex-direction:row;flex-wrap:nowrap;align-items:baseline;column-gap:5px;line-height:14px">
+                        <span style="flex:1;min-width:0;font:500 10.5px Geist;color:{{ e.color }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ e.label }}</span>
+                                              </div>
+                    </sc-for>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div style="flex:1 0 240px;max-width:320px;display:flex;flex-direction:column;gap:20px">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="font:500 11.5px Geist;color:var(--faint)">Budget left this week</div>
+                <div style="display:flex;align-items:baseline;gap:6px"><span style="font:500 26px 'Source Serif 4',serif">42</span><span style="font:400 13px Geist;color:var(--muted)">of 120 pts</span></div>
+                <div style="height:6px;border-radius:3px;background:var(--track);overflow:hidden"><div style="width:35%;height:100%;background:#c4673f"></div></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="font:500 11.5px Geist;color:var(--faint)">Scheduled</div>
+                <sc-for list="{{ scheduled }}" as="s" hint-placeholder-count="3">
+                  <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;flex-direction:column;gap:2px;padding:9px 0;border-bottom:1px solid var(--lineSoft)">
+                    <div style="display:flex;justify-content:space-between;font:500 13px Geist"><span>{{ s.when }}</span><span style="font-weight:400;color:var(--muted)">{{ s.budget }}</span></div>
+                    <span style="font:400 12.5px/1.4 Geist;color:var(--muted)">{{ s.reason }}</span>
+                    <span style="font:400 11.5px 'Geist Mono';color:var(--faint2)">{{ s.model }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="font:500 11.5px Geist;color:var(--faint)">You vs. the assistant</div>
+                <div style="display:flex;height:8px;border-radius:4px;overflow:hidden"><div style="width:38%;background:#6b8fb8"></div><div style="flex:1;background:#c4673f"></div></div>
+                <div style="display:flex;justify-content:space-between;font:400 12.5px Geist;color:var(--muted)"><span>You · 30 pts</span><span>Assistant · 48 pts</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- RUNS LIST -->
+      <sc-if value="{{ is.runs }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:dcRise .28s cubic-bezier(.2,.7,.3,1) both;flex:1;min-width:0;overflow:auto">
+          <div style="max-width:1040px;margin:0 auto;padding:28px 28px 40px;display:flex;flex-direction:column;gap:16px">
+            <h1 style="margin:0;font:500 28px/1.2 'Source Serif 4',Georgia,serif">Runs</h1>
+            <div style="display:flex;gap:4px;border-bottom:1px solid var(--line)"><sc-for list="{{ runsTabs }}" as="t" hint-placeholder-count="2"><div sc-camel-on-click="{{ t.open }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);padding:9px 12px;font:500 13.5px Geist;cursor:pointer;margin-bottom:-1px;color:{{ t.color }};border-bottom:2px solid {{ t.line }}">{{ t.label }}</div></sc-for></div>
+            <sc-if value="{{ rt.jobs }}" hint-placeholder-val="{{ false }}">
+              <div style="animation:dcFade .22s ease both;display:flex;flex-direction:column;gap:12px">
+                <sc-if value="{{ jobsEmpty }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;border:1.5px dashed var(--line3);border-radius:14px;padding:44px 24px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center"><div style="font:500 18px 'Source Serif 4',Georgia,serif">No long jobs running</div><div style="font:400 13.5px/1.55 Geist;color:var(--muted);max-width:420px;text-wrap:pretty">When the assistant starts something that outlives a run, like a backup or a long index, it shows up here with its log.</div></div></sc-if>
+                <sc-for list="{{ jobs }}" as="j" hint-placeholder-count="2">
+                  <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;"><div style="display:flex;align-items:center;gap:12px;padding:12px 14px;flex-wrap:wrap"><span style="width:7px;height:7px;border-radius:50%;background:#c4673f;animation:pulse 1.6s infinite;flex:none"></span><div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:3px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font:500 14.5px Geist">{{ j.label }}</span><sc-if value="{{ j.dni }}" hint-placeholder-val="{{ false }}"><span style="animation:dcFade .22s ease both;font:500 11px Geist;color:var(--warnInk);background:var(--warnSoft);border-radius:999px;padding:1px 8px">Don't interrupt</span></sc-if></div><span style="font:400 12.5px Geist;color:var(--muted)">Started by <a sc-camel-on-click="{{ openRun }}" style="cursor:pointer">{{ j.by }}</a> · {{ j.started }} · {{ j.ends }}</span></div><span style="font:500 13px 'Geist Mono';color:var(--fg2)">{{ j.state }}</span><button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:7px 13px;font:500 13px Geist;color:var(--fg)">Stop</button></div><pre style="margin:0;padding:10px 14px;border-top:1px solid var(--soft);background:var(--code);font:400 12px/1.6 'Geist Mono';color:var(--muted);overflow:auto">{{ j.log }}</pre><sc-if value="{{ j.dni }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;padding:8px 14px;border-top:1px solid var(--soft);font:400 12.5px Geist;color:var(--faint)">Updates to this job are held until it ends.</div></sc-if></div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ rt.runs }}" hint-placeholder-val="{{ true }}"><div style="animation:dcFade .22s ease both;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <sc-for list="{{ runFilters }}" as="f" hint-placeholder-count="5">
+                <span style="border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.color }};border-radius:999px;padding:5px 12px;font:500 12.5px Geist">{{ f.label }}</span>
+              </sc-for>
+            </div>
+            <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+              <sc-for list="{{ runs }}" as="r" hint-placeholder-count="6">
+                <div sc-camel-on-click="{{ openRun }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:grid;grid-template-columns:48px minmax(0,1fr) 96px 90px 80px;gap:12px;align-items:center;padding:13px 16px;border-bottom:1px solid var(--soft);cursor:pointer" style-hover="background:var(--rowh)">
+                  <span style="font:500 12.5px 'Geist Mono';color:var(--muted)">#{{ r.id }}</span>
+                  <div style="display:flex;flex-direction:column;gap:3px;min-width:0">
+                    <span style="font:500 14px Geist;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.about }}</span>
+                    <span style="font:400 12.5px Geist;color:var(--faint)">{{ r.kind }} · {{ r.why }}</span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:2px;font:400 12.5px Geist;color:var(--muted)"><span>{{ r.start }}</span><span>{{ r.dur }}</span></div>
+                  <div style="display:flex;flex-direction:column;gap:5px">
+                    <span style="font:400 12.5px Geist;color:var(--fg2)">{{ r.used }} / {{ r.given }} pts</span>
+                    <div style="height:4px;border-radius:2px;background:var(--track);overflow:hidden"><div style="height:100%;width:{{ r.pct }};transition:width .5s ease;background:#c4673f"></div></div>
+                  </div>
+                  <span style="justify-self:end;font:500 11.5px Geist;border-radius:999px;padding:2px 9px;color:{{ r.sColor }};background:{{ r.sBg }}">{{ r.status }}</span>
+                </div>
+              </sc-for>
+            </div></div></sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- RUN -->
+      <sc-if value="{{ is.run }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:dcRise .28s cubic-bezier(.2,.7,.3,1) both;flex:1;min-width:0;overflow:auto">
+          <div style="max-width:1040px;margin:0 auto;padding:24px 28px 40px;display:flex;flex-direction:column;gap:22px">
+            <div style="display:flex;flex-direction:column;gap:14px;padding-bottom:20px;border-bottom:1px solid var(--line)">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <h1 style="margin:0;font:500 26px/1.2 'Source Serif 4',Georgia,serif">Run #123</h1>
+                  <span style="display:flex;align-items:center;gap:6px;font:500 11.5px Geist;color:var(--accentInk);background:var(--accentSoft);border-radius:999px;padding:2px 9px"><span style="width:6px;height:6px;border-radius:50%;background:#c4673f;animation:pulse 1.6s infinite"></span>Running</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center">
+                  
+                  <button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:6px 12px;font:500 12.5px Geist;color:var(--badInk)">Stop</button>
+                </div>
+              </div>
+              <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-end">
+                <sc-for list="{{ runMeta }}" as="m" hint-placeholder-count="5">
+                  <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;flex-direction:column;gap:3px">
+                    <span style="font:400 11.5px Geist;color:var(--faint)">{{ m.k }}</span>
+                    <span style="font:500 13.5px Geist">{{ m.v }}</span>
+                  </div>
+                </sc-for>
+                <div style="display:flex;flex-direction:column;gap:5px;min-width:200px;flex:1;max-width:280px;margin-left:auto">
+                  <div style="display:flex;justify-content:space-between;font:400 11.5px Geist;color:var(--faint)"><span>Budget</span><span style="color:var(--fg);font-weight:500">3.8 of 10 pts</span></div>
+                  <div style="height:8px;border-radius:4px;background:var(--track);overflow:hidden;position:relative"><div style="width:38%;height:100%;background:#c4673f"></div><div style="position:absolute;left:46%;top:0;bottom:0;width:1px;background:var(--faint)"></div></div>
+                  <div style="display:flex;justify-content:space-between;font:400 11.5px Geist;color:var(--faint)"><span>18 min elapsed</span><span>deadline 02:45</span></div>
+                </div>
+              </div>
+            </div>
+
+            <sc-if value="{{ rm.simple }}" hint-placeholder-val="{{ true }}">
+              <div style="animation:dcFade .22s ease both;display:flex;flex-direction:column;gap:24px">
+                <div style="display:flex;flex-direction:column;gap:6px;max-width:760px">
+                  <div style="display:flex;align-items:center;gap:8px;font:500 11.5px Geist;color:var(--faint)"><span style="width:7px;height:7px;border-radius:50%;background:#c4673f;animation:pulse 1.6s infinite"></span>Now</div>
+                  <div style="font:400 21px/1.4 'Source Serif 4',serif">Running the DST test suite against the patched scheduler.</div>
+                  <div style="font:400 14.5px/1.6 'Source Serif 4',serif;color:var(--muted);text-wrap:pretty">Woke for the planned Saturday slot to fix the double pump trigger in Garden irrigation, then file the tax receipts that arrived this week if budget allows.</div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:24px;align-items:start">
+                  <div sc-camel-on-click="{{ runDetailed }}" style="grid-column:span 2;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;cursor:pointer" style-hover="border-color:var(--dim)">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--lineSoft)">
+                      <span style="font:500 15px Geist">Status timeline</span>
+                      <span style="font:500 12.5px Geist;color:var(--accentInk)">Open full timeline →</span>
+                    </div>
+                    <div style="padding:10px 18px 14px;display:flex;flex-direction:column">
+                      <sc-for list="{{ statusTimeline }}" as="s" hint-placeholder-count="7">
+                        <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:grid;grid-template-columns:48px 16px minmax(0,1fr) auto;gap:12px;align-items:start;padding:9px 0;border-bottom:1px solid var(--rowh)">
+                          <span style="font:400 12px 'Geist Mono';color:var(--faint2);padding-top:2px">{{ s.t }}</span>
+                          <span style="width:9px;height:9px;border-radius:50%;margin-top:5px;background:{{ s.dot }}"></span>
+                          <span style="font:400 14.5px/1.5 Geist;color:{{ s.color }}">{{ s.text }}</span>
+                          <span style="font:500 11px Geist;color:var(--faint);padding-top:3px">{{ s.tag }}</span>
+                        </div>
+                      </sc-for>
+                      <div style="display:grid;grid-template-columns:48px 16px minmax(0,1fr);gap:12px;align-items:start;padding:10px 0 2px">
+                        <span style="font:400 12px 'Geist Mono';color:var(--accentInk);padding-top:2px">now</span>
+                        <span style="width:9px;height:9px;border-radius:50%;margin-top:5px;background:#c4673f;animation:pulse 1.6s infinite"></span>
+                        <span style="font:400 14.5px/1.5 Geist;color:var(--muted);font-style:italic">Running test_dst.py (5 of 7 passing)…</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:20px;min-width:0">
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                      <div style="font:500 11.5px Geist;color:var(--faint)">Active threads</div>
+                      <sc-for list="{{ claims }}" as="c" hint-placeholder-count="2">
+                        <div sc-camel-on-click="{{ goThread }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;cursor:pointer">
+                          <div style="display:flex;justify-content:space-between;gap:8px;font:400 11.5px Geist;color:var(--faint)"><span>{{ c.thread }}</span><span style="color:{{ c.sColor }}">{{ c.status }}</span></div>
+                          <span style="font:500 13px/1.4 Geist">{{ c.title }}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:6px">
+                      <div style="font:500 11.5px Geist;color:var(--faint)">Changes</div>
+                      <sc-for list="{{ changeSummary }}" as="c" hint-placeholder-count="5">
+                        <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--lineSoft);font:400 13px Geist"><span style="color:var(--fg2)">{{ c.group }}</span><span style="font:400 12px 'Geist Mono';color:var(--muted)">{{ c.detail }}</span></div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ rm.detailed }}" hint-placeholder-val="{{ false }}">
+              <div sc-camel-on-click="{{ runSimple }}" style="animation:dcFade .22s ease both;font:500 13px Geist;color:var(--accentInk);cursor:pointer;margin-bottom:-6px">← Back to summary</div>
+              <div style="display:flex;flex-direction:column;gap:14px">
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                  <input placeholder="Search timeline" style="flex:1;min-width:200px;max-width:320px;border:1px solid var(--line2);border-radius:8px;padding:7px 11px;font:400 13px Geist;background:var(--card);outline:none">
+                  <sc-for list="{{ detailFilters }}" as="f" hint-placeholder-count="5">
+                    <span style="border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.color }};border-radius:999px;padding:4px 11px;font:500 12px Geist">{{ f.label }}</span>
+                  </sc-for>
+                  <label sc-camel-on-click="{{ toggleThinking }}" style="display:flex;align-items:center;gap:7px;font:400 12.5px Geist;color:var(--fg2);cursor:pointer;margin-left:auto">
+                    <span style="width:28px;height:16px;border-radius:8px;position:relative;background:{{ thinking.track }};transition:background .18s ease"><span style="position:absolute;top:2px;width:12px;height:12px;border-radius:50%;background:var(--card);left:{{ thinking.knob }};transition:left .18s ease"></span></span>
+                    Show thinking
+                  </label>
+                </div>
+                <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+                  <sc-for list="{{ detailItems }}" as="d" hint-placeholder-count="8">
+                    <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:grid;grid-template-columns:60px 96px minmax(0,1fr) 20px;gap:12px;align-items:start;padding:10px 14px;border-bottom:1px solid var(--soft);background:{{ d.rowBg }}">
+                      <span style="font:400 11.5px 'Geist Mono';color:var(--faint2);padding-top:2px">{{ d.t }}</span>
+                      <span style="font:500 11px Geist;color:{{ d.kColor }};padding-top:2px">{{ d.kind }}</span>
+                      <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+                        <span style="font:400 13.5px/1.5 Geist;color:var(--fg);font-style:{{ d.fs }}">{{ d.text }}</span>
+                        <sc-if value="{{ d.code }}" hint-placeholder-val="{{ false }}">
+                          <pre style="animation:dcFade .22s ease both;margin:0;font:400 12px/1.6 'Geist Mono';background:var(--code);border:1px solid var(--soft);border-radius:7px;padding:8px 10px;color:var(--fg2);overflow:auto">{{ d.code }}</pre>
+                        </sc-if>
+                      </div>
+                      <span style="color:var(--dim);font:400 12px Geist">↗</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- CHAT -->
+      <sc-if value="{{ is.chat }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:dcRise .28s cubic-bezier(.2,.7,.3,1) both;flex:1;min-width:0;display:flex;flex-direction:column;min-height:0">
+          <div style="flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 20px;border-bottom:1px solid var(--lineSoft);flex-wrap:wrap">
+            <span style="font:500 15px 'Source Serif 4',serif">Setting up the Fastmail MCP</span>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:5px 11px;font:500 12.5px Geist;color:var(--fg)">Move to the assistant…</button>
+              <button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:5px 11px;font:500 12.5px Geist;color:var(--fg)">Ask the assistant</button>
+              <button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:5px 11px;font:500 12.5px Geist;color:var(--fg)">Wake the assistant · ~2 pts</button>
+            </div>
+          </div>
+          <div style="flex:1;overflow:auto">
+            <div style="max-width:880px;margin:0 auto;padding:28px 24px;display:flex;flex-direction:column;gap:20px">
+              <div style="align-self:flex-end;max-width:80%;background:var(--bubble);border-radius:14px;padding:11px 15px;font:400 14.5px/1.55 Geist">I want the assistant to read my Fastmail but never send. Can you set that up?</div>
+              <div style="display:flex;align-items:center;gap:8px;font:400 12.5px Geist;color:var(--faint)"><span style="width:14px;height:1px;background:var(--line3)"></span>Read 3 threads · searched the workspace · checked integrations</div>
+              <div style="font:400 16px/1.65 'Source Serif 4',Georgia,serif;text-wrap:pretty">Yes. Fastmail has a preset with separate read and send tools. I'll connect it with read tools allowed and send blocked. It needs an app password, which you can paste below; I won't see it.</div>
+              <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;justify-content:space-between;font:500 11.5px Geist;color:var(--faint)"><span>Connect integration</span><span style="font-weight:400">needs your approval</span></div>
+                <div style="font:400 14px/1.5 Geist">Fastmail (MCP preset) · <span style="color:var(--okInk)">read mail, search</span> allowed · <span style="color:var(--badInk)">send</span> blocked</div>
+                <div style="display:flex;gap:8px">
+                  <input type="password" placeholder="App password" style="flex:1;min-width:0;border:1px solid var(--line2);border-radius:8px;padding:8px 11px;font:400 13.5px Geist;background:var(--bg);outline:none">
+                  <button style="border:none;background:var(--fg);color:var(--bg);border-radius:8px;padding:7px 13px;font:500 13px Geist">Connect</button>
+                </div>
+              </div>
+              <div style="align-self:center;font:400 12px Geist;color:var(--faint);background:var(--side);border-radius:999px;padding:4px 12px">Continued in <a sc-camel-on-click="{{ goThread }}" style="cursor:pointer">#Email setup</a> · Home lab</div>
+            </div>
+          </div>
+          <div style="flex:none;padding:0 24px 18px">
+            <div style="max-width:880px;margin:0 auto;background:var(--card);border:1px solid var(--line2);border-radius:16px;box-shadow:0 4px 14px rgba(31,30,29,.04);padding:12px 12px 10px 16px;display:flex;flex-direction:column;gap:10px">
+              <textarea rows="2" placeholder="Message" style="border:none;outline:none;resize:none;font:400 15px/1.5 Geist;background:transparent"></textarea>
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:5px 10px;font:400 12.5px Geist;color:var(--fg2)">+ Attach</button>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="font:400 12.5px Geist;color:var(--muted)">Sonnet · medium ▾</span>
+                  <button style="border:none;background:#c4673f;color:#fff;border-radius:9px;width:32px;height:32px;font:500 15px Geist">↑</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- TOOLS -->
+      <sc-if value="{{ is.tools }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:dcRise .28s cubic-bezier(.2,.7,.3,1) both;flex:1;min-width:0;overflow:auto">
+          <div style="max-width:960px;margin:0 auto;padding:28px 28px 40px;display:flex;flex-direction:column;gap:18px">
+            <h1 style="margin:0;font:500 28px/1.2 'Source Serif 4',Georgia,serif">Tools &amp; Secrets</h1>
+            <div style="display:flex;gap:4px;border-bottom:1px solid var(--line)">
+              <sc-for list="{{ toolTabs }}" as="t" hint-placeholder-count="4">
+                <div sc-camel-on-click="{{ t.open }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);padding:9px 12px;font:500 13.5px Geist;cursor:pointer;margin-bottom:-1px;color:{{ t.color }};border-bottom:2px solid {{ t.line }}">{{ t.label }}</div>
+              </sc-for>
+            </div>
+            <sc-if value="{{ tt.secrets }}" hint-placeholder-val="{{ true }}">
+              <div style="animation:dcFade .22s ease both;display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;justify-content:space-between;align-items:center"><span style="font:400 13px Geist;color:var(--muted)">Values are write-only. The assistant reads them through tools, never as text.</span><button style="border:none;background:var(--fg);color:var(--bg);border-radius:8px;padding:6px 12px;font:500 12.5px Geist">+ Add secret</button></div>
+                <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+                  <div style="display:grid;grid-template-columns:minmax(0,1.4fr) 140px 120px 70px 60px;gap:12px;padding:9px 14px;font:500 11.5px Geist;color:var(--faint);border-bottom:1px solid var(--lineSoft)"><span>Name</span><span>Scope</span><span>Last read</span><span>Reads</span><span></span></div>
+                  <sc-for list="{{ secrets }}" as="s" hint-placeholder-count="4">
+                    <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:grid;grid-template-columns:minmax(0,1.4fr) 140px 120px 70px 60px;gap:12px;align-items:center;padding:11px 14px;border-bottom:1px solid var(--soft)">
+                      <div style="display:flex;flex-direction:column;gap:2px;min-width:0"><span style="font:500 13px 'Geist Mono'">{{ s.name }}</span><span style="font:400 12.5px Geist;color:var(--faint)">{{ s.desc }}</span></div>
+                      <span style="font:400 12.5px Geist;color:var(--fg2)">{{ s.scope }}</span>
+                      <span style="font:400 12.5px Geist;color:var(--muted)">{{ s.last }}</span>
+                      <span style="font:400 12.5px Geist;color:var(--muted)">{{ s.reads }}</span>
+                      <span style="font:400 12.5px Geist;color:var(--accentInk);justify-self:end">Replace</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ tt.integrations }}" hint-placeholder-val="{{ false }}">
+              <div style="animation:dcFade .22s ease both;display:flex;flex-direction:column;gap:12px">
+                <sc-for list="{{ integrations }}" as="i" hint-placeholder-count="3">
+                  <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid var(--soft)">
+                      <div style="display:flex;align-items:center;gap:10px"><span style="width:7px;height:7px;border-radius:50%;background:{{ i.dot }}"></span><span style="font:500 14px Geist">{{ i.name }}</span><span style="font:400 12.5px Geist;color:var(--faint)">{{ i.status }}</span></div>
+                      <span style="font:400 12.5px Geist;color:var(--accentInk)">Set up with help</span>
+                    </div>
+                    <sc-for list="{{ i.tools }}" as="t" hint-placeholder-count="3">
+                      <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 14px 8px 31px">
+                        <span style="font:400 12.5px 'Geist Mono';color:var(--fg2)">{{ t.name }}</span>
+                        <div style="display:flex;background:var(--side);border-radius:7px;padding:2px;font:500 11.5px Geist">
+                          <span style="padding:3px 9px;border-radius:5px;background:{{ t.a }}">Allowed</span>
+                          <span style="padding:3px 9px;border-radius:5px;background:{{ t.k }}">Ask</span>
+                          <span style="padding:3px 9px;border-radius:5px;background:{{ t.b }}">Blocked</span>
+                        </div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ tt.network }}" hint-placeholder-val="{{ false }}">
+              <div style="animation:dcFade .22s ease both;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+                <div sc-camel-on-click="{{ goNetwork }}" style="padding:11px 14px;border-bottom:1px solid var(--lineSoft);font:500 13px Geist;color:var(--accentInk);cursor:pointer">Open the Network page for the full request log →</div>
+                <sc-for list="{{ netRules }}" as="n" hint-placeholder-count="4">
+                  <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:grid;grid-template-columns:70px minmax(0,1fr) 140px;gap:12px;align-items:center;padding:11px 14px;border-bottom:1px solid var(--soft)">
+                    <span style="font:500 11.5px Geist;color:{{ n.color }}">{{ n.rule }}</span>
+                    <span style="font:400 13px 'Geist Mono'">{{ n.host }}</span>
+                    <span style="font:400 12.5px Geist;color:var(--faint);justify-self:end">{{ n.hits }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ tt.apps }}" hint-placeholder-val="{{ false }}">
+              <div style="animation:dcFade .22s ease both;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+                <sc-for list="{{ apps }}" as="a" hint-placeholder-count="2">
+                  <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 14px;border-bottom:1px solid var(--soft)">
+                    <div style="display:flex;flex-direction:column;gap:2px"><span style="font:500 14px Geist">{{ a.name }}</span><span style="font:400 12.5px Geist;color:var(--faint)">{{ a.scopes }}</span></div>
+                    <button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:5px 11px;font:500 12.5px Geist;color:var(--badInk)">Revoke</button>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- SETTINGS -->
+      <sc-if value="{{ is.settings }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:dcRise .28s cubic-bezier(.2,.7,.3,1) both;flex:1;min-width:0;overflow:auto">
+          <div style="max-width:980px;margin:0 auto;padding:28px 28px 40px;display:grid;grid-template-columns:190px minmax(0,1fr);gap:36px">
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <h1 style="margin:0 0 14px;font:500 28px/1.2 'Source Serif 4',Georgia,serif">Settings</h1>
+              <sc-for list="{{ setTabs }}" as="t" hint-placeholder-count="8">
+                <div sc-camel-on-click="{{ t.open }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);padding:6px 10px;border-radius:7px;font:400 13.5px Geist;cursor:pointer;background:{{ t.bg }}" style-hover="background:var(--bubble)">{{ t.label }}</div>
+              </sc-for>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:28px;padding-top:52px">
+              <sc-if value="{{ st.budgets }}" hint-placeholder-val="{{ true }}">
+                <div style="animation:dcFade .22s ease both;display:flex;flex-direction:column;gap:28px">
+                  <div style="display:flex;flex-direction:column;gap:12px">
+                    <div style="font:500 15px Geist">Level</div>
+                    <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px">
+                      <sc-for list="{{ levels }}" as="l" hint-placeholder-count="4">
+                        <div sc-camel-on-click="{{ l.pick }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);border:1.5px solid {{ l.border }};background:var(--card);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:4px;cursor:pointer">
+                          <span style="font:500 14px Geist">{{ l.name }}</span>
+                          <span style="font:400 12px Geist;color:var(--faint)">{{ l.pts }}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <div style="font:400 15px/1.6 'Source Serif 4',serif;color:var(--fg2);text-wrap:pretty">{{ levelText }}</div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:10px">
+                    <div style="font:500 15px Geist">Provider allowances</div>
+                    <div style="background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+                      <sc-for list="{{ allowances }}" as="a" hint-placeholder-count="2">
+                        <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:grid;grid-template-columns:140px minmax(0,1fr) 150px;gap:16px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--soft)">
+                          <span style="font:500 13.5px Geist">{{ a.name }}</span>
+                          <div style="height:6px;border-radius:3px;background:var(--track);overflow:hidden;display:flex"><div style="height:100%;width:{{ a.used }};background:#c4673f"></div><div style="height:100%;width:{{ a.reserve }};background:var(--accentLine2)"></div></div>
+                          <span style="font:400 12.5px Geist;color:var(--muted);justify-self:end">{{ a.text }}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+                    <sc-for list="{{ budgetFields }}" as="b" hint-placeholder-count="6">
+                      <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);background:var(--card);padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:12px">
+                        <div style="display:flex;flex-direction:column;gap:2px"><span style="font:500 13.5px Geist">{{ b.k }}</span><span style="font:400 12px Geist;color:var(--faint)">{{ b.hint }}</span></div>
+                        <span style="font:400 13px Geist;border:1px solid var(--line2);border-radius:7px;padding:4px 9px;white-space:nowrap">{{ b.v }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--side);border-radius:12px;padding:14px 16px">
+                    <div style="display:flex;flex-direction:column;gap:2px"><span style="font:500 14px Geist">Boost</span><span style="font:400 12.5px Geist;color:var(--muted)">Double this week's allowance for 24 hours. Uses reserves.</span></div>
+                    <button style="border:none;background:var(--fg);color:var(--bg);border-radius:8px;padding:7px 13px;font:500 13px Geist">Boost for 24 h</button>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ st.appearance }}" hint-placeholder-val="{{ false }}">
+                <div style="animation:dcFade .22s ease both;display:flex;flex-direction:column;gap:12px">
+                  <div style="font:500 15px Geist">Theme</div>
+                  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;max-width:560px">
+                    <sc-for list="{{ themeOpts }}" as="t" hint-placeholder-count="3">
+                      <div sc-camel-on-click="{{ t.pick }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;gap:10px;align-items:flex-start;border:1.5px solid {{ t.border }};background:var(--card);border-radius:12px;padding:12px;cursor:pointer">
+                        <span style="width:16px;height:16px;box-sizing:border-box;border-radius:50%;border:1.5px solid {{ t.ring }};display:flex;align-items:center;justify-content:center;flex:none;margin-top:1px"><span style="width:7px;height:7px;border-radius:50%;background:{{ t.dot }}"></span></span>
+                        <div style="display:flex;flex-direction:column;gap:2px"><span style="font:500 14px Geist">{{ t.label }}</span><span style="font:400 12px Geist;color:var(--faint)">{{ t.desc }}</span></div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ st.roles }}" hint-placeholder-val="{{ false }}">
+                <div style="animation:dcFade .22s ease both;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden">
+                  <div style="display:grid;grid-template-columns:110px 120px minmax(0,1fr) 90px minmax(0,1fr);gap:12px;padding:9px 14px;font:500 11.5px Geist;color:var(--faint);border-bottom:1px solid var(--lineSoft)"><span>Role</span><span>Provider</span><span>Model</span><span>Effort</span><span>Allowed range</span></div>
+                  <sc-for list="{{ roles }}" as="r" hint-placeholder-count="5">
+                    <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:grid;grid-template-columns:110px 120px minmax(0,1fr) 90px minmax(0,1fr);gap:12px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--soft);font:400 13px Geist">
+                      <span style="font-weight:500">{{ r.role }}</span><span style="color:var(--fg2)">{{ r.provider }}</span><span style="font-family:'Geist Mono';font-size:12.5px">{{ r.model }}</span><span style="color:var(--fg2)">{{ r.effort }}</span><span style="color:var(--faint)">{{ r.range }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ st.other }}" hint-placeholder-val="{{ false }}">
+                <div style="animation:dcFade .22s ease both;font:400 14px Geist;color:var(--faint)">{{ setLabel }} isn't mocked yet.</div>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+  </main>
+  </div>
+  
+    <div sc-camel-on-click="{{ nw.close }}" style="position:fixed;inset:0;z-index:50;background:rgba(20,19,17,.36);opacity:{{ nw.op }};visibility:{{ nw.vis }};transition:opacity .2s ease,visibility .2s;display:flex;align-items:flex-start;justify-content:center;padding:14vh 16px 16px">
+      <div sc-camel-on-click="{{ stop }}" style="transform:{{ nw.tf }};transition:transform .24s cubic-bezier(.2,.7,.3,1);width:100%;max-width:600px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 24px 64px rgba(20,19,17,.22);display:flex;flex-direction:column;overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px 0;flex-wrap:wrap">
+          <div style="display:flex;background:var(--bubble);border-radius:9px;padding:3px">
+            <button sc-camel-on-click="{{ nw.pickThread }}" style="border:none;border-radius:7px;padding:6px 14px;font:500 13px Geist;color:var(--fg);background:{{ nw.threadBg }}">Thread</button>
+            <button sc-camel-on-click="{{ nw.pickChat }}" style="border:none;border-radius:7px;padding:6px 14px;font:500 13px Geist;color:var(--fg);background:{{ nw.chatBg }}">Chat</button>
+          </div>
+          <span style="font:400 12.5px Geist;color:var(--faint)">{{ nw.kindHint }}</span>
+        </div>
+        <div style="padding:14px 16px 0;display:flex;flex-direction:column;gap:8px">
+          <span style="font:500 11.5px Geist;color:var(--faint)">{{ nw.pickLabel }}</span>
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <sc-for list="{{ nw.chips }}" as="p" hint-placeholder-count="4"><button sc-camel-on-click="{{ p.pick }}" style="border:1px solid {{ p.border }};background:{{ p.bg }};color:{{ p.color }};border-radius:999px;padding:5px 12px;font:500 12.5px Geist">{{ p.label }}</button></sc-for>
+            <sc-if value="{{ nw.isThread }}" hint-placeholder-val="{{ true }}"><button style="animation:dcFade .22s ease both;border:1px dashed var(--dim);background:none;border-radius:999px;padding:5px 12px;font:500 12.5px Geist;color:var(--muted)">+ New project</button></sc-if>
+          </div>
+        </div>
+        <div style="padding:10px 16px 4px;display:flex;flex-direction:column;gap:2px">
+          <input placeholder="Title (optional, the assistant can name it)" style="border:none;outline:none;font:500 18px 'Source Serif 4',Georgia,serif;background:transparent;color:var(--fg);padding:8px 0">
+          <textarea rows="4" placeholder="{{ nw.placeholder }}" style="border:none;outline:none;resize:none;font:400 15px/1.5 Geist;background:transparent;color:var(--fg)"></textarea>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px 12px 16px;border-top:1px solid var(--lineSoft);flex-wrap:wrap">
+          <button style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:5px 10px;font:400 12.5px Geist;color:var(--fg2)">+ Attach</button>
+          <span style="flex:1;min-width:160px;display:flex;align-items:center;gap:7px;font:400 12.5px Geist;color:var(--muted)"><span style="width:6px;height:6px;border-radius:50%;flex:none;background:{{ nw.dot }}"></span>{{ nw.note }}</span>
+          <button sc-camel-on-click="{{ nw.submit }}" style="border:none;background:var(--fg);color:var(--bg);border-radius:8px;padding:8px 14px;font:500 13px Geist">{{ nw.cta }}</button>
+        </div>
+      </div>
+    </div>
+  
+
+  
+    <div sc-camel-on-click="{{ pal.close }}" style="position:fixed;inset:0;z-index:60;background:rgba(20,19,17,.36);opacity:{{ pal.op }};visibility:{{ pal.vis }};transition:opacity .2s ease,visibility .2s;display:flex;align-items:flex-start;justify-content:center;padding:12vh 16px 16px">
+      <div sc-camel-on-click="{{ stop }}" style="transform:{{ pal.tf }};transition:transform .24s cubic-bezier(.2,.7,.3,1);width:100%;max-width:640px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 24px 64px rgba(20,19,17,.22);display:flex;flex-direction:column;overflow:hidden;max-height:70vh">
+        <input ref="{{ palRef }}" value="{{ pal.q }}" sc-camel-on-change="{{ pal.change }}" sc-camel-on-key-down="{{ pal.key }}" placeholder="Search threads, messages, files, runs… or type a command" style="border:none;outline:none;padding:16px 18px;font:400 16px Geist;background:transparent;color:var(--fg);border-bottom:1px solid var(--lineSoft)">
+        <div style="display:flex;gap:6px;padding:10px 14px;border-bottom:1px solid var(--lineSoft);flex-wrap:wrap"><sc-for list="{{ pal.kinds }}" as="f" hint-placeholder-count="6"><button sc-camel-on-click="{{ f.pick }}" style="border:1px solid {{ f.border }};background:{{ f.bg }};color:{{ f.color }};border-radius:999px;padding:3px 10px;font:500 12px Geist">{{ f.label }}</button></sc-for></div>
+        <div style="flex:1;overflow:auto;padding:6px 8px 10px">
+          <sc-for list="{{ pal.groups }}" as="g" hint-placeholder-count="3">
+            <div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;flex-direction:column;gap:1px;padding-top:6px">
+              <div style="font:500 11.5px Geist;color:var(--faint);padding:6px 10px">{{ g.label }}</div>
+              <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="3">
+                <div sc-camel-on-click="{{ it.run }}" style="animation:dcFade .15s ease both;display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:8px;cursor:pointer;background:{{ it.bg }}" style-hover="background:var(--side)">
+                  <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span style="font:400 14px Geist;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.title }}</span><sc-if value="{{ it.sub }}" hint-placeholder-val="{{ false }}"><span style="animation:dcFade .22s ease both;font:400 12px Geist;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.sub }}</span></sc-if></div>
+                  <sc-if value="{{ it.key }}" hint-placeholder-val="{{ false }}"><span style="animation:dcFade .22s ease both;font:400 11px 'Geist Mono';color:var(--muted);border:1px solid var(--line2);border-radius:5px;padding:1px 6px">{{ it.key }}</span></sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+          <sc-if value="{{ pal.empty }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;padding:28px;text-align:center;font:400 13.5px Geist;color:var(--faint)">No results for “{{ pal.q }}”. Try a different word or filter.</div></sc-if>
+        </div>
+        <div style="display:flex;gap:16px;padding:9px 16px;border-top:1px solid var(--lineSoft);font:400 11.5px Geist;color:var(--faint)"><span>↵ open</span><span>esc close</span><span style="margin-left:auto">N new thread · C new chat · J next unread</span></div>
+      </div>
+    </div>
+  
+
+  <sc-if value="{{ is.login }}" hint-placeholder-val="{{ false }}">
+    <div style="animation:dcRise .28s cubic-bezier(.2,.7,.3,1) both;position:fixed;inset:0;z-index:70;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px">
+      <div style="width:100%;max-width:360px;display:flex;flex-direction:column;gap:22px">
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:center;text-align:center">
+          <div style="font:500 26px/1 'Source Serif 4',Georgia,serif">l0wagent</div>
+          <div style="font:400 14px Geist;color:var(--muted)">{{ login.sub }}</div>
+        </div>
+        <sc-if value="{{ login.step1 }}" hint-placeholder-val="{{ true }}">
+          <div style="animation:dcFade .22s ease both;display:flex;flex-direction:column;gap:10px">
+            <input placeholder="Username" value="mara" style="border:1px solid var(--line2);border-radius:9px;padding:10px 12px;font:400 14px Geist;background:var(--card);color:var(--fg);outline:none">
+            <input type="password" placeholder="Password" style="border:1px solid var(--line2);border-radius:9px;padding:10px 12px;font:400 14px Geist;background:var(--card);color:var(--fg);outline:none">
+            <sc-if value="{{ login.locked }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;font:400 13px/1.45 Geist;color:var(--badInk);background:var(--badSoft);border-radius:8px;padding:9px 11px">Too many attempts. Try again in 4 minutes.</div></sc-if>
+            <button sc-camel-on-click="{{ login.next }}" style="border:none;background:var(--fg);color:var(--bg);border-radius:9px;padding:10px;font:500 14px Geist">Continue</button>
+            <button sc-camel-on-click="{{ login.lock }}" style="border:none;background:none;font:400 12.5px Geist;color:var(--faint)">Show lockout message</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ login.step2 }}" hint-placeholder-val="{{ false }}">
+          <div style="animation:dcFade .22s ease both;display:flex;flex-direction:column;gap:10px">
+            <input placeholder="6-digit code" style="border:1px solid var(--line2);border-radius:9px;padding:12px;font:500 20px 'Geist Mono';letter-spacing:.3em;text-align:center;background:var(--card);color:var(--fg);outline:none">
+            <button sc-camel-on-click="{{ login.done }}" style="border:none;background:var(--fg);color:var(--bg);border-radius:9px;padding:10px;font:500 14px Geist">Sign in</button>
+            <div style="font:400 12.5px/1.5 Geist;color:var(--faint);text-align:center">Your other devices will get a new-device notice.</div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ is.setup }}" hint-placeholder-val="{{ false }}">
+    <div style="animation:dcRise .28s cubic-bezier(.2,.7,.3,1) both;position:fixed;inset:0;z-index:70;background:var(--bg);overflow:auto;display:flex;justify-content:center;padding:8vh 24px 24px">
+      <div style="width:100%;max-width:820px;display:grid;grid-template-columns:200px minmax(0,1fr);gap:40px">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div style="font:500 22px/1 'Source Serif 4',Georgia,serif;padding:0 10px 18px">l0wagent</div>
+          <sc-for list="{{ setup.steps }}" as="st" hint-placeholder-count="6">
+            <div sc-camel-on-click="{{ st.pick }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;font:400 13.5px Geist;cursor:pointer;background:{{ st.bg }};color:{{ st.color }}"><span style="width:20px;height:20px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font:500 11px Geist;background:{{ st.dotBg }};color:{{ st.dotColor }}">{{ st.mark }}</span>{{ st.label }}</div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:20px;padding-top:34px">
+          <h2 style="margin:0;font:500 26px/1.25 'Source Serif 4',Georgia,serif">{{ setup.title }}</h2>
+          <div style="font:400 14.5px/1.6 Geist;color:var(--muted);max-width:520px">{{ setup.text }}</div>
+          <sc-if value="{{ setup.s0 }}" hint-placeholder-val="{{ true }}"><div style="animation:dcFade .22s ease both;display:flex;flex-direction:column;gap:10px;max-width:380px"><input placeholder="Your name" style="border:1px solid var(--line2);border-radius:9px;padding:10px 12px;font:400 14px Geist;background:var(--card);color:var(--fg);outline:none"><input placeholder="Username" style="border:1px solid var(--line2);border-radius:9px;padding:10px 12px;font:400 14px Geist;background:var(--card);color:var(--fg);outline:none"><input type="password" placeholder="Password" style="border:1px solid var(--line2);border-radius:9px;padding:10px 12px;font:400 14px Geist;background:var(--card);color:var(--fg);outline:none"></div></sc-if>
+          <sc-if value="{{ setup.s1 }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;max-width:380px;display:flex;justify-content:space-between;border:1px solid var(--line2);border-radius:9px;padding:10px 12px;font:400 14px Geist;background:var(--card)"><span>Europe/Berlin</span><span style="color:var(--faint)">detected ▾</span></div></sc-if>
+          <sc-if value="{{ setup.s2 }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;display:flex;flex-direction:column;gap:8px;max-width:480px"><sc-for list="{{ setup.providers }}" as="p" hint-placeholder-count="2"><div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px"><div style="display:flex;flex-direction:column;gap:2px"><span style="font:500 14px Geist">{{ p.name }}</span><span style="font:400 12.5px Geist;color:var(--faint)">{{ p.note }}</span></div><button sc-camel-on-click="{{ p.connect }}" style="border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:6px 12px;font:500 12.5px Geist;color:{{ p.color }}">{{ p.cta }}</button></div></sc-for></div></sc-if>
+          <sc-if value="{{ setup.s3 }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px"><sc-for list="{{ levels }}" as="l" hint-placeholder-count="4"><div sc-camel-on-click="{{ l.pick }}" style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);border:1.5px solid {{ l.border }};background:var(--card);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:4px;cursor:pointer"><span style="font:500 14px Geist">{{ l.name }}</span><span style="font:400 12px Geist;color:var(--faint)">{{ l.pts }}</span></div></sc-for></div><div style="font:400 14.5px/1.6 'Source Serif 4',serif;color:var(--fg2);max-width:520px">{{ levelText }}</div></sc-if>
+          <sc-if value="{{ setup.s4 }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;border:1.5px dashed var(--line3);border-radius:12px;padding:18px;font:400 13.5px Geist;color:var(--faint);max-width:480px">Hubs aren't available yet. You can join one later from Settings.</div></sc-if>
+          <sc-if value="{{ setup.s5 }}" hint-placeholder-val="{{ false }}"><div style="animation:dcFade .22s ease both;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;max-width:520px"><sc-for list="{{ selfTest }}" as="t" hint-placeholder-count="5"><div style="animation:dcRise .32s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(min({{ $index }}, 12) * 22ms);display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--soft);font:400 13.5px Geist"><span style="color:{{ t.color }};width:14px">{{ t.mark }}</span><span style="flex:1">{{ t.label }}</span><span style="color:var(--faint);font-size:12.5px">{{ t.note }}</span></div></sc-for></div></sc-if>
+          <div style="display:flex;gap:8px;padding-top:6px">
+            <sc-if value="{{ setup.canBack }}" hint-placeholder-val="{{ false }}"><button sc-camel-on-click="{{ setup.back }}" style="animation:dcFade .22s ease both;border:1px solid var(--line2);background:var(--card);border-radius:8px;padding:7px 13px;font:500 13px Geist;color:var(--fg)">Back</button></sc-if>
+            <button sc-camel-on-click="{{ setup.next }}" style="border:none;background:var(--fg);color:var(--bg);border-radius:8px;padding:8px 16px;font:500 13.5px Geist">{{ setup.cta }}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>

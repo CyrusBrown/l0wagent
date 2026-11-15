@@ -1,6 +1,6 @@
 # UI
 
-Everything the owner sees, written so mockups can be built from it. Layout details are suggestions; the behaviors are decisions. Part of the [overhaul plan](README.md). Data and API conventions are in [data-model.md](data-model.md).
+Everything the owner sees, written so mockups can be built from it. **The mockup ([design/mockup/](../../design/mockup/)) is the authority on UI and styling and outranks this file**; differences and how they were settled are in [REVIEW.md](../../design/mockup/REVIEW.md). Layout details are suggestions; the behaviors are decisions. Part of the [overhaul plan](README.md). Data and API conventions are in [data-model.md](data-model.md).
 
 ## Stack
 - **React + TypeScript + Vite**, a single-page app. The JSON API is described by OpenAPI, and TypeScript types are generated from it. Live updates stream over `fetch` (not `EventSource`, so the desktop app can send its token).
@@ -116,7 +116,7 @@ Whatever the assistant serves on its web port (today's "Agent web"): opened in a
 ## Calendar
 - The assistant's **planned wakeups** (time, budget, model, reason), routines, the fallback wakeup, sweep slots, and your protected hours.
 - Drag to move, click to resize or delete, add your own.
-- A side panel shows budget left this week, what's scheduled, and **you vs. the assistant** usage.
+- A side panel shows budget left this week, what's scheduled, and usage split three ways: **you (other apps), your 1:1 chats, the assistant**. Sweep wakeups are marked as such.
 
 ## Runs
 
@@ -153,7 +153,7 @@ Every item has a deep link.
 - **Connected apps**: outside chat services connected through MCP, with scopes and revoke.
 
 ## Settings
-- **Budgets & levels**: the level picker with a plain explanation, per-provider allowances and reserves, allowed hours, wakeup limits, reply budget, fallback, sweep, Boost.
+- **Budgets & levels**: the level picker with a plain explanation, per-provider allowances and reserves, sweep (on/off, ceiling, window), optional chat cap, allowed hours, wakeup limits, reply budget, fallback, sweep, Boost.
 - **Providers**: add/login, status, usage source.
 - **Roles**: worker / reviewer / replier / chat / utility, each with provider, model, effort and allowed ranges.
 - **Reviewer**: mode, interval, budget share, tier-change rights.

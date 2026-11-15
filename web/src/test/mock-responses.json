@@ -1,0 +1,1748 @@
+{
+ "/api/meta": {
+  "server_version": "0.0.1",
+  "api_version": "0",
+  "ui_bundle_version": "dev",
+  "capabilities": {
+   "hub": false,
+   "push": false,
+   "passkeys": false,
+   "chat": false,
+   "extensions": []
+  },
+  "setup_complete": true,
+  "instance_name": "l0wagent (mock)"
+ },
+ "/api/auth/me": {
+  "username": "mara",
+  "display_name": "Mara",
+  "timezone": "Europe/Berlin",
+  "totp_enabled": false,
+  "passkeys": 0
+ },
+ "/api/status": {
+  "state": "working",
+  "now": "Running the DST test suite on the patched scheduler",
+  "run_id": 123,
+  "run_used": 3.8,
+  "run_budget": 10.0,
+  "next_wakeup_at": "2026-11-16T02:00:00Z",
+  "budget": {
+   "unit": "pts",
+   "left": 42.0,
+   "allowance": 120.0,
+   "used_by_assistant": 48.0,
+   "used_by_owner": 30.0,
+   "resets_at": "2026-11-18T05:05:06Z"
+  },
+  "inbox_waiting": 12,
+  "reply_budget_left": 14.0
+ },
+ "/api/inbox/counts": {
+  "waiting": 12,
+  "by_kind": {
+   "question": 6,
+   "permission": 1,
+   "task": 1,
+   "suggestion": 2,
+   "promote": 1,
+   "security": 1
+  }
+ },
+ "/api/inbox?view=waiting": [
+  {
+   "kind": "promote",
+   "id": 1,
+   "at": "2026-11-15T04:57:06Z",
+   "thread_id": 1,
+   "thread_title": "Pump controller firmware",
+   "project": "garden-irrigation",
+   "question": null,
+   "permission": null,
+   "task": null,
+   "suggestion": null,
+   "promote": {
+    "id": 1,
+    "run_id": 123,
+    "thread_id": 1,
+    "reason": "Audit every timer for DST issues",
+    "budget": 3.0,
+    "status": "open",
+    "note": null,
+    "created_at": "2026-11-15T04:57:06Z",
+    "decided_at": null
+   },
+   "security": null
+  },
+  {
+   "kind": "question",
+   "id": 4,
+   "at": "2026-11-15T04:54:06Z",
+   "thread_id": 1,
+   "thread_title": "Pump controller firmware",
+   "project": "garden-irrigation",
+   "question": {
+    "id": 4,
+    "thread_id": 1,
+    "run_id": 123,
+    "kind": "text",
+    "text": "Is there a minimum rest time the pump needs between cycles? I couldn't find it in the datasheet.",
+    "options": [],
+    "default": "Assume 5 minutes",
+    "scale_labels": null,
+    "status": "open",
+    "answer": null,
+    "note": null,
+    "created_at": "2026-11-15T04:54:06Z",
+    "answered_at": null
+   },
+   "permission": null,
+   "task": null,
+   "suggestion": null,
+   "promote": null,
+   "security": null
+  },
+  {
+   "kind": "question",
+   "id": 1,
+   "at": "2026-11-15T04:53:06Z",
+   "thread_id": 1,
+   "thread_title": "Pump controller firmware",
+   "project": "garden-irrigation",
+   "question": {
+    "id": 1,
+    "thread_id": 1,
+    "run_id": 123,
+    "kind": "yes_no",
+    "text": "Should I flash the fix to the controller myself once tests pass, or leave the firmware for you to install?",
+    "options": [],
+    "default": false,
+    "scale_labels": null,
+    "status": "open",
+    "answer": null,
+    "note": null,
+    "created_at": "2026-11-15T04:53:06Z",
+    "answered_at": null
+   },
+   "permission": null,
+   "task": null,
+   "suggestion": null,
+   "promote": null,
+   "security": null
+  },
+  {
+   "kind": "question",
+   "id": 2,
+   "at": "2026-11-15T04:52:06Z",
+   "thread_id": 1,
+   "thread_title": "Pump controller firmware",
+   "project": "garden-irrigation",
+   "question": {
+    "id": 2,
+    "thread_id": 1,
+    "run_id": 123,
+    "kind": "single",
+    "text": "Which schedule should the fixed firmware use on Sundays?",
+    "options": [
+     "Keep 06:00 every day",
+     "Move to 05:30, outside the DST hour",
+     "Skip Sundays entirely"
+    ],
+    "default": "Keep 06:00 every day",
+    "scale_labels": null,
+    "status": "open",
+    "answer": null,
+    "note": null,
+    "created_at": "2026-11-15T04:52:06Z",
+    "answered_at": null
+   },
+   "permission": null,
+   "task": null,
+   "suggestion": null,
+   "promote": null,
+   "security": null
+  },
+  {
+   "kind": "question",
+   "id": 3,
+   "at": "2026-11-15T04:52:06Z",
+   "thread_id": 1,
+   "thread_title": "Pump controller firmware",
+   "project": "garden-irrigation",
+   "question": {
+    "id": 3,
+    "thread_id": 1,
+    "run_id": 123,
+    "kind": "multi",
+    "text": "Which zones should get the 10-minute debounce?",
+    "options": [
+     "Back lawn",
+     "Front beds",
+     "Greenhouse",
+     "Herb planter"
+    ],
+    "default": [
+     "Back lawn",
+     "Front beds",
+     "Greenhouse",
+     "Herb planter"
+    ],
+    "scale_labels": null,
+    "status": "open",
+    "answer": null,
+    "note": null,
+    "created_at": "2026-11-15T04:52:06Z",
+    "answered_at": null
+   },
+   "permission": null,
+   "task": null,
+   "suggestion": null,
+   "promote": null,
+   "security": null
+  },
+  {
+   "kind": "permission",
+   "id": 1,
+   "at": "2026-11-15T04:51:06Z",
+   "thread_id": 1,
+   "thread_title": "Pump controller firmware",
+   "project": "garden-irrigation",
+   "question": null,
+   "permission": {
+    "id": 1,
+    "thread_id": 1,
+    "run_id": 123,
+    "text": "Write access to ~/garden/firmware/ for this project",
+    "reason": "To flash the fixed firmware build.",
+    "actions": [
+     {
+      "kind": "setting",
+      "summary": "Mount ~/garden/firmware read-write",
+      "payload": {
+       "mount": "~/garden/firmware",
+       "mode": "rw"
+      }
+     }
+    ],
+    "scopes": [
+     "once",
+     "project"
+    ],
+    "status": "open",
+    "scope": null,
+    "note": null,
+    "created_at": "2026-11-15T04:51:06Z",
+    "decided_at": null
+   },
+   "task": null,
+   "suggestion": null,
+   "promote": null,
+   "security": null
+  },
+  {
+   "kind": "suggestion",
+   "id": 1,
+   "at": "2026-11-15T04:45:06Z",
+   "thread_id": 1,
+   "thread_title": "Pump controller firmware",
+   "project": "garden-irrigation",
+   "question": null,
+   "permission": null,
+   "task": null,
+   "suggestion": {
+    "id": 1,
+    "run_id": 123,
+    "kind": "thread_split",
+    "target_kind": "thread",
+    "target_id": 1,
+    "text": "Move the 6 sensor calibration messages into a new thread, \u201cMoisture sensor calibration\u201d",
+    "payload": {
+     "message_ids": [],
+     "new_title": "Moisture sensor calibration"
+    },
+    "status": "open",
+    "created_at": "2026-11-15T04:45:06Z",
+    "decided_at": null
+   },
+   "promote": null,
+   "security": null
+  },
+  {
+   "kind": "security",
+   "id": 1,
+   "at": "2026-11-15T00:05:06Z",
+   "thread_id": null,
+   "thread_title": null,
+   "project": null,
+   "question": null,
+   "permission": null,
+   "task": null,
+   "suggestion": null,
+   "promote": null,
+   "security": {
+    "id": 1,
+    "session_id": "s-firefox",
+    "text": "New session: Firefox on Linux, 192.168.1.40",
+    "status": "open",
+    "created_at": "2026-11-15T00:05:06Z"
+   }
+  },
+  {
+   "kind": "question",
+   "id": 6,
+   "at": "2026-11-13T05:05:06Z",
+   "thread_id": 9,
+   "thread_title": "NAS backup schedule",
+   "project": "home-lab",
+   "question": {
+    "id": 6,
+    "thread_id": 9,
+    "run_id": 120,
+    "kind": "slot",
+    "text": "When should I run the first full NAS backup? It takes about 3 hours and slows the network.",
+    "options": [
+     "Tonight 23:00",
+     "Sat 02:00",
+     "Sun 03:00",
+     "Mon 01:00"
+    ],
+    "default": "Sat 02:00",
+    "scale_labels": null,
+    "status": "open",
+    "answer": null,
+    "note": null,
+    "created_at": "2026-11-13T05:05:06Z",
+    "answered_at": null
+   },
+   "permission": null,
+   "task": null,
+   "suggestion": null,
+   "promote": null,
+   "security": null
+  },
+  {
+   "kind": "task",
+   "id": 1,
+   "at": "2026-11-13T05:05:06Z",
+   "thread_id": 6,
+   "thread_title": "Receipts to categorize",
+   "project": "tax-prep-2026",
+   "question": null,
+   "permission": null,
+   "task": {
+    "id": 1,
+    "thread_id": 6,
+    "run_id": 121,
+    "text": "Review the 3 unreadable receipts",
+    "detail": "Photos 4, 9 and 17 in _inbox/.",
+    "status": "open",
+    "note": null,
+    "created_at": "2026-11-13T05:05:06Z",
+    "resolved_at": null
+   },
+   "suggestion": null,
+   "promote": null,
+   "security": null
+  },
+  {
+   "kind": "question",
+   "id": 5,
+   "at": "2026-11-12T05:05:06Z",
+   "thread_id": 6,
+   "thread_title": "Receipts to categorize",
+   "project": "tax-prep-2026",
+   "question": {
+    "id": 5,
+    "thread_id": 6,
+    "run_id": 121,
+    "kind": "multi",
+    "text": "Which of these should be filed as deductible?",
+    "options": [
+     "Plumber, March",
+     "Laptop, May",
+     "Glasses, August",
+     "Desk chair, June",
+     "Train pass, all year"
+    ],
+    "default": [],
+    "scale_labels": null,
+    "status": "open",
+    "answer": null,
+    "note": null,
+    "created_at": "2026-11-12T05:05:06Z",
+    "answered_at": null
+   },
+   "permission": null,
+   "task": null,
+   "suggestion": null,
+   "promote": null,
+   "security": null
+  },
+  {
+   "kind": "suggestion",
+   "id": 2,
+   "at": "2026-11-11T05:05:06Z",
+   "thread_id": 5,
+   "thread_title": "Enclosure v2 print",
+   "project": "garden-irrigation",
+   "question": null,
+   "permission": null,
+   "task": null,
+   "suggestion": {
+    "id": 2,
+    "run_id": 120,
+    "kind": "thread_archive",
+    "target_kind": "thread",
+    "target_id": 5,
+    "text": "Archive \u201cEnclosure v2 print\u201d, untouched for 3 weeks",
+    "payload": {},
+    "status": "open",
+    "created_at": "2026-11-11T05:05:06Z",
+    "decided_at": null
+   },
+   "promote": null,
+   "security": null
+  }
+ ],
+ "/api/inbox?view=history": [],
+ "/api/claims?active=true": [
+  {
+   "id": 1,
+   "run_id": 123,
+   "thread_id": 1,
+   "thread_title": "Pump controller firmware",
+   "plan": "Switch fallback timer to UTC and add a 10-minute debounce",
+   "status": "in_progress",
+   "result": "Patched scheduler.py, running the DST test suite (4 of 7 passed so far).",
+   "created_at": "2026-11-15T04:47:06Z",
+   "updated_at": "2026-11-15T05:03:06Z"
+  },
+  {
+   "id": 2,
+   "run_id": 123,
+   "thread_id": 6,
+   "thread_title": "Receipts to categorize",
+   "plan": "File the 6 receipts that arrived this week",
+   "status": "planned",
+   "result": "Waiting for budget after the firmware fix",
+   "created_at": "2026-11-15T04:47:06Z",
+   "updated_at": "2026-11-15T04:47:06Z"
+  }
+ ],
+ "/api/jobs": [
+  {
+   "id": 1,
+   "run_id": 121,
+   "label": "Re-index photo library",
+   "progress": "62%",
+   "expected_end": "2026-11-16T05:05:06Z",
+   "dont_interrupt": true,
+   "status": "running",
+   "started_at": "2026-11-12T05:05:06Z",
+   "log_tail": "[14:02:11] indexed 18,204 / 29,310\n[14:02:41] thumbnails 61%\n[14:03:12] indexed 18,450 / 29,310"
+  },
+  {
+   "id": 2,
+   "run_id": 119,
+   "label": "Train moisture forecast model",
+   "progress": "epoch 37/50",
+   "expected_end": "2026-11-15T11:05:06Z",
+   "dont_interrupt": false,
+   "status": "running",
+   "started_at": "2026-11-10T05:05:06Z",
+   "log_tail": "epoch 36  loss 0.0412  val 0.0468\nepoch 37  loss 0.0407  val 0.0471"
+  }
+ ],
+ "/api/messages/recent?sender=assistant&limit=5": [
+  {
+   "message": {
+    "id": 6,
+    "thread_id": 1,
+    "sender": "assistant",
+    "body": "Before the next wakeup I can only give a short answer. A proper review of the other timers needs a full run.",
+    "via": null,
+    "run_id": 123,
+    "attachments": [],
+    "delivery": "delivered",
+    "created_at": "2026-11-15T04:57:06Z"
+   },
+   "thread_title": "Pump controller firmware",
+   "project": "garden-irrigation"
+  },
+  {
+   "message": {
+    "id": 5,
+    "thread_id": 1,
+    "sender": "assistant",
+    "body": "That confirms it. A few choices before I ship the fix:",
+    "via": null,
+    "run_id": 123,
+    "attachments": [],
+    "delivery": "delivered",
+    "created_at": "2026-11-15T04:51:06Z"
+   },
+   "thread_title": "Pump controller firmware",
+   "project": "garden-irrigation"
+  },
+  {
+   "message": {
+    "id": 3,
+    "thread_id": 1,
+    "sender": "assistant",
+    "body": "The log shows two triggers at 06:00 and 06:00:04 on both Sundays. The second one comes from the fallback timer in [scheduler.py](l0wagent://file/work/garden-irrigation/firmware/scheduler.py), which re-arms after the DST change because it compares local times instead of UTC. I've planned a fix for the next run.",
+    "via": null,
+    "run_id": 119,
+    "attachments": [],
+    "delivery": "delivered",
+    "created_at": "2026-11-15T04:25:06Z"
+   },
+   "thread_title": "Pump controller firmware",
+   "project": "garden-irrigation"
+  },
+  {
+   "message": {
+    "id": 8,
+    "thread_id": 2,
+    "sender": "assistant",
+    "body": "Noted. I'll log a week of readings against the other three and propose an offset.",
+    "via": null,
+    "run_id": 119,
+    "attachments": [],
+    "delivery": "delivered",
+    "created_at": "2026-11-13T05:35:06Z"
+   },
+   "thread_title": "Moisture sensor calibration",
+   "project": "garden-irrigation"
+  },
+  {
+   "message": {
+    "id": 10,
+    "thread_id": 6,
+    "sender": "assistant",
+    "body": "Filed 35 of 41. Six are photos of handwritten receipts and need a look from you.",
+    "via": null,
+    "run_id": 121,
+    "attachments": [],
+    "delivery": "delivered",
+    "created_at": "2026-11-12T05:05:06Z"
+   },
+   "thread_title": "Receipts to categorize",
+   "project": "tax-prep-2026"
+  }
+ ],
+ "/api/projects": [
+  {
+   "slug": "garden-irrigation",
+   "name": "Garden irrigation",
+   "summary": "Drip irrigation for the back garden: an ESP32 controller driving two pumps, four moisture sensors, and a weekly schedule that adapts to rain forecasts.",
+   "status": "active",
+   "doc_path": "projects/garden-irrigation.md",
+   "links": [],
+   "created_by": "assistant",
+   "created_at": "2026-10-06T05:05:06Z",
+   "last_activity_at": "2026-11-15T04:53:06Z",
+   "unread": 3,
+   "open_asks": 6,
+   "thread_count": 4
+  },
+  {
+   "slug": "tax-prep-2026",
+   "name": "Tax prep 2026",
+   "summary": "Receipts and questions for the accountant. 35 of 41 receipts filed.",
+   "status": "active",
+   "doc_path": "projects/tax-prep-2026.md",
+   "links": [],
+   "created_by": "assistant",
+   "created_at": "2026-10-06T05:05:06Z",
+   "last_activity_at": "2026-11-12T05:05:06Z",
+   "unread": 1,
+   "open_asks": 2,
+   "thread_count": 2
+  },
+  {
+   "slug": "home-lab",
+   "name": "Home lab",
+   "summary": "NAS backups and email setup. Nothing new for 9 days.",
+   "status": "stale",
+   "doc_path": "projects/home-lab.md",
+   "links": [],
+   "created_by": "assistant",
+   "created_at": "2026-10-06T05:05:06Z",
+   "last_activity_at": "2026-11-06T05:05:06Z",
+   "unread": 0,
+   "open_asks": 1,
+   "thread_count": 2
+  },
+  {
+   "slug": "kitchen-remodel",
+   "name": "Kitchen remodel",
+   "summary": "Finished in September. Quotes and the final plan are on the shelf.",
+   "status": "archived",
+   "doc_path": "projects/kitchen-remodel.md",
+   "links": [],
+   "created_by": "assistant",
+   "created_at": "2026-10-06T05:05:06Z",
+   "last_activity_at": "2026-09-29T05:05:06Z",
+   "unread": 0,
+   "open_asks": 0,
+   "thread_count": 0
+  }
+ ],
+ "/api/projects?status=active": [
+  {
+   "slug": "garden-irrigation",
+   "name": "Garden irrigation",
+   "summary": "Drip irrigation for the back garden: an ESP32 controller driving two pumps, four moisture sensors, and a weekly schedule that adapts to rain forecasts.",
+   "status": "active",
+   "doc_path": "projects/garden-irrigation.md",
+   "links": [],
+   "created_by": "assistant",
+   "created_at": "2026-10-06T05:05:06Z",
+   "last_activity_at": "2026-11-15T04:53:06Z",
+   "unread": 3,
+   "open_asks": 6,
+   "thread_count": 4
+  },
+  {
+   "slug": "tax-prep-2026",
+   "name": "Tax prep 2026",
+   "summary": "Receipts and questions for the accountant. 35 of 41 receipts filed.",
+   "status": "active",
+   "doc_path": "projects/tax-prep-2026.md",
+   "links": [],
+   "created_by": "assistant",
+   "created_at": "2026-10-06T05:05:06Z",
+   "last_activity_at": "2026-11-12T05:05:06Z",
+   "unread": 1,
+   "open_asks": 2,
+   "thread_count": 2
+  }
+ ],
+ "/api/projects/garden-irrigation": {
+  "slug": "garden-irrigation",
+  "name": "Garden irrigation",
+  "summary": "Drip irrigation for the back garden: an ESP32 controller driving two pumps, four moisture sensors, and a weekly schedule that adapts to rain forecasts.",
+  "status": "active",
+  "doc_path": "projects/garden-irrigation.md",
+  "links": [],
+  "created_by": "assistant",
+  "created_at": "2026-10-06T05:05:06Z",
+  "last_activity_at": "2026-11-15T04:53:06Z",
+  "unread": 3,
+  "open_asks": 6,
+  "thread_count": 4
+ },
+ "/api/projects/garden-irrigation/shelf": [
+  {
+   "id": 1,
+   "project": "garden-irrigation",
+   "label": "scheduler.py",
+   "volume": "work",
+   "path": "garden-irrigation/firmware/scheduler.py",
+   "mode": "live",
+   "keep_versions": 10,
+   "versions": 6,
+   "added_by": "assistant",
+   "run_id": 123,
+   "created_at": "2026-11-15T04:53:06Z",
+   "updated_at": "2026-11-15T04:53:06Z",
+   "size": 6200,
+   "mime": "text/x-python",
+   "missing": false
+  },
+  {
+   "id": 4,
+   "project": "garden-irrigation",
+   "label": "Project doc",
+   "volume": "workspace",
+   "path": "projects/garden-irrigation.md",
+   "mode": "live",
+   "keep_versions": 20,
+   "versions": 14,
+   "added_by": "assistant",
+   "run_id": 123,
+   "created_at": "2026-11-15T04:05:06Z",
+   "updated_at": "2026-11-15T04:05:06Z",
+   "size": 4100,
+   "mime": "text/markdown",
+   "missing": false
+  },
+  {
+   "id": 3,
+   "project": "garden-irrigation",
+   "label": "pump-log-1102.csv",
+   "volume": "work",
+   "path": "garden-irrigation/_inbox/pump-log-1102.csv",
+   "mode": "snapshot",
+   "keep_versions": 0,
+   "versions": 0,
+   "added_by": "owner",
+   "run_id": null,
+   "created_at": "2026-11-13T05:05:06Z",
+   "updated_at": "2026-11-13T05:05:06Z",
+   "size": 18000,
+   "mime": "text/csv",
+   "missing": false
+  },
+  {
+   "id": 5,
+   "project": "garden-irrigation",
+   "label": "Moisture dashboard",
+   "volume": "work",
+   "path": "garden-irrigation/firmware/out/dashboard.html",
+   "mode": "live",
+   "keep_versions": 0,
+   "versions": 0,
+   "added_by": "assistant",
+   "run_id": 119,
+   "created_at": "2026-11-13T05:05:06Z",
+   "updated_at": "2026-11-13T05:05:06Z",
+   "size": 14000,
+   "mime": "text/html",
+   "missing": false
+  },
+  {
+   "id": 2,
+   "project": "garden-irrigation",
+   "label": "enclosure-v3.stl",
+   "volume": "work",
+   "path": "garden-irrigation/_inbox/enclosure-v3.stl",
+   "mode": "snapshot",
+   "keep_versions": 0,
+   "versions": 0,
+   "added_by": "owner",
+   "run_id": null,
+   "created_at": "2026-11-11T05:05:06Z",
+   "updated_at": "2026-11-11T05:05:06Z",
+   "size": 2400000,
+   "mime": "model/stl",
+   "missing": false
+  },
+  {
+   "id": 6,
+   "project": "garden-irrigation",
+   "label": "wiring-diagram.png",
+   "volume": "work",
+   "path": "garden-irrigation/_inbox/wiring-diagram.png",
+   "mode": "snapshot",
+   "keep_versions": 0,
+   "versions": 0,
+   "added_by": "owner",
+   "run_id": null,
+   "created_at": "2026-10-29T05:05:06Z",
+   "updated_at": "2026-10-29T05:05:06Z",
+   "size": 1300000,
+   "mime": "image/png",
+   "missing": false
+  }
+ ],
+ "/api/threads": [
+  {
+   "id": 1,
+   "project": "garden-irrigation",
+   "title": "Pump controller firmware",
+   "type": "normal",
+   "status": "open",
+   "created_by": "owner",
+   "pinned": false,
+   "created_at": "2026-11-03T05:05:06Z",
+   "last_activity_at": "2026-11-15T04:57:06Z",
+   "last_message_preview": "Assistant: Planned in run #123, switch fallback timer to UTC\u2026",
+   "unread": 0,
+   "open_asks": 6
+  },
+  {
+   "id": 10,
+   "project": null,
+   "title": "Things to look into",
+   "type": "normal",
+   "status": "open",
+   "created_by": "owner",
+   "pinned": false,
+   "created_at": "2026-11-03T05:05:06Z",
+   "last_activity_at": "2026-11-14T05:05:06Z",
+   "last_message_preview": "You: the sourdough starter keeps collapsing",
+   "unread": 0,
+   "open_asks": 0
+  },
+  {
+   "id": 2,
+   "project": "garden-irrigation",
+   "title": "Moisture sensor calibration",
+   "type": "normal",
+   "status": "open",
+   "created_by": "assistant",
+   "pinned": false,
+   "created_at": "2026-11-03T05:05:06Z",
+   "last_activity_at": "2026-11-13T05:05:06Z",
+   "last_message_preview": "You: sensor 3 reads 8% high after rain",
+   "unread": 2,
+   "open_asks": 0
+  },
+  {
+   "id": 6,
+   "project": "tax-prep-2026",
+   "title": "Receipts to categorize",
+   "type": "normal",
+   "status": "open",
+   "created_by": "owner",
+   "pinned": false,
+   "created_at": "2026-11-03T05:05:06Z",
+   "last_activity_at": "2026-11-12T05:05:06Z",
+   "last_message_preview": "Assistant: Filed 35 of 41. Six are photos of handwritten receipts\u2026",
+   "unread": 1,
+   "open_asks": 2
+  },
+  {
+   "id": 7,
+   "project": "tax-prep-2026",
+   "title": "Questions for the accountant",
+   "type": "normal",
+   "status": "open",
+   "created_by": "owner",
+   "pinned": false,
+   "created_at": "2026-11-03T05:05:06Z",
+   "last_activity_at": "2026-11-11T05:05:06Z",
+   "last_message_preview": "You: add the home office question",
+   "unread": 0,
+   "open_asks": 0
+  },
+  {
+   "id": 3,
+   "project": "garden-irrigation",
+   "title": "Winter shutdown checklist",
+   "type": "normal",
+   "status": "open",
+   "created_by": "owner",
+   "pinned": false,
+   "created_at": "2026-11-03T05:05:06Z",
+   "last_activity_at": "2026-11-09T05:05:06Z",
+   "last_message_preview": "Assistant: drained lines, 2 of 5 steps left",
+   "unread": 0,
+   "open_asks": 0
+  },
+  {
+   "id": 8,
+   "project": "home-lab",
+   "title": "Email setup",
+   "type": "normal",
+   "status": "open",
+   "created_by": "owner",
+   "pinned": false,
+   "created_at": "2026-11-03T05:05:06Z",
+   "last_activity_at": "2026-11-09T05:05:06Z",
+   "last_message_preview": "Chat: Continued from 'Setting up the Fastmail MCP'",
+   "unread": 0,
+   "open_asks": 0
+  },
+  {
+   "id": 9,
+   "project": "home-lab",
+   "title": "NAS backup schedule",
+   "type": "normal",
+   "status": "open",
+   "created_by": "owner",
+   "pinned": false,
+   "created_at": "2026-11-03T05:05:06Z",
+   "last_activity_at": "2026-11-06T05:05:06Z",
+   "last_message_preview": "Assistant: first full backup takes about 3 hours",
+   "unread": 0,
+   "open_asks": 1
+  },
+  {
+   "id": 4,
+   "project": "garden-irrigation",
+   "title": "Flow meter options",
+   "type": "normal",
+   "status": "open",
+   "created_by": "owner",
+   "pinned": false,
+   "created_at": "2026-11-03T05:05:06Z",
+   "last_activity_at": "2026-11-04T05:05:06Z",
+   "last_message_preview": "Assistant: three options under \u20ac30, comparison attached",
+   "unread": 1,
+   "open_asks": 0
+  }
+ ],
+ "/api/threads?project=garden-irrigation&archived=true": [
+  {
+   "id": 1,
+   "project": "garden-irrigation",
+   "title": "Pump controller firmware",
+   "type": "normal",
+   "status": "open",
+   "created_by": "owner",
+   "pinned": false,
+   "created_at": "2026-11-03T05:05:06Z",
+   "last_activity_at": "2026-11-15T04:57:06Z",
+   "last_message_preview": "Assistant: Planned in run #123, switch fallback timer to UTC\u2026",
+   "unread": 0,
+   "open_asks": 6
+  },
+  {
+   "id": 2,
+   "project": "garden-irrigation",
+   "title": "Moisture sensor calibration",
+   "type": "normal",
+   "status": "open",
+   "created_by": "assistant",
+   "pinned": false,
+   "created_at": "2026-11-03T05:05:06Z",
+   "last_activity_at": "2026-11-13T05:05:06Z",
+   "last_message_preview": "You: sensor 3 reads 8% high after rain",
+   "unread": 2,
+   "open_asks": 0
+  },
+  {
+   "id": 3,
+   "project": "garden-irrigation",
+   "title": "Winter shutdown checklist",
+   "type": "normal",
+   "status": "open",
+   "created_by": "owner",
+   "pinned": false,
+   "created_at": "2026-11-03T05:05:06Z",
+   "last_activity_at": "2026-11-09T05:05:06Z",
+   "last_message_preview": "Assistant: drained lines, 2 of 5 steps left",
+   "unread": 0,
+   "open_asks": 0
+  },
+  {
+   "id": 4,
+   "project": "garden-irrigation",
+   "title": "Flow meter options",
+   "type": "normal",
+   "status": "open",
+   "created_by": "owner",
+   "pinned": false,
+   "created_at": "2026-11-03T05:05:06Z",
+   "last_activity_at": "2026-11-04T05:05:06Z",
+   "last_message_preview": "Assistant: three options under \u20ac30, comparison attached",
+   "unread": 1,
+   "open_asks": 0
+  },
+  {
+   "id": 5,
+   "project": "garden-irrigation",
+   "title": "Enclosure v2 print",
+   "type": "normal",
+   "status": "archived",
+   "created_by": "owner",
+   "pinned": false,
+   "created_at": "2026-11-03T05:05:06Z",
+   "last_activity_at": "2026-10-21T05:05:06Z",
+   "last_message_preview": "Assistant: superseded by v3",
+   "unread": 0,
+   "open_asks": 0
+  }
+ ],
+ "/api/threads/1": {
+  "id": 1,
+  "project": "garden-irrigation",
+  "title": "Pump controller firmware",
+  "type": "normal",
+  "status": "open",
+  "created_by": "owner",
+  "pinned": false,
+  "created_at": "2026-11-03T05:05:06Z",
+  "last_activity_at": "2026-11-15T04:57:06Z",
+  "last_message_preview": "Assistant: Planned in run #123, switch fallback timer to UTC\u2026",
+  "unread": 0,
+  "open_asks": 6
+ },
+ "/api/threads/1/items?limit=200": {
+  "items": [
+   {
+    "type": "message",
+    "at": "2026-11-13T05:05:06Z",
+    "message": {
+     "id": 1,
+     "thread_id": 1,
+     "sender": "system",
+     "body": "Moved here from General \u00b7 accepted suggestion",
+     "via": null,
+     "run_id": null,
+     "attachments": [],
+     "delivery": "delivered",
+     "created_at": "2026-11-13T05:05:06Z"
+    }
+   },
+   {
+    "type": "message",
+    "at": "2026-11-13T05:06:06Z",
+    "message": {
+     "id": 2,
+     "thread_id": 1,
+     "sender": "owner",
+     "body": "Can you check why the pump runs twice on Sunday mornings? Log from last week attached.",
+     "via": "web",
+     "run_id": null,
+     "attachments": [
+      {
+       "name": "pump-log-1102.csv",
+       "volume": "work",
+       "path": "garden-irrigation/_inbox/pump-log-1102.csv",
+       "size": 18000,
+       "mime": "text/csv"
+      }
+     ],
+     "delivery": "seen",
+     "created_at": "2026-11-13T05:06:06Z"
+    }
+   },
+   {
+    "type": "message",
+    "at": "2026-11-15T04:25:06Z",
+    "message": {
+     "id": 3,
+     "thread_id": 1,
+     "sender": "assistant",
+     "body": "The log shows two triggers at 06:00 and 06:00:04 on both Sundays. The second one comes from the fallback timer in [scheduler.py](l0wagent://file/work/garden-irrigation/firmware/scheduler.py), which re-arms after the DST change because it compares local times instead of UTC. I've planned a fix for the next run.",
+     "via": null,
+     "run_id": 119,
+     "attachments": [],
+     "delivery": "delivered",
+     "created_at": "2026-11-15T04:25:06Z"
+    }
+   },
+   {
+    "type": "message",
+    "at": "2026-11-15T04:35:06Z",
+    "message": {
+     "id": 4,
+     "thread_id": 1,
+     "sender": "chat",
+     "body": "Also only started after the clocks changed, if that helps.",
+     "via": "chat:12",
+     "run_id": null,
+     "attachments": [],
+     "delivery": "delivered",
+     "created_at": "2026-11-15T04:35:06Z"
+    }
+   },
+   {
+    "type": "suggestion",
+    "at": "2026-11-15T04:45:06Z",
+    "suggestion": {
+     "id": 1,
+     "run_id": 123,
+     "kind": "thread_split",
+     "target_kind": "thread",
+     "target_id": 1,
+     "text": "Move the 6 sensor calibration messages into a new thread, \u201cMoisture sensor calibration\u201d",
+     "payload": {
+      "message_ids": [],
+      "new_title": "Moisture sensor calibration"
+     },
+     "status": "open",
+     "created_at": "2026-11-15T04:45:06Z",
+     "decided_at": null
+    }
+   },
+   {
+    "type": "claim",
+    "at": "2026-11-15T04:47:06Z",
+    "claim": {
+     "id": 1,
+     "run_id": 123,
+     "thread_id": 1,
+     "thread_title": "Pump controller firmware",
+     "plan": "Switch fallback timer to UTC and add a 10-minute debounce",
+     "status": "in_progress",
+     "result": "Patched scheduler.py, running the DST test suite (4 of 7 passed so far).",
+     "created_at": "2026-11-15T04:47:06Z",
+     "updated_at": "2026-11-15T05:03:06Z"
+    }
+   },
+   {
+    "type": "message",
+    "at": "2026-11-15T04:51:06Z",
+    "message": {
+     "id": 5,
+     "thread_id": 1,
+     "sender": "assistant",
+     "body": "That confirms it. A few choices before I ship the fix:",
+     "via": null,
+     "run_id": 123,
+     "attachments": [],
+     "delivery": "delivered",
+     "created_at": "2026-11-15T04:51:06Z"
+    }
+   },
+   {
+    "type": "permission",
+    "at": "2026-11-15T04:51:06Z",
+    "permission": {
+     "id": 1,
+     "thread_id": 1,
+     "run_id": 123,
+     "text": "Write access to ~/garden/firmware/ for this project",
+     "reason": "To flash the fixed firmware build.",
+     "actions": [
+      {
+       "kind": "setting",
+       "summary": "Mount ~/garden/firmware read-write",
+       "payload": {
+        "mount": "~/garden/firmware",
+        "mode": "rw"
+       }
+      }
+     ],
+     "scopes": [
+      "once",
+      "project"
+     ],
+     "status": "open",
+     "scope": null,
+     "note": null,
+     "created_at": "2026-11-15T04:51:06Z",
+     "decided_at": null
+    }
+   },
+   {
+    "type": "question",
+    "at": "2026-11-15T04:52:06Z",
+    "question": {
+     "id": 2,
+     "thread_id": 1,
+     "run_id": 123,
+     "kind": "single",
+     "text": "Which schedule should the fixed firmware use on Sundays?",
+     "options": [
+      "Keep 06:00 every day",
+      "Move to 05:30, outside the DST hour",
+      "Skip Sundays entirely"
+     ],
+     "default": "Keep 06:00 every day",
+     "scale_labels": null,
+     "status": "open",
+     "answer": null,
+     "note": null,
+     "created_at": "2026-11-15T04:52:06Z",
+     "answered_at": null
+    }
+   },
+   {
+    "type": "question",
+    "at": "2026-11-15T04:52:06Z",
+    "question": {
+     "id": 3,
+     "thread_id": 1,
+     "run_id": 123,
+     "kind": "multi",
+     "text": "Which zones should get the 10-minute debounce?",
+     "options": [
+      "Back lawn",
+      "Front beds",
+      "Greenhouse",
+      "Herb planter"
+     ],
+     "default": [
+      "Back lawn",
+      "Front beds",
+      "Greenhouse",
+      "Herb planter"
+     ],
+     "scale_labels": null,
+     "status": "open",
+     "answer": null,
+     "note": null,
+     "created_at": "2026-11-15T04:52:06Z",
+     "answered_at": null
+    }
+   },
+   {
+    "type": "question",
+    "at": "2026-11-15T04:53:06Z",
+    "question": {
+     "id": 1,
+     "thread_id": 1,
+     "run_id": 123,
+     "kind": "yes_no",
+     "text": "Should I flash the fix to the controller myself once tests pass, or leave the firmware for you to install?",
+     "options": [],
+     "default": false,
+     "scale_labels": null,
+     "status": "open",
+     "answer": null,
+     "note": null,
+     "created_at": "2026-11-15T04:53:06Z",
+     "answered_at": null
+    }
+   },
+   {
+    "type": "question",
+    "at": "2026-11-15T04:54:06Z",
+    "question": {
+     "id": 4,
+     "thread_id": 1,
+     "run_id": 123,
+     "kind": "text",
+     "text": "Is there a minimum rest time the pump needs between cycles? I couldn't find it in the datasheet.",
+     "options": [],
+     "default": "Assume 5 minutes",
+     "scale_labels": null,
+     "status": "open",
+     "answer": null,
+     "note": null,
+     "created_at": "2026-11-15T04:54:06Z",
+     "answered_at": null
+    }
+   },
+   {
+    "type": "message",
+    "at": "2026-11-15T04:57:06Z",
+    "message": {
+     "id": 6,
+     "thread_id": 1,
+     "sender": "assistant",
+     "body": "Before the next wakeup I can only give a short answer. A proper review of the other timers needs a full run.",
+     "via": null,
+     "run_id": 123,
+     "attachments": [],
+     "delivery": "delivered",
+     "created_at": "2026-11-15T04:57:06Z"
+    }
+   },
+   {
+    "type": "promote",
+    "at": "2026-11-15T04:57:06Z",
+    "promote": {
+     "id": 1,
+     "run_id": 123,
+     "thread_id": 1,
+     "reason": "Audit every timer for DST issues",
+     "budget": 3.0,
+     "status": "open",
+     "note": null,
+     "created_at": "2026-11-15T04:57:06Z",
+     "decided_at": null
+    }
+   }
+  ],
+  "before_cursor": null
+ },
+ "/api/threads/1/delivery": {
+  "state": "working",
+  "text": "Working now, sees it within a minute",
+  "next_wakeup_at": null,
+  "reply_now_available": false,
+  "reply_now_cost": null,
+  "reply_budget_left": 14.0
+ },
+ "/api/runs": [
+  {
+   "id": 123,
+   "kind": "wakeup",
+   "why": "planned",
+   "why_detail": "Finish the pump fix, then receipts",
+   "about": "Fix the Sunday double pump trigger, then file receipts",
+   "now": "Running the DST test suite on the patched scheduler",
+   "provider": "claude-subscription",
+   "tier": "sonnet/medium",
+   "budget": 10.0,
+   "used": 3.8,
+   "deadline": "2026-11-15T05:32:06Z",
+   "status": "running",
+   "started_at": "2026-11-15T04:47:06Z",
+   "ended_at": null,
+   "projects": [
+    "garden-irrigation",
+    "tax-prep-2026"
+   ]
+  },
+  {
+   "id": 122,
+   "kind": "routine",
+   "why": "routine",
+   "why_detail": "weekly review",
+   "about": "Weekly review across all projects",
+   "now": null,
+   "provider": "claude-subscription",
+   "tier": "sonnet/medium",
+   "budget": 3.0,
+   "used": 2.6,
+   "deadline": null,
+   "status": "done",
+   "started_at": "2026-11-09T05:05:06Z",
+   "ended_at": "2026-11-09T05:14:06Z",
+   "projects": []
+  },
+  {
+   "id": 121,
+   "kind": "wakeup",
+   "why": "planned",
+   "why_detail": "new files in _inbox/",
+   "about": "Categorize 41 receipts for Tax prep 2026",
+   "now": null,
+   "provider": "claude-subscription",
+   "tier": "sonnet/medium",
+   "budget": 8.0,
+   "used": 7.9,
+   "deadline": null,
+   "status": "partial",
+   "started_at": "2026-11-12T04:05:06Z",
+   "ended_at": "2026-11-12T05:17:06Z",
+   "projects": [
+    "tax-prep-2026"
+   ]
+  },
+  {
+   "id": 120,
+   "kind": "wakeup",
+   "why": "sweep",
+   "why_detail": null,
+   "about": "Leftover budget before the reset: stale threads and suggestions",
+   "now": null,
+   "provider": "claude-subscription",
+   "tier": "sonnet/medium",
+   "budget": 1.5,
+   "used": 0.8,
+   "deadline": null,
+   "status": "done",
+   "started_at": "2026-11-11T05:05:06Z",
+   "ended_at": "2026-11-11T05:11:06Z",
+   "projects": []
+  },
+  {
+   "id": 119,
+   "kind": "reply",
+   "why": "promoted",
+   "why_detail": "you approved",
+   "about": "Trace pump logs, find the double trigger",
+   "now": null,
+   "provider": "claude-subscription",
+   "tier": "sonnet/medium",
+   "budget": 6.0,
+   "used": 5.5,
+   "deadline": null,
+   "status": "done",
+   "started_at": "2026-11-10T05:05:06Z",
+   "ended_at": "2026-11-10T05:46:06Z",
+   "projects": [
+    "garden-irrigation"
+   ]
+  },
+  {
+   "id": 118,
+   "kind": "wakeup",
+   "why": "fallback",
+   "why_detail": "no wakeup for 2 nights",
+   "about": "Fallback check-in",
+   "now": null,
+   "provider": "claude-subscription",
+   "tier": "haiku/low",
+   "budget": 2.0,
+   "used": 0.4,
+   "deadline": null,
+   "status": "stopped",
+   "started_at": "2026-11-08T05:05:06Z",
+   "ended_at": "2026-11-08T05:08:06Z",
+   "projects": []
+  }
+ ],
+ "/api/runs/123": {
+  "run": {
+   "id": 123,
+   "kind": "wakeup",
+   "why": "planned",
+   "why_detail": "Finish the pump fix, then receipts",
+   "about": "Fix the Sunday double pump trigger, then file receipts",
+   "now": "Running the DST test suite on the patched scheduler",
+   "provider": "claude-subscription",
+   "tier": "sonnet/medium",
+   "budget": 10.0,
+   "used": 3.8,
+   "deadline": "2026-11-15T05:32:06Z",
+   "status": "running",
+   "started_at": "2026-11-15T04:47:06Z",
+   "ended_at": null,
+   "projects": [
+    "garden-irrigation",
+    "tax-prep-2026"
+   ]
+  },
+  "claims": [
+   {
+    "id": 1,
+    "run_id": 123,
+    "thread_id": 1,
+    "thread_title": "Pump controller firmware",
+    "plan": "Switch fallback timer to UTC and add a 10-minute debounce",
+    "status": "in_progress",
+    "result": "Patched scheduler.py, running the DST test suite (4 of 7 passed so far).",
+    "created_at": "2026-11-15T04:47:06Z",
+    "updated_at": "2026-11-15T05:03:06Z"
+   },
+   {
+    "id": 2,
+    "run_id": 123,
+    "thread_id": 6,
+    "thread_title": "Receipts to categorize",
+    "plan": "File the 6 receipts that arrived this week",
+    "status": "planned",
+    "result": "Waiting for budget after the firmware fix",
+    "created_at": "2026-11-15T04:47:06Z",
+    "updated_at": "2026-11-15T04:47:06Z"
+   }
+  ],
+  "changes": {
+   "memory": [
+    {
+     "path": "projects/garden-irrigation.md",
+     "added": 12,
+     "removed": 3
+    },
+    {
+     "path": "knowledge/esp32-dst.md",
+     "added": 21,
+     "removed": 0
+    }
+   ],
+   "work": [
+    {
+     "path": "garden-irrigation/firmware/scheduler.py",
+     "added": 18,
+     "removed": 6
+    },
+    {
+     "path": "garden-irrigation/firmware/test_dst.py",
+     "added": 64,
+     "removed": 0
+    }
+   ],
+   "shelved": [
+    "scheduler.py \u00b7 live"
+   ],
+   "asks": [
+    "Flash the fix?",
+    "Write access"
+   ],
+   "threads": [
+    "Suggested: split calibration"
+   ]
+  },
+  "reviewer_mode": "monitor",
+  "level": "Standard"
+ },
+ "/api/runs/123/timeline?view=simple": [
+  {
+   "id": 1,
+   "run_id": 123,
+   "at": "2026-11-15T04:47:06Z",
+   "kind": "control",
+   "simple": true,
+   "text": "Woke for planned slot. Reviewer in Monitor mode, every 10 min.",
+   "data": {
+    "budget": 10,
+    "deadline_min": 45
+   }
+  },
+  {
+   "id": 4,
+   "run_id": 123,
+   "at": "2026-11-15T04:50:42Z",
+   "kind": "note",
+   "simple": true,
+   "text": "Reproduced the double trigger with a fake DST clock.",
+   "data": {}
+  },
+  {
+   "id": 5,
+   "run_id": 123,
+   "at": "2026-11-15T04:54:18Z",
+   "kind": "ask",
+   "simple": true,
+   "text": "Filed a question: flash the fix or leave it?",
+   "data": {
+    "question_id": 1
+   }
+  },
+  {
+   "id": 6,
+   "run_id": 123,
+   "at": "2026-11-15T04:56:36Z",
+   "kind": "reviewer",
+   "simple": true,
+   "text": "Reviewer: the rain-delay timer uses the same comparison. Include it or note it as a follow-up.",
+   "data": {
+    "from": "reviewer"
+   }
+  },
+  {
+   "id": 8,
+   "run_id": 123,
+   "at": "2026-11-15T04:59:06Z",
+   "kind": "diff",
+   "simple": true,
+   "text": "Patched firmware/scheduler.py  +18 \u22126",
+   "data": {
+    "path": "/work/garden-irrigation/firmware/scheduler.py",
+    "added": 18,
+    "removed": 6,
+    "patch": "-    if now.hour == slot.hour and now.minute == slot.minute:\n+    now_utc = now.astimezone(timezone.utc)\n+    if abs((now_utc - slot.utc).total_seconds()) < DEBOUNCE_S:"
+   }
+  },
+  {
+   "id": 9,
+   "run_id": 123,
+   "at": "2026-11-15T05:01:06Z",
+   "kind": "shelf",
+   "simple": true,
+   "text": "Shelved scheduler.py (live, keeping versions).",
+   "data": {
+    "shelf_id": 1
+   }
+  },
+  {
+   "id": 10,
+   "run_id": 123,
+   "at": "2026-11-15T05:03:06Z",
+   "kind": "model",
+   "simple": true,
+   "text": "Effort medium \u2192 high for the test pass (reviewer approved).",
+   "data": {
+    "from": "sonnet/medium",
+    "to": "sonnet/high"
+   }
+  },
+  {
+   "id": 12,
+   "run_id": 123,
+   "at": "2026-11-15T05:05:06Z",
+   "kind": "status",
+   "simple": true,
+   "text": "Running the DST test suite on the patched scheduler",
+   "data": {}
+  }
+ ],
+ "/api/runs/123/timeline?view=detailed": [
+  {
+   "id": 1,
+   "run_id": 123,
+   "at": "2026-11-15T04:47:06Z",
+   "kind": "control",
+   "simple": true,
+   "text": "Woke for planned slot. Reviewer in Monitor mode, every 10 min.",
+   "data": {
+    "budget": 10,
+    "deadline_min": 45
+   }
+  },
+  {
+   "id": 2,
+   "run_id": 123,
+   "at": "2026-11-15T04:47:10Z",
+   "kind": "thinking",
+   "simple": false,
+   "text": "The Sunday log shows the fallback firing 4 s after the main trigger. Probably a local-time comparison.",
+   "data": {}
+  },
+  {
+   "id": 3,
+   "run_id": 123,
+   "at": "2026-11-15T04:47:15Z",
+   "kind": "tool",
+   "simple": false,
+   "text": "read_file scheduler.py \u00b7 read_file pump-log-1102.csv \u00b7 grep \"fallback\"",
+   "data": {
+    "count": 3
+   }
+  },
+  {
+   "id": 4,
+   "run_id": 123,
+   "at": "2026-11-15T04:50:42Z",
+   "kind": "note",
+   "simple": true,
+   "text": "Reproduced the double trigger with a fake DST clock.",
+   "data": {}
+  },
+  {
+   "id": 5,
+   "run_id": 123,
+   "at": "2026-11-15T04:54:18Z",
+   "kind": "ask",
+   "simple": true,
+   "text": "Filed a question: flash the fix or leave it?",
+   "data": {
+    "question_id": 1
+   }
+  },
+  {
+   "id": 6,
+   "run_id": 123,
+   "at": "2026-11-15T04:56:36Z",
+   "kind": "reviewer",
+   "simple": true,
+   "text": "Reviewer: the rain-delay timer uses the same comparison. Include it or note it as a follow-up.",
+   "data": {
+    "from": "reviewer"
+   }
+  },
+  {
+   "id": 7,
+   "run_id": 123,
+   "at": "2026-11-15T04:57:06Z",
+   "kind": "reviewer",
+   "simple": false,
+   "text": "Worker: noted, will include it in the same patch.",
+   "data": {
+    "from": "worker"
+   }
+  },
+  {
+   "id": 8,
+   "run_id": 123,
+   "at": "2026-11-15T04:59:06Z",
+   "kind": "diff",
+   "simple": true,
+   "text": "Patched firmware/scheduler.py  +18 \u22126",
+   "data": {
+    "path": "/work/garden-irrigation/firmware/scheduler.py",
+    "added": 18,
+    "removed": 6,
+    "patch": "-    if now.hour == slot.hour and now.minute == slot.minute:\n+    now_utc = now.astimezone(timezone.utc)\n+    if abs((now_utc - slot.utc).total_seconds()) < DEBOUNCE_S:"
+   }
+  },
+  {
+   "id": 9,
+   "run_id": 123,
+   "at": "2026-11-15T05:01:06Z",
+   "kind": "shelf",
+   "simple": true,
+   "text": "Shelved scheduler.py (live, keeping versions).",
+   "data": {
+    "shelf_id": 1
+   }
+  },
+  {
+   "id": 10,
+   "run_id": 123,
+   "at": "2026-11-15T05:03:06Z",
+   "kind": "model",
+   "simple": true,
+   "text": "Effort medium \u2192 high for the test pass (reviewer approved).",
+   "data": {
+    "from": "sonnet/medium",
+    "to": "sonnet/high"
+   }
+  },
+  {
+   "id": 11,
+   "run_id": 123,
+   "at": "2026-11-15T05:04:36Z",
+   "kind": "usage",
+   "simple": false,
+   "text": "Usage sample: 3.8 pts used, 38% of budget at 40% of time",
+   "data": {
+    "used": 3.8,
+    "budget": 10
+   }
+  },
+  {
+   "id": 12,
+   "run_id": 123,
+   "at": "2026-11-15T05:05:06Z",
+   "kind": "status",
+   "simple": true,
+   "text": "Running the DST test suite on the patched scheduler",
+   "data": {}
+  }
+ ],
+ "/api/files/list?volume=workspace&path=": {
+  "volume": "workspace",
+  "path": "",
+  "git": true,
+  "entries": [
+   {
+    "name": "decisions",
+    "dir": true,
+    "size": null,
+    "modified_at": null,
+    "last_run_id": null,
+    "from_owner": false
+   },
+   {
+    "name": "journal",
+    "dir": true,
+    "size": null,
+    "modified_at": null,
+    "last_run_id": null,
+    "from_owner": false
+   },
+   {
+    "name": "knowledge",
+    "dir": true,
+    "size": null,
+    "modified_at": null,
+    "last_run_id": null,
+    "from_owner": false
+   },
+   {
+    "name": "people",
+    "dir": true,
+    "size": null,
+    "modified_at": null,
+    "last_run_id": null,
+    "from_owner": false
+   },
+   {
+    "name": "plan",
+    "dir": true,
+    "size": null,
+    "modified_at": null,
+    "last_run_id": null,
+    "from_owner": false
+   },
+   {
+    "name": "projects",
+    "dir": true,
+    "size": null,
+    "modified_at": null,
+    "last_run_id": null,
+    "from_owner": false
+   },
+   {
+    "name": "reviews",
+    "dir": true,
+    "size": null,
+    "modified_at": null,
+    "last_run_id": null,
+    "from_owner": false
+   },
+   {
+    "name": "system",
+    "dir": true,
+    "size": null,
+    "modified_at": null,
+    "last_run_id": null,
+    "from_owner": false
+   },
+   {
+    "name": "tools",
+    "dir": true,
+    "size": null,
+    "modified_at": null,
+    "last_run_id": null,
+    "from_owner": false
+   },
+   {
+    "name": "CLAUDE.md",
+    "dir": false,
+    "size": 5200,
+    "modified_at": "2026-11-09T05:05:06Z",
+    "last_run_id": 117,
+    "from_owner": false
+   },
+   {
+    "name": "NOW.md",
+    "dir": false,
+    "size": 900,
+    "modified_at": "2026-11-15T05:05:06Z",
+    "last_run_id": 123,
+    "from_owner": false
+   }
+  ]
+ }
+}

@@ -27,7 +27,13 @@ A normal, instant LLM chat that also knows the owner's assistant. It has no comp
 - Machine work is handed to the assistant.
 - For harness or container changes, it tells the owner to use a coding agent and can draft the spec.
 
-**Usage** counts as the owner's own, not the assistant's allowance.
+### Chat usage (budget)
+- **The 1:1 chat has no budget of its own by default.** It's the owner's own use, like using claude.ai directly. It doesn't touch the assistant's allowance, its reply budget, or any wakeup's budget.
+- It's **not gated** by the assistant's reserve either: the reserve exists to protect the owner's use, and this *is* the owner's use. The provider's own limits still apply (a Claude subscription's 5-hour and weekly caps).
+- **Tracked separately**: the usage view shows three lines (you on other apps, your 1:1 chats, the assistant) so the owner can see what the chat costs.
+- **Optional cap**: an owner can set a weekly chat cap per provider (useful with dollar-billed API keys). When it's reached, the chat says so and stops.
+- **Waking the assistant from a chat** is different. That's assistant work, so it uses the **reply budget** (or, for a full run, needs approval like any promote).
+- **Outside chat services** (Claude.ai, ChatGPT…) through the connector run on *their* model and account, so they cost the instance nothing. If they use the same Claude account, that use still counts toward the owner's weekly limit, as any claude.ai use does. Waking the assistant from them uses the reply budget.
 
 ## Connector for outside chat services (MCP)
 

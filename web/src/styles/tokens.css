@@ -1,0 +1,36 @@
+/* Theme tokens, carried over unchanged from the mockup (design/mockup/src/app.css).
+   The theme is set on <html data-theme="light|dark">; "system" follows the OS. */
+:root {
+  --bg:#faf9f5;--fg:#1f1e1d;--fg2:#3d3a35;--side:#f3f1ea;--card:#ffffff;--line:#e8e4da;--line2:#dcd7cc;--line3:#d6d0c3;--lineSoft:#eeebe3;
+  --soft:#f1eee6;--bubble:#efece3;--hover:#ebe8df;--active:#e7e3d9;--rowh:#f6f4ee;--code:#fcfbf8;--track:#ece8de;--stripe:#f3f0e8;--today:#fdfbf7;
+  --muted:#6f6a62;--faint:#8a857c;--faint2:#9a958c;--dim:#c9c3b6;
+  --accent:#c4673f;--accentInk:#a8532f;--accentSoft:#f8ece5;--accentLine:#e2b59e;--accentLine2:#e3cbbd;
+  --okDot:#5a8a5e;--okInk:#4a7350;--okSoft:#e8f0e5;--okLine:#b5ccb0;
+  --infoDot:#6b8fb8;--infoInk:#3b5a80;--infoSoft:#e9eff6;--infoLine:#b3c6dc;
+  --badInk:#a8392f;--badSoft:#fbf0ec;
+  --warnDot:#b8862f;--warnInk:#8a6a1f;--warnSoft:#f6eed8;
+  --purpleInk:#7a4f8f;--purpleSoft:#fbf8fc;
+  --shadow:0 14px 40px rgba(20,19,17,.16);
+  --serif:'Source Serif 4 Variable','Source Serif 4',Georgia,serif;
+  --sans:'Geist Variable',Geist,system-ui,sans-serif;
+  --mono:'Geist Mono Variable','Geist Mono',ui-monospace,monospace;
+  color-scheme: light;
+}
+:root[data-theme=dark] {
+  --bg:#262624;--fg:#f3f1ea;--fg2:#d9d5cc;--side:#1f1e1d;--card:#30302d;--line:#3e3d39;--line2:#4a4844;--line3:#57544f;--lineSoft:#363532;
+  --soft:#3a3935;--bubble:#3a3936;--hover:#2d2c29;--active:#383733;--rowh:#353431;--code:#2b2a28;--track:#43413d;--stripe:#33322f;--today:#2b2a27;
+  --muted:#aaa59c;--faint:#949087;--faint2:#827e76;--dim:#5e5b55;
+  --accentInk:#e6936e;--accentSoft:#4a3229;--accentLine:#7a4a35;--accentLine2:#5e3b2d;
+  --okInk:#93c49a;--okSoft:#2f3d30;--okLine:#4d6b51;
+  --infoInk:#9fbbdf;--infoSoft:#2c3543;--infoLine:#4b607c;
+  --badInk:#ee8d82;--badSoft:#462d29;
+  --warnInk:#dcb769;--warnSoft:#433924;
+  --purpleInk:#c6a3da;--purpleSoft:#342c39;
+  --shadow:0 14px 40px rgba(0,0,0,.4);
+  color-scheme: dark;
+}
+
+@keyframes rise { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:none } }
+@keyframes fade { from { opacity:0 } to { opacity:1 } }
+@keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.35 } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important } }
