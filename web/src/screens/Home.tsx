@@ -77,10 +77,12 @@ export function Home() {
               <div><span style={{ font: '500 28px var(--serif)' }}>{pts(st.budget.left)}</span> <span className="sub">of {pts(st.budget.allowance)} {st.budget.unit} left</span></div>
               <div className="gauge" style={{ display: 'flex' }}>
                 <div style={{ width: `${(st.budget.used_by_owner / st.budget.allowance) * 100}%`, background: 'var(--okInk)', borderRadius: 0 }} />
+                <div style={{ width: `${(st.budget.used_by_chat / st.budget.allowance) * 100}%`, background: 'var(--infoInk)', borderRadius: 0 }} />
                 <div style={{ width: `${(st.budget.used_by_assistant / st.budget.allowance) * 100}%`, borderRadius: 0 }} />
               </div>
               <div className="row-between sub">
                 <span><span className="dot ok" style={{ display: 'inline-block', marginRight: 6 }} />You · {pts(st.budget.used_by_owner)}</span>
+                <span><span className="dot info" style={{ display: 'inline-block', marginRight: 6, background: 'var(--infoInk)' }} />Your chats · {pts(st.budget.used_by_chat)}</span>
                 <span><span className="dot working" style={{ display: 'inline-block', marginRight: 6, animation: 'none' }} />Assistant · {pts(st.budget.used_by_assistant)}</span>
               </div>
             </section>

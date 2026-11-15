@@ -56,7 +56,8 @@ class BudgetSummary(Model):
     left: float
     allowance: float
     used_by_assistant: float
-    used_by_owner: float
+    used_by_owner: float = Field(description="The owner's own use outside l0wagent (other apps).")
+    used_by_chat: float = Field(description="The owner's 1:1 chats. Owner usage, not an assistant budget; shown as its own line.")
     resets_at: datetime | None = None
 
 

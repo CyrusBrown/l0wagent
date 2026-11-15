@@ -73,7 +73,7 @@ class MockBackend(Backend):
             state="working" if running else "asleep", now=running.now if running else None, run_id=running.id if running else None,
             run_used=running.used if running else None, run_budget=running.budget if running else None,
             next_wakeup_at=_now().replace(hour=2, minute=0, second=0) + timedelta(days=1),
-            budget=s.BudgetSummary(unit="pts", left=42, allowance=120, used_by_assistant=48, used_by_owner=30, resets_at=_now() + timedelta(days=3)),
+            budget=s.BudgetSummary(unit="pts", left=42, allowance=120, used_by_assistant=48, used_by_owner=22, used_by_chat=8, resets_at=_now() + timedelta(days=3)),
             inbox_waiting=self.inbox_counts().waiting, reply_budget_left=14,
         )
 
@@ -439,7 +439,7 @@ class MockBackend(Backend):
                 shelved=["scheduler.py · live"], asks=["Flash the fix?", "Write access"], threads=["Suggested: split calibration"],
             )
         return s.RunDetail(run=r, claims=[c for c in self.w.claims.values() if c.run_id == run_id], changes=changes,
-                           reviewer_mode="monitor", level="Standard")
+                           reviewer_mode="monitor", level="Steady")
 
     def timeline(self, run_id: int, view: str, kinds: list[str] | None, after: int | None) -> list[s.TimelineItem]:
         self.run(run_id)

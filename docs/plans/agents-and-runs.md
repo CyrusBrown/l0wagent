@@ -71,7 +71,7 @@ This replaces today's nightly, review, turbo and chat modes.
 | **Allowance** | The share of a provider's usage the assistant may plan with this week (e.g. 15% of a Claude subscription's week, or $5 of an API key). It comes out of usage the owner might otherwise use, so the owner sets it. |
 | **Reserve** | Limits that protect the owner's own use: never start a wakeup above 80% weekly usage; keep the 5-hour window below 70%. |
 | **Reply budget** | A small separate weekly budget for Reply-now runs, so quick replies never eat into the assistant's planned wakeups. |
-| **Level** | A preset (Dormant, Light, Standard, High, Max) that fills in the allowance, wakeup limits and tiers in one choice. |
+| **Level** | A preset (Dormant, Frugal, Steady, Busy, Max) that fills in the allowance, wakeup limits and tiers in one choice. |
 | **Boost** | A temporary raise of the level (until a time, or until the weekly reset). |
 | **Wakeup plan** | The assistant's own schedule of upcoming wakeups, each with a time, budget, tier and reason, validated by control and shown on the Calendar. |
 | **Fallback wakeup** | One default night wakeup control adds if nothing is planned for 2 nights, so the assistant can't strand itself. |
@@ -97,15 +97,15 @@ This replaces today's nightly, review, turbo and chat modes.
 
 **Level presets** fill these in from one choice, scaled to the plan size:
 
-| Level | Roughly |
+| Level | Roughly (shares are placeholders until points are defined, before M4) |
 |---|---|
 | **Dormant** | No scheduled wakeups; Reply now only. |
-| **Light** | ~5% of the week; a few short night wakeups; a small model. |
-| **Standard** | ~15%; about one wakeup a night; a mid model. |
-| **High** | ~40%; nightly plus off-hours wakeups; sweep on. |
+| **Frugal** | ~5% of the week; a few short night wakeups; a small model. |
+| **Steady** | ~15%; about one wakeup a night; a mid model. |
+| **Busy** | ~40%; nightly plus off-hours wakeups; sweep on. |
 | **Max** | ~85%; around the clock, paced per 5-hour window; sweep on. |
 
-**Boost** is a temporary raise ("High until Friday's reset", "Max for 6 hours").
+**Boost** is a temporary raise ("Busy until Friday's reset", "Max for 6 hours").
 
 ### Reply now
 - A Reply-now run (from the owner, or the 1:1 chat waking the assistant) is short and uses the **reply budget**.
@@ -136,11 +136,11 @@ This replaces today's nightly, review, turbo and chat modes.
 - **How**: control adds sweep wakeups to the calendar. The assistant uses them for the most valuable work in its backlog (or the weekly review, if it's scheduled there). If there's nothing worthwhile, it ends with `IDLE` and the leftover goes unused. Control doesn't push it to make busywork.
 - **On top of the allowance**: the sweep uses only what the owner demonstrably didn't use, so it never reduces the owner's own room during the week.
 - **Only for resetting limits**: Claude subscriptions (and any provider with a reset window). For API keys and other dollar budgets, nothing is lost by not spending, so there's no sweep.
-- **Defaults**: the setting is on for High and Max, and off for Dormant, Light and Standard (owners can turn it on). This replaces the old weekly review campaign, which started 5 hours before the reset and stopped near 98%.
+- **Defaults**: the setting is on for Busy and Max, and off for Dormant, Frugal and Steady (owners can turn it on). This replaces the old weekly review campaign, which started 5 hours before the reset and stopped near 98%.
 
 ### Planner (optional)
 - **Default: the script above.** Free.
-- **Optional planner model**: a small model run by control (no computer). It checks the plan after each wakeup and once a day, catching front-loading, empty stretches and wakeups that miss a friend's. It can only move or resize wakeups within the limits, and every change shows on the calendar with its reason. It's most useful at High/Max. Add it only if plans turn out poor.
+- **Optional planner model**: a small model run by control (no computer). It checks the plan after each wakeup and once a day, catching front-loading, empty stretches and wakeups that miss a friend's. It can only move or resize wakeups within the limits, and every change shows on the calendar with its reason. It's most useful at Busy/Max. Add it only if plans turn out poor.
 
 ### Reviewer (optional)
 

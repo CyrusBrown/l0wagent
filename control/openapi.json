@@ -3072,7 +3072,13 @@
           },
           "used_by_owner": {
             "type": "number",
-            "title": "Used By Owner"
+            "title": "Used By Owner",
+            "description": "The owner's own use outside l0wagent (other apps)."
+          },
+          "used_by_chat": {
+            "type": "number",
+            "title": "Used By Chat",
+            "description": "The owner's 1:1 chats. Owner usage, not an assistant budget; shown as its own line."
           },
           "resets_at": {
             "anyOf": [
@@ -3094,7 +3100,8 @@
           "left",
           "allowance",
           "used_by_assistant",
-          "used_by_owner"
+          "used_by_owner",
+          "used_by_chat"
         ],
         "title": "BudgetSummary"
       },

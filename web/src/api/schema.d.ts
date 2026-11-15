@@ -857,8 +857,16 @@ export interface components {
             allowance: number;
             /** Used By Assistant */
             used_by_assistant: number;
-            /** Used By Owner */
+            /**
+             * Used By Owner
+             * @description The owner's own use outside l0wagent (other apps).
+             */
             used_by_owner: number;
+            /**
+             * Used By Chat
+             * @description The owner's 1:1 chats. Owner usage, not an assistant budget; shown as its own line.
+             */
+            used_by_chat: number;
             /** Resets At */
             resets_at?: string | null;
         };

@@ -33,11 +33,11 @@ Resolutions: **plan** = update the plan to match the mockup. **owner** = needs y
 
 | # | Mockup | Plan | Resolution |
 |---|---|---|---|
-| 14 | Levels **Frugal / Steady / Busy / Max** with fixed pts per week (40 / 120 / 250 / 500). | Levels **Dormant / Light / Standard / High / Max** as % of the plan. | **owner**. The level picker's look follows the mockup; which levels exist is your call. |
-| 15 | Everything in **pts**, one unit across providers ("42 of 120 pts left"). | Per-provider native units (% of week, $). | **owner**: what is a point? Needed before `budgets` is designed (M4); the M0 schema stores `runs.budget` unit-free. |
-| 16 | Permissions offer **Allow for project / Allow once / Deny**. | Yes/no with actions. | **owner**: confirm approvals have a scope. The API already supports it (`scope`: once / project / always). |
-| 17 | Sweep = scheduled "tidy threads" slots. | Sweep = spend leftover budget near the weekly reset. | **owner**: which meaning? |
-| 18 | 1:1 chat "uses the chat budget". | Chat usage counts as the owner's own. | **owner**: is there a chat budget? |
+| 14 | Levels **Frugal / Steady / Busy / Max** with fixed pts per week. | Dormant / Light / Standard / High / Max. | **Decided (owner, 2026-11-14): Dormant / Frugal / Steady / Busy / Max.** Plan renamed; the rough shares stay placeholders until points are defined. |
+| 15 | Everything in **pts**, one unit across providers. | Per-provider native units. | **Open: the owner decides how points are calculated before M4.** The M0 schema and API keep budgets unit-free (`BudgetSummary.unit`). |
+| 16 | Permissions offer **Allow for project / Allow once / Deny**. | Yes/no with actions. | **Decided: approvals carry a scope** (once / project / always), offered per permission. Already in the schema (`permissions.scope`) and API. |
+| 17 | Sweep = scheduled "tidy threads" slots. | Sweep = leftover usage before the reset. | **Decided: the plan's meaning**, now specified in [agents-and-runs.md](../../docs/plans/agents-and-runs.md#sweep) (last 5 h, up to 95%, Claude subscriptions only). Fixtures use it. |
+| 18 | 1:1 chat "uses the chat budget". | Chat is the owner's own usage. | **Decided: no chat budget by default** (optional cap), usage shown as its own line. The API's `BudgetSummary` has `used_by_owner`, `used_by_chat` and `used_by_assistant`; chat copy reads as owner usage, not "chat budget". |
 | 19 | Setup offers **Anthropic and OpenAI**; the reviewer uses OpenAI. | Claude (subscription or API) and opencode Zen first. | **fixture** unless you want OpenAI early. |
 | 20 | Fastmail preset, Home Assistant, a Telegram bot in Connected apps. | GitHub preset only at first; connected apps are MCP clients. | **fixture**. |
 | 21 | Agent web page on port 8080. | Port 8787. | **fixture**. |
