@@ -112,6 +112,34 @@ def revoke_session(session_id: str, be: Be) -> s.Ok:
     return s.Ok()
 
 
+@api.post("/account/password", tags=["auth"], responses={400: {"model": s.PasswordProblem}})
+def change_password(
+    req: s.PasswordChange,
+    be: Be,
+    cookie: Annotated[str | None, Depends(cookie_scheme)],
+    bearer: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+) -> s.Ok:
+    """Online only. Signs out every other session and device."""
+    be.change_password(req, cookie, bearer.credentials if bearer else None)
+    return s.Ok()
+
+
+@api.post("/account/totp/setup", tags=["auth"])
+def totp_setup(be: Be) -> s.TotpSetup:
+    """A new secret to scan. Nothing changes until it's enabled with a valid code."""
+    return be.totp_setup()
+
+
+@api.post("/account/totp/enable", tags=["auth"], responses={400: {"model": s.LoginError}})
+def totp_enable(req: s.TotpEnable, be: Be) -> s.Owner:
+    return be.totp_enable(req)
+
+
+@api.post("/account/totp/disable", tags=["auth"], responses={400: {"model": s.PasswordProblem}})
+def totp_disable(req: s.TotpDisable, be: Be) -> s.Owner:
+    return be.totp_disable(req)
+
+
 # ── Status, sync, live events ──────────────────────────────────────────────
 @api.get("/status", tags=["meta"])
 def get_status(be: Be) -> s.Status:
@@ -327,6 +355,37 @@ def list_jobs(be: Be, include_done: bool = False) -> list[s.Job]:
     return be.jobs(include_done)
 
 
+# ── Secrets ────────────────────────────────────────────────────────────────
+@api.get("/secrets", tags=["secrets"])
+def list_secrets(be: Be) -> list[s.SecretInfo]:
+    return be.secrets()
+
+
+@api.put("/secrets/{name}", tags=["secrets"], responses={400: {"model": s.PasswordProblem}})
+def set_secret(name: str, req: s.SecretSet, be: Be) -> s.SecretInfo:
+    """Write-only: the value goes to the agent's environment and is redacted everywhere else."""
+    return be.set_secret(name, req)
+
+
+@api.delete("/secrets/{name}", tags=["secrets"])
+def delete_secret(name: str, be: Be) -> s.Ok:
+    be.delete_secret(name)
+    return s.Ok()
+
+
+# ── System ─────────────────────────────────────────────────────────────────
+@api.get("/system", tags=["system"])
+def system_status(be: Be) -> s.SystemStatus:
+    """The agent computer, egress, usage and whether runs may start."""
+    return be.system_status()
+
+
+@api.post("/system/selftest", tags=["system"])
+def selftest(be: Be) -> s.SelfTestResult:
+    """Run the isolation self-test (also shown at the end of the setup wizard)."""
+    return be.selftest()
+
+
 # ── Files and shelf ────────────────────────────────────────────────────────
 @api.get("/files/list", tags=["files"])
 def list_dir(be: Be, volume: s.Volume, path: str = "") -> s.Listing:
@@ -367,6 +426,7 @@ def remove_from_shelf(item_id: int, be: Be) -> s.Ok:
 @api.get("/shelf/{item_id}/versions", tags=["files"])
 def shelf_versions(item_id: int, be: Be) -> list[s.ShelfVersion]:
     return be.shelf_versions(item_id)
+
 
 
 @api.post("/uploads", tags=["files"], status_code=201)

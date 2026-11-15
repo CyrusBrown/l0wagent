@@ -39,12 +39,16 @@ class World:
     files: dict[str, Any] = field(default_factory=dict)
     file_text: dict[str, str] = field(default_factory=dict)
     sessions: dict[str, s.AuthSession] = field(default_factory=dict)
+    secrets: dict[str, s.SecretInfo] = field(default_factory=dict)
 
 
 def build(now: datetime | None = None) -> World:
     now = now or _now()
     w = World(now=now)
     ago = lambda **kw: now - timedelta(**kw)  # noqa: E731
+
+    for name, desc, reads in (("GITHUB_TOKEN", "Fine-grained, repo: garden-irrigation", 14), ("HOME_ASSISTANT_TOKEN", "Long-lived token, read-only user", 3)):
+        w.secrets[name] = s.SecretInfo(name=name, description=desc, scope="agent", created_at=ago(days=20), updated_at=ago(days=6), reads=reads, last_read_at=ago(hours=9))
 
     # ── Projects ───────────────────────────────────────────────────────────
     def project(slug, name, status, summary, last, doc=True):

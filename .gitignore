@@ -12,3 +12,5 @@ __pycache__/
 node_modules/
 web/dist/
 *.tsbuildinfo
+# control (local runs)
+control/data/

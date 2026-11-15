@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, newKey, ok, type S } from './client'
+import { api, ApiError, newKey, ok, type S } from './client'
 
 // Query keys start with the entity name so live events can invalidate by prefix (see live.ts).
 
@@ -26,8 +26,8 @@ export const useInbox = (view: 'waiting' | 'history', kind?: S['InboxEntry']['ki
 export const useInboxCounts = () => useQuery({ queryKey: ['inbox', 'counts'], queryFn: () => ok(api.GET('/api/inbox/counts')) })
 export const useClaims = () => useQuery({ queryKey: ['inbox', 'claims'], queryFn: () => ok(api.GET('/api/claims', { params: { query: { active: true } } })) })
 
-export const useRuns = (kind?: S['Run']['kind']) =>
-  useQuery({ queryKey: ['runs', kind ?? 'all'], queryFn: () => ok(api.GET('/api/runs', { params: { query: { kind } } })) })
+export const useRuns = (kind?: S['Run']['kind'], project?: string) =>
+  useQuery({ queryKey: ['runs', kind ?? 'all', project ?? ''], queryFn: () => ok(api.GET('/api/runs', { params: { query: { kind, project } } })) })
 export const useRun = (id: number) =>
   useQuery({ queryKey: ['run', id], queryFn: () => ok(api.GET('/api/runs/{run_id}', { params: { path: { run_id: id } } })) })
 export const useTimeline = (id: number, view: 'simple' | 'detailed') =>
@@ -51,7 +51,10 @@ function useInvalidating<A, R>(fn: (a: A) => Promise<R>, keys: string[][]) {
 const cardKeys = [['inbox'], ['thread'], ['threads'], ['projects'], ['status']]
 
 export const usePostMessage = (threadId: number) =>
-  useInvalidating((body: string) => ok(api.POST('/api/threads/{thread_id}/messages', { params: { path: { thread_id: threadId } }, body: { body, idempotency_key: newKey() } })), [['thread'], ['threads']])
+  useInvalidating((m: string | { body: string; upload_ids?: number[] }) => {
+    const { body, upload_ids = [] } = typeof m === 'string' ? { body: m } : m
+    return ok(api.POST('/api/threads/{thread_id}/messages', { params: { path: { thread_id: threadId } }, body: { body, upload_ids, idempotency_key: newKey() } }))
+  }, [['thread'], ['threads']])
 
 export const useReplyNow = (threadId: number) =>
   useInvalidating(() => ok(api.POST('/api/threads/{thread_id}/reply-now', { params: { path: { thread_id: threadId } } })), [['status'], ['runs'], ['thread']])
@@ -101,5 +104,62 @@ export const useRecent = (sender?: S['Message']['sender']) =>
   useQuery({ queryKey: ['threads', 'recent', sender ?? 'all'], queryFn: () => ok(api.GET('/api/messages/recent', { params: { query: { sender, limit: 5 } } })) })
 
 export const useCreateThread = () =>
-  useInvalidating((b: { title: string; project?: string | null; first_message?: string }) =>
+  useInvalidating((b: { title: string; project?: string | null; first_message?: string; upload_ids?: number[] }) =>
     ok(api.POST('/api/threads', { body: { ...b, idempotency_key: newKey() } })), [['threads'], ['projects']])
+
+// ── M1: runs, account, system, setup ───────────────────────────────────────
+export const useStartRun = () =>
+  useInvalidating((b: S['RunStart']) => ok(api.POST('/api/runs', { body: b })), [['status'], ['runs']])
+
+export const useSystem = () => useQuery({ queryKey: ['system'], queryFn: () => ok(api.GET('/api/system')), refetchInterval: 30_000 })
+export const useSelftest = () => useMutation({ mutationFn: () => ok(api.POST('/api/system/selftest')) })
+
+export const useSessions = () => useQuery({ queryKey: ['sessions'], queryFn: () => ok(api.GET('/api/account/sessions')) })
+export const useRevokeSession = () =>
+  useInvalidating((id: string) => ok(api.DELETE('/api/account/sessions/{session_id}', { params: { path: { session_id: id } } })), [['sessions'], ['inbox']])
+export const useChangePassword = () =>
+  useInvalidating((b: S['PasswordChange']) => ok(api.POST('/api/account/password', { body: b })), [['sessions']])
+export const useTotpSetup = () => useMutation({ mutationFn: () => ok(api.POST('/api/account/totp/setup')) })
+export const useTotpEnable = () => useInvalidating((b: S['TotpEnable']) => ok(api.POST('/api/account/totp/enable', { body: b })), [['me']])
+export const useTotpDisable = () => useInvalidating((b: S['TotpDisable']) => ok(api.POST('/api/account/totp/disable', { body: b })), [['me']])
+
+export const useSetupOwner = () => useMutation({ mutationFn: (b: S['SetupOwnerRequest']) => ok(api.POST('/api/setup/owner', { body: b })) })
+export const useLogout = () => {
+  const qc = useQueryClient()
+  return useMutation({ mutationFn: () => ok(api.POST('/api/auth/logout')), onSuccess: () => qc.invalidateQueries() })
+}
+
+/** The `detail` (or error code) from a failed request, for showing inline. */
+export function problem(e: unknown): string | null {
+  if (!e) return null
+  const body = (e as { body?: { detail?: unknown; error?: unknown } }).body
+  if (body && typeof body.detail === 'string' && body.detail) return body.detail
+  if (body && typeof body.error === 'string') return body.error.replace(/_/g, ' ')
+  return e instanceof Error ? e.message : 'Something went wrong.'
+}
+
+// ── M2: projects, threads, uploads, secrets ────────────────────────────────
+export const useCreateProject = () =>
+  useInvalidating((b: { name: string; summary?: string }) => ok(api.POST('/api/projects', { body: { name: b.name, summary: b.summary ?? '', idempotency_key: newKey() } })), [['projects']])
+
+export const usePatchThread = (id: number) =>
+  useInvalidating((b: S['ThreadPatch']) => ok(api.PATCH('/api/threads/{thread_id}', { params: { path: { thread_id: id } }, body: b })), [['thread'], ['threads'], ['projects']])
+
+/** Upload a file into the project's (or General's) _inbox/ folder; returns the upload. */
+export async function uploadFile(file: File, project: string | null): Promise<S['Upload']> {
+  const form = new FormData()
+  form.append('file', file)
+  if (project) form.append('project', project)
+  form.append('idempotency_key', newKey())
+  const res = await globalThis.fetch('/api/uploads', { method: 'POST', body: form, credentials: 'include' })
+  const body = await res.json().catch(() => null)
+  if (!res.ok) throw new ApiError(res.status, body)
+  return body as S['Upload']
+}
+
+export const useSecrets = () => useQuery({ queryKey: ['secrets'], queryFn: () => ok(api.GET('/api/secrets')) })
+export const useSetSecret = () =>
+  useInvalidating((a: { name: string } & S['SecretSet']) => ok(api.PUT('/api/secrets/{name}', { params: { path: { name: a.name } }, body: { value: a.value, description: a.description } })), [['secrets']])
+export const useDeleteSecret = () =>
+  useInvalidating((name: string) => ok(api.DELETE('/api/secrets/{name}', { params: { path: { name } } })), [['secrets']])
+

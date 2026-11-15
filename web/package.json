@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
     "test": "vitest run",
+    "e2e": "playwright test",
     "gen:api": "openapi-typescript ../control/openapi.json --default-non-nullable false -o src/api/schema.d.ts",
     "check:api": "openapi-typescript ../control/openapi.json --default-non-nullable false -o /tmp/l0w-schema-check.d.ts && diff -q /tmp/l0w-schema-check.d.ts src/api/schema.d.ts"
   },
@@ -24,6 +25,7 @@
     "rehype-sanitize": "^6.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",

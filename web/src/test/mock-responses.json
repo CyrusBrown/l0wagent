@@ -34,7 +34,17 @@
    "used_by_assistant": 48.0,
    "used_by_owner": 22.0,
    "used_by_chat": 8.0,
-   "resets_at": "2026-11-18T05:14:46Z"
+   "resets_at": "2026-11-18T20:39:13Z"
+  },
+  "usage": {
+   "provider": "claude-subscription",
+   "source": "oauth",
+   "fetched_at": "2026-11-15T20:39:13Z",
+   "five_hour_pct": 18.0,
+   "five_hour_resets_at": "2026-11-15T23:39:13Z",
+   "seven_day_pct": 41.0,
+   "seven_day_resets_at": "2026-11-19T20:39:13Z",
+   "error": null
   },
   "inbox_waiting": 12,
   "reply_budget_left": 14.0
@@ -54,7 +64,7 @@
   {
    "kind": "promote",
    "id": 1,
-   "at": "2026-11-15T05:06:46Z",
+   "at": "2026-11-15T20:31:13Z",
    "thread_id": 1,
    "thread_title": "Pump controller firmware",
    "project": "garden-irrigation",
@@ -70,7 +80,7 @@
     "budget": 3.0,
     "status": "open",
     "note": null,
-    "created_at": "2026-11-15T05:06:46Z",
+    "created_at": "2026-11-15T20:31:13Z",
     "decided_at": null
    },
    "security": null
@@ -78,7 +88,7 @@
   {
    "kind": "question",
    "id": 4,
-   "at": "2026-11-15T05:03:46Z",
+   "at": "2026-11-15T20:28:13Z",
    "thread_id": 1,
    "thread_title": "Pump controller firmware",
    "project": "garden-irrigation",
@@ -94,7 +104,7 @@
     "status": "open",
     "answer": null,
     "note": null,
-    "created_at": "2026-11-15T05:03:46Z",
+    "created_at": "2026-11-15T20:28:13Z",
     "answered_at": null
    },
    "permission": null,
@@ -106,7 +116,7 @@
   {
    "kind": "question",
    "id": 1,
-   "at": "2026-11-15T05:02:46Z",
+   "at": "2026-11-15T20:27:13Z",
    "thread_id": 1,
    "thread_title": "Pump controller firmware",
    "project": "garden-irrigation",
@@ -122,7 +132,7 @@
     "status": "open",
     "answer": null,
     "note": null,
-    "created_at": "2026-11-15T05:02:46Z",
+    "created_at": "2026-11-15T20:27:13Z",
     "answered_at": null
    },
    "permission": null,
@@ -134,7 +144,7 @@
   {
    "kind": "question",
    "id": 2,
-   "at": "2026-11-15T05:01:46Z",
+   "at": "2026-11-15T20:26:13Z",
    "thread_id": 1,
    "thread_title": "Pump controller firmware",
    "project": "garden-irrigation",
@@ -154,7 +164,7 @@
     "status": "open",
     "answer": null,
     "note": null,
-    "created_at": "2026-11-15T05:01:46Z",
+    "created_at": "2026-11-15T20:26:13Z",
     "answered_at": null
    },
    "permission": null,
@@ -166,7 +176,7 @@
   {
    "kind": "question",
    "id": 3,
-   "at": "2026-11-15T05:01:46Z",
+   "at": "2026-11-15T20:26:13Z",
    "thread_id": 1,
    "thread_title": "Pump controller firmware",
    "project": "garden-irrigation",
@@ -192,7 +202,7 @@
     "status": "open",
     "answer": null,
     "note": null,
-    "created_at": "2026-11-15T05:01:46Z",
+    "created_at": "2026-11-15T20:26:13Z",
     "answered_at": null
    },
    "permission": null,
@@ -204,7 +214,7 @@
   {
    "kind": "permission",
    "id": 1,
-   "at": "2026-11-15T05:00:46Z",
+   "at": "2026-11-15T20:25:13Z",
    "thread_id": 1,
    "thread_title": "Pump controller firmware",
    "project": "garden-irrigation",
@@ -232,7 +242,7 @@
     "status": "open",
     "scope": null,
     "note": null,
-    "created_at": "2026-11-15T05:00:46Z",
+    "created_at": "2026-11-15T20:25:13Z",
     "decided_at": null
    },
    "task": null,
@@ -243,7 +253,7 @@
   {
    "kind": "suggestion",
    "id": 1,
-   "at": "2026-11-15T04:54:46Z",
+   "at": "2026-11-15T20:19:13Z",
    "thread_id": 1,
    "thread_title": "Pump controller firmware",
    "project": "garden-irrigation",
@@ -262,7 +272,7 @@
      "new_title": "Moisture sensor calibration"
     },
     "status": "open",
-    "created_at": "2026-11-15T04:54:46Z",
+    "created_at": "2026-11-15T20:19:13Z",
     "decided_at": null
    },
    "promote": null,
@@ -271,7 +281,7 @@
   {
    "kind": "security",
    "id": 1,
-   "at": "2026-11-15T00:14:46Z",
+   "at": "2026-11-15T15:39:13Z",
    "thread_id": null,
    "thread_title": null,
    "project": null,
@@ -285,13 +295,13 @@
     "session_id": "s-firefox",
     "text": "New session: Firefox on Linux, 192.168.1.40",
     "status": "open",
-    "created_at": "2026-11-15T00:14:46Z"
+    "created_at": "2026-11-15T15:39:13Z"
    }
   },
   {
    "kind": "question",
    "id": 6,
-   "at": "2026-11-13T05:14:46Z",
+   "at": "2026-11-13T20:39:13Z",
    "thread_id": 9,
    "thread_title": "NAS backup schedule",
    "project": "home-lab",
@@ -312,7 +322,7 @@
     "status": "open",
     "answer": null,
     "note": null,
-    "created_at": "2026-11-13T05:14:46Z",
+    "created_at": "2026-11-13T20:39:13Z",
     "answered_at": null
    },
    "permission": null,
@@ -324,7 +334,7 @@
   {
    "kind": "task",
    "id": 1,
-   "at": "2026-11-13T05:14:46Z",
+   "at": "2026-11-13T20:39:13Z",
    "thread_id": 6,
    "thread_title": "Receipts to categorize",
    "project": "tax-prep-2026",
@@ -338,7 +348,7 @@
     "detail": "Photos 4, 9 and 17 in _inbox/.",
     "status": "open",
     "note": null,
-    "created_at": "2026-11-13T05:14:46Z",
+    "created_at": "2026-11-13T20:39:13Z",
     "resolved_at": null
    },
    "suggestion": null,
@@ -348,7 +358,7 @@
   {
    "kind": "question",
    "id": 5,
-   "at": "2026-11-12T05:14:46Z",
+   "at": "2026-11-12T20:39:13Z",
    "thread_id": 6,
    "thread_title": "Receipts to categorize",
    "project": "tax-prep-2026",
@@ -370,7 +380,7 @@
     "status": "open",
     "answer": null,
     "note": null,
-    "created_at": "2026-11-12T05:14:46Z",
+    "created_at": "2026-11-12T20:39:13Z",
     "answered_at": null
    },
    "permission": null,
@@ -382,7 +392,7 @@
   {
    "kind": "suggestion",
    "id": 2,
-   "at": "2026-11-11T05:14:46Z",
+   "at": "2026-11-11T20:39:13Z",
    "thread_id": 5,
    "thread_title": "Enclosure v2 print",
    "project": "garden-irrigation",
@@ -398,7 +408,7 @@
     "text": "Archive \u201cEnclosure v2 print\u201d, untouched for 3 weeks",
     "payload": {},
     "status": "open",
-    "created_at": "2026-11-11T05:14:46Z",
+    "created_at": "2026-11-11T20:39:13Z",
     "decided_at": null
    },
    "promote": null,
@@ -415,8 +425,8 @@
    "plan": "Switch fallback timer to UTC and add a 10-minute debounce",
    "status": "in_progress",
    "result": "Patched scheduler.py, running the DST test suite (4 of 7 passed so far).",
-   "created_at": "2026-11-15T04:56:46Z",
-   "updated_at": "2026-11-15T05:12:46Z"
+   "created_at": "2026-11-15T20:21:13Z",
+   "updated_at": "2026-11-15T20:37:13Z"
   },
   {
    "id": 2,
@@ -426,8 +436,8 @@
    "plan": "File the 6 receipts that arrived this week",
    "status": "planned",
    "result": "Waiting for budget after the firmware fix",
-   "created_at": "2026-11-15T04:56:46Z",
-   "updated_at": "2026-11-15T04:56:46Z"
+   "created_at": "2026-11-15T20:21:13Z",
+   "updated_at": "2026-11-15T20:21:13Z"
   }
  ],
  "/api/jobs": [
@@ -436,10 +446,10 @@
    "run_id": 121,
    "label": "Re-index photo library",
    "progress": "62%",
-   "expected_end": "2026-11-16T05:14:46Z",
+   "expected_end": "2026-11-16T20:39:13Z",
    "dont_interrupt": true,
    "status": "running",
-   "started_at": "2026-11-12T05:14:46Z",
+   "started_at": "2026-11-12T20:39:13Z",
    "log_tail": "[14:02:11] indexed 18,204 / 29,310\n[14:02:41] thumbnails 61%\n[14:03:12] indexed 18,450 / 29,310"
   },
   {
@@ -447,10 +457,10 @@
    "run_id": 119,
    "label": "Train moisture forecast model",
    "progress": "epoch 37/50",
-   "expected_end": "2026-11-15T11:14:46Z",
+   "expected_end": "2026-11-16T02:39:13Z",
    "dont_interrupt": false,
    "status": "running",
-   "started_at": "2026-11-10T05:14:46Z",
+   "started_at": "2026-11-10T20:39:13Z",
    "log_tail": "epoch 36  loss 0.0412  val 0.0468\nepoch 37  loss 0.0407  val 0.0471"
   }
  ],
@@ -465,7 +475,7 @@
     "run_id": 123,
     "attachments": [],
     "delivery": "delivered",
-    "created_at": "2026-11-15T05:06:46Z"
+    "created_at": "2026-11-15T20:31:13Z"
    },
    "thread_title": "Pump controller firmware",
    "project": "garden-irrigation"
@@ -480,7 +490,7 @@
     "run_id": 123,
     "attachments": [],
     "delivery": "delivered",
-    "created_at": "2026-11-15T05:00:46Z"
+    "created_at": "2026-11-15T20:25:13Z"
    },
    "thread_title": "Pump controller firmware",
    "project": "garden-irrigation"
@@ -495,7 +505,7 @@
     "run_id": 119,
     "attachments": [],
     "delivery": "delivered",
-    "created_at": "2026-11-15T04:34:46Z"
+    "created_at": "2026-11-15T19:59:13Z"
    },
    "thread_title": "Pump controller firmware",
    "project": "garden-irrigation"
@@ -510,7 +520,7 @@
     "run_id": 119,
     "attachments": [],
     "delivery": "delivered",
-    "created_at": "2026-11-13T05:44:46Z"
+    "created_at": "2026-11-13T21:09:13Z"
    },
    "thread_title": "Moisture sensor calibration",
    "project": "garden-irrigation"
@@ -525,7 +535,7 @@
     "run_id": 121,
     "attachments": [],
     "delivery": "delivered",
-    "created_at": "2026-11-12T05:14:46Z"
+    "created_at": "2026-11-12T20:39:13Z"
    },
    "thread_title": "Receipts to categorize",
    "project": "tax-prep-2026"
@@ -540,8 +550,8 @@
    "doc_path": "projects/garden-irrigation.md",
    "links": [],
    "created_by": "assistant",
-   "created_at": "2026-10-06T05:14:46Z",
-   "last_activity_at": "2026-11-15T05:02:46Z",
+   "created_at": "2026-10-06T20:39:13Z",
+   "last_activity_at": "2026-11-15T20:27:13Z",
    "unread": 3,
    "open_asks": 6,
    "thread_count": 4
@@ -554,8 +564,8 @@
    "doc_path": "projects/tax-prep-2026.md",
    "links": [],
    "created_by": "assistant",
-   "created_at": "2026-10-06T05:14:46Z",
-   "last_activity_at": "2026-11-12T05:14:46Z",
+   "created_at": "2026-10-06T20:39:13Z",
+   "last_activity_at": "2026-11-12T20:39:13Z",
    "unread": 1,
    "open_asks": 2,
    "thread_count": 2
@@ -568,8 +578,8 @@
    "doc_path": "projects/home-lab.md",
    "links": [],
    "created_by": "assistant",
-   "created_at": "2026-10-06T05:14:46Z",
-   "last_activity_at": "2026-11-06T05:14:46Z",
+   "created_at": "2026-10-06T20:39:13Z",
+   "last_activity_at": "2026-11-06T20:39:13Z",
    "unread": 0,
    "open_asks": 1,
    "thread_count": 2
@@ -582,8 +592,8 @@
    "doc_path": "projects/kitchen-remodel.md",
    "links": [],
    "created_by": "assistant",
-   "created_at": "2026-10-06T05:14:46Z",
-   "last_activity_at": "2026-09-29T05:14:46Z",
+   "created_at": "2026-10-06T20:39:13Z",
+   "last_activity_at": "2026-09-29T20:39:13Z",
    "unread": 0,
    "open_asks": 0,
    "thread_count": 0
@@ -598,8 +608,8 @@
    "doc_path": "projects/garden-irrigation.md",
    "links": [],
    "created_by": "assistant",
-   "created_at": "2026-10-06T05:14:46Z",
-   "last_activity_at": "2026-11-15T05:02:46Z",
+   "created_at": "2026-10-06T20:39:13Z",
+   "last_activity_at": "2026-11-15T20:27:13Z",
    "unread": 3,
    "open_asks": 6,
    "thread_count": 4
@@ -612,8 +622,8 @@
    "doc_path": "projects/tax-prep-2026.md",
    "links": [],
    "created_by": "assistant",
-   "created_at": "2026-10-06T05:14:46Z",
-   "last_activity_at": "2026-11-12T05:14:46Z",
+   "created_at": "2026-10-06T20:39:13Z",
+   "last_activity_at": "2026-11-12T20:39:13Z",
    "unread": 1,
    "open_asks": 2,
    "thread_count": 2
@@ -627,8 +637,8 @@
   "doc_path": "projects/garden-irrigation.md",
   "links": [],
   "created_by": "assistant",
-  "created_at": "2026-10-06T05:14:46Z",
-  "last_activity_at": "2026-11-15T05:02:46Z",
+  "created_at": "2026-10-06T20:39:13Z",
+  "last_activity_at": "2026-11-15T20:27:13Z",
   "unread": 3,
   "open_asks": 6,
   "thread_count": 4
@@ -645,8 +655,8 @@
    "versions": 6,
    "added_by": "assistant",
    "run_id": 123,
-   "created_at": "2026-11-15T05:02:46Z",
-   "updated_at": "2026-11-15T05:02:46Z",
+   "created_at": "2026-11-15T20:27:13Z",
+   "updated_at": "2026-11-15T20:27:13Z",
    "size": 6200,
    "mime": "text/x-python",
    "missing": false
@@ -662,8 +672,8 @@
    "versions": 14,
    "added_by": "assistant",
    "run_id": 123,
-   "created_at": "2026-11-15T04:14:46Z",
-   "updated_at": "2026-11-15T04:14:46Z",
+   "created_at": "2026-11-15T19:39:13Z",
+   "updated_at": "2026-11-15T19:39:13Z",
    "size": 4100,
    "mime": "text/markdown",
    "missing": false
@@ -679,8 +689,8 @@
    "versions": 0,
    "added_by": "owner",
    "run_id": null,
-   "created_at": "2026-11-13T05:14:46Z",
-   "updated_at": "2026-11-13T05:14:46Z",
+   "created_at": "2026-11-13T20:39:13Z",
+   "updated_at": "2026-11-13T20:39:13Z",
    "size": 18000,
    "mime": "text/csv",
    "missing": false
@@ -696,8 +706,8 @@
    "versions": 0,
    "added_by": "assistant",
    "run_id": 119,
-   "created_at": "2026-11-13T05:14:46Z",
-   "updated_at": "2026-11-13T05:14:46Z",
+   "created_at": "2026-11-13T20:39:13Z",
+   "updated_at": "2026-11-13T20:39:13Z",
    "size": 14000,
    "mime": "text/html",
    "missing": false
@@ -713,8 +723,8 @@
    "versions": 0,
    "added_by": "owner",
    "run_id": null,
-   "created_at": "2026-11-11T05:14:46Z",
-   "updated_at": "2026-11-11T05:14:46Z",
+   "created_at": "2026-11-11T20:39:13Z",
+   "updated_at": "2026-11-11T20:39:13Z",
    "size": 2400000,
    "mime": "model/stl",
    "missing": false
@@ -730,8 +740,8 @@
    "versions": 0,
    "added_by": "owner",
    "run_id": null,
-   "created_at": "2026-10-29T05:14:46Z",
-   "updated_at": "2026-10-29T05:14:46Z",
+   "created_at": "2026-10-29T20:39:13Z",
+   "updated_at": "2026-10-29T20:39:13Z",
    "size": 1300000,
    "mime": "image/png",
    "missing": false
@@ -746,8 +756,8 @@
    "status": "open",
    "created_by": "owner",
    "pinned": false,
-   "created_at": "2026-11-03T05:14:46Z",
-   "last_activity_at": "2026-11-15T05:06:46Z",
+   "created_at": "2026-11-03T20:39:13Z",
+   "last_activity_at": "2026-11-15T20:31:13Z",
    "last_message_preview": "Assistant: Planned in run #123, switch fallback timer to UTC\u2026",
    "unread": 0,
    "open_asks": 6
@@ -760,8 +770,8 @@
    "status": "open",
    "created_by": "owner",
    "pinned": false,
-   "created_at": "2026-11-03T05:14:46Z",
-   "last_activity_at": "2026-11-14T05:14:46Z",
+   "created_at": "2026-11-03T20:39:13Z",
+   "last_activity_at": "2026-11-14T20:39:13Z",
    "last_message_preview": "You: the sourdough starter keeps collapsing",
    "unread": 0,
    "open_asks": 0
@@ -774,8 +784,8 @@
    "status": "open",
    "created_by": "assistant",
    "pinned": false,
-   "created_at": "2026-11-03T05:14:46Z",
-   "last_activity_at": "2026-11-13T05:14:46Z",
+   "created_at": "2026-11-03T20:39:13Z",
+   "last_activity_at": "2026-11-13T20:39:13Z",
    "last_message_preview": "You: sensor 3 reads 8% high after rain",
    "unread": 2,
    "open_asks": 0
@@ -788,8 +798,8 @@
    "status": "open",
    "created_by": "owner",
    "pinned": false,
-   "created_at": "2026-11-03T05:14:46Z",
-   "last_activity_at": "2026-11-12T05:14:46Z",
+   "created_at": "2026-11-03T20:39:13Z",
+   "last_activity_at": "2026-11-12T20:39:13Z",
    "last_message_preview": "Assistant: Filed 35 of 41. Six are photos of handwritten receipts\u2026",
    "unread": 1,
    "open_asks": 2
@@ -802,8 +812,8 @@
    "status": "open",
    "created_by": "owner",
    "pinned": false,
-   "created_at": "2026-11-03T05:14:46Z",
-   "last_activity_at": "2026-11-11T05:14:46Z",
+   "created_at": "2026-11-03T20:39:13Z",
+   "last_activity_at": "2026-11-11T20:39:13Z",
    "last_message_preview": "You: add the home office question",
    "unread": 0,
    "open_asks": 0
@@ -816,8 +826,8 @@
    "status": "open",
    "created_by": "owner",
    "pinned": false,
-   "created_at": "2026-11-03T05:14:46Z",
-   "last_activity_at": "2026-11-09T05:14:46Z",
+   "created_at": "2026-11-03T20:39:13Z",
+   "last_activity_at": "2026-11-09T20:39:13Z",
    "last_message_preview": "Assistant: drained lines, 2 of 5 steps left",
    "unread": 0,
    "open_asks": 0
@@ -830,8 +840,8 @@
    "status": "open",
    "created_by": "owner",
    "pinned": false,
-   "created_at": "2026-11-03T05:14:46Z",
-   "last_activity_at": "2026-11-09T05:14:46Z",
+   "created_at": "2026-11-03T20:39:13Z",
+   "last_activity_at": "2026-11-09T20:39:13Z",
    "last_message_preview": "Chat: Continued from 'Setting up the Fastmail MCP'",
    "unread": 0,
    "open_asks": 0
@@ -844,8 +854,8 @@
    "status": "open",
    "created_by": "owner",
    "pinned": false,
-   "created_at": "2026-11-03T05:14:46Z",
-   "last_activity_at": "2026-11-06T05:14:46Z",
+   "created_at": "2026-11-03T20:39:13Z",
+   "last_activity_at": "2026-11-06T20:39:13Z",
    "last_message_preview": "Assistant: first full backup takes about 3 hours",
    "unread": 0,
    "open_asks": 1
@@ -858,8 +868,8 @@
    "status": "open",
    "created_by": "owner",
    "pinned": false,
-   "created_at": "2026-11-03T05:14:46Z",
-   "last_activity_at": "2026-11-04T05:14:46Z",
+   "created_at": "2026-11-03T20:39:13Z",
+   "last_activity_at": "2026-11-04T20:39:13Z",
    "last_message_preview": "Assistant: three options under \u20ac30, comparison attached",
    "unread": 1,
    "open_asks": 0
@@ -874,8 +884,8 @@
    "status": "open",
    "created_by": "owner",
    "pinned": false,
-   "created_at": "2026-11-03T05:14:46Z",
-   "last_activity_at": "2026-11-15T05:06:46Z",
+   "created_at": "2026-11-03T20:39:13Z",
+   "last_activity_at": "2026-11-15T20:31:13Z",
    "last_message_preview": "Assistant: Planned in run #123, switch fallback timer to UTC\u2026",
    "unread": 0,
    "open_asks": 6
@@ -888,8 +898,8 @@
    "status": "open",
    "created_by": "assistant",
    "pinned": false,
-   "created_at": "2026-11-03T05:14:46Z",
-   "last_activity_at": "2026-11-13T05:14:46Z",
+   "created_at": "2026-11-03T20:39:13Z",
+   "last_activity_at": "2026-11-13T20:39:13Z",
    "last_message_preview": "You: sensor 3 reads 8% high after rain",
    "unread": 2,
    "open_asks": 0
@@ -902,8 +912,8 @@
    "status": "open",
    "created_by": "owner",
    "pinned": false,
-   "created_at": "2026-11-03T05:14:46Z",
-   "last_activity_at": "2026-11-09T05:14:46Z",
+   "created_at": "2026-11-03T20:39:13Z",
+   "last_activity_at": "2026-11-09T20:39:13Z",
    "last_message_preview": "Assistant: drained lines, 2 of 5 steps left",
    "unread": 0,
    "open_asks": 0
@@ -916,8 +926,8 @@
    "status": "open",
    "created_by": "owner",
    "pinned": false,
-   "created_at": "2026-11-03T05:14:46Z",
-   "last_activity_at": "2026-11-04T05:14:46Z",
+   "created_at": "2026-11-03T20:39:13Z",
+   "last_activity_at": "2026-11-04T20:39:13Z",
    "last_message_preview": "Assistant: three options under \u20ac30, comparison attached",
    "unread": 1,
    "open_asks": 0
@@ -930,8 +940,8 @@
    "status": "archived",
    "created_by": "owner",
    "pinned": false,
-   "created_at": "2026-11-03T05:14:46Z",
-   "last_activity_at": "2026-10-21T05:14:46Z",
+   "created_at": "2026-11-03T20:39:13Z",
+   "last_activity_at": "2026-10-21T20:39:13Z",
    "last_message_preview": "Assistant: superseded by v3",
    "unread": 0,
    "open_asks": 0
@@ -945,8 +955,8 @@
   "status": "open",
   "created_by": "owner",
   "pinned": false,
-  "created_at": "2026-11-03T05:14:46Z",
-  "last_activity_at": "2026-11-15T05:06:46Z",
+  "created_at": "2026-11-03T20:39:13Z",
+  "last_activity_at": "2026-11-15T20:31:13Z",
   "last_message_preview": "Assistant: Planned in run #123, switch fallback timer to UTC\u2026",
   "unread": 0,
   "open_asks": 6
@@ -955,7 +965,7 @@
   "items": [
    {
     "type": "message",
-    "at": "2026-11-13T05:14:46Z",
+    "at": "2026-11-13T20:39:13Z",
     "message": {
      "id": 1,
      "thread_id": 1,
@@ -965,12 +975,12 @@
      "run_id": null,
      "attachments": [],
      "delivery": "delivered",
-     "created_at": "2026-11-13T05:14:46Z"
+     "created_at": "2026-11-13T20:39:13Z"
     }
    },
    {
     "type": "message",
-    "at": "2026-11-13T05:15:46Z",
+    "at": "2026-11-13T20:40:13Z",
     "message": {
      "id": 2,
      "thread_id": 1,
@@ -988,12 +998,12 @@
       }
      ],
      "delivery": "seen",
-     "created_at": "2026-11-13T05:15:46Z"
+     "created_at": "2026-11-13T20:40:13Z"
     }
    },
    {
     "type": "message",
-    "at": "2026-11-15T04:34:46Z",
+    "at": "2026-11-15T19:59:13Z",
     "message": {
      "id": 3,
      "thread_id": 1,
@@ -1003,12 +1013,12 @@
      "run_id": 119,
      "attachments": [],
      "delivery": "delivered",
-     "created_at": "2026-11-15T04:34:46Z"
+     "created_at": "2026-11-15T19:59:13Z"
     }
    },
    {
     "type": "message",
-    "at": "2026-11-15T04:44:46Z",
+    "at": "2026-11-15T20:09:13Z",
     "message": {
      "id": 4,
      "thread_id": 1,
@@ -1018,12 +1028,12 @@
      "run_id": null,
      "attachments": [],
      "delivery": "delivered",
-     "created_at": "2026-11-15T04:44:46Z"
+     "created_at": "2026-11-15T20:09:13Z"
     }
    },
    {
     "type": "suggestion",
-    "at": "2026-11-15T04:54:46Z",
+    "at": "2026-11-15T20:19:13Z",
     "suggestion": {
      "id": 1,
      "run_id": 123,
@@ -1036,13 +1046,13 @@
       "new_title": "Moisture sensor calibration"
      },
      "status": "open",
-     "created_at": "2026-11-15T04:54:46Z",
+     "created_at": "2026-11-15T20:19:13Z",
      "decided_at": null
     }
    },
    {
     "type": "claim",
-    "at": "2026-11-15T04:56:46Z",
+    "at": "2026-11-15T20:21:13Z",
     "claim": {
      "id": 1,
      "run_id": 123,
@@ -1051,13 +1061,13 @@
      "plan": "Switch fallback timer to UTC and add a 10-minute debounce",
      "status": "in_progress",
      "result": "Patched scheduler.py, running the DST test suite (4 of 7 passed so far).",
-     "created_at": "2026-11-15T04:56:46Z",
-     "updated_at": "2026-11-15T05:12:46Z"
+     "created_at": "2026-11-15T20:21:13Z",
+     "updated_at": "2026-11-15T20:37:13Z"
     }
    },
    {
     "type": "message",
-    "at": "2026-11-15T05:00:46Z",
+    "at": "2026-11-15T20:25:13Z",
     "message": {
      "id": 5,
      "thread_id": 1,
@@ -1067,12 +1077,12 @@
      "run_id": 123,
      "attachments": [],
      "delivery": "delivered",
-     "created_at": "2026-11-15T05:00:46Z"
+     "created_at": "2026-11-15T20:25:13Z"
     }
    },
    {
     "type": "permission",
-    "at": "2026-11-15T05:00:46Z",
+    "at": "2026-11-15T20:25:13Z",
     "permission": {
      "id": 1,
      "thread_id": 1,
@@ -1096,13 +1106,13 @@
      "status": "open",
      "scope": null,
      "note": null,
-     "created_at": "2026-11-15T05:00:46Z",
+     "created_at": "2026-11-15T20:25:13Z",
      "decided_at": null
     }
    },
    {
     "type": "question",
-    "at": "2026-11-15T05:01:46Z",
+    "at": "2026-11-15T20:26:13Z",
     "question": {
      "id": 2,
      "thread_id": 1,
@@ -1119,13 +1129,13 @@
      "status": "open",
      "answer": null,
      "note": null,
-     "created_at": "2026-11-15T05:01:46Z",
+     "created_at": "2026-11-15T20:26:13Z",
      "answered_at": null
     }
    },
    {
     "type": "question",
-    "at": "2026-11-15T05:01:46Z",
+    "at": "2026-11-15T20:26:13Z",
     "question": {
      "id": 3,
      "thread_id": 1,
@@ -1148,13 +1158,13 @@
      "status": "open",
      "answer": null,
      "note": null,
-     "created_at": "2026-11-15T05:01:46Z",
+     "created_at": "2026-11-15T20:26:13Z",
      "answered_at": null
     }
    },
    {
     "type": "question",
-    "at": "2026-11-15T05:02:46Z",
+    "at": "2026-11-15T20:27:13Z",
     "question": {
      "id": 1,
      "thread_id": 1,
@@ -1167,13 +1177,13 @@
      "status": "open",
      "answer": null,
      "note": null,
-     "created_at": "2026-11-15T05:02:46Z",
+     "created_at": "2026-11-15T20:27:13Z",
      "answered_at": null
     }
    },
    {
     "type": "question",
-    "at": "2026-11-15T05:03:46Z",
+    "at": "2026-11-15T20:28:13Z",
     "question": {
      "id": 4,
      "thread_id": 1,
@@ -1186,13 +1196,13 @@
      "status": "open",
      "answer": null,
      "note": null,
-     "created_at": "2026-11-15T05:03:46Z",
+     "created_at": "2026-11-15T20:28:13Z",
      "answered_at": null
     }
    },
    {
     "type": "message",
-    "at": "2026-11-15T05:06:46Z",
+    "at": "2026-11-15T20:31:13Z",
     "message": {
      "id": 6,
      "thread_id": 1,
@@ -1202,12 +1212,12 @@
      "run_id": 123,
      "attachments": [],
      "delivery": "delivered",
-     "created_at": "2026-11-15T05:06:46Z"
+     "created_at": "2026-11-15T20:31:13Z"
     }
    },
    {
     "type": "promote",
-    "at": "2026-11-15T05:06:46Z",
+    "at": "2026-11-15T20:31:13Z",
     "promote": {
      "id": 1,
      "run_id": 123,
@@ -1216,7 +1226,7 @@
      "budget": 3.0,
      "status": "open",
      "note": null,
-     "created_at": "2026-11-15T05:06:46Z",
+     "created_at": "2026-11-15T20:31:13Z",
      "decided_at": null
     }
    }
@@ -1243,9 +1253,9 @@
    "tier": "sonnet/medium",
    "budget": 10.0,
    "used": 3.8,
-   "deadline": "2026-11-15T05:41:46Z",
+   "deadline": "2026-11-15T21:06:13Z",
    "status": "running",
-   "started_at": "2026-11-15T04:56:46Z",
+   "started_at": "2026-11-15T20:21:13Z",
    "ended_at": null,
    "projects": [
     "garden-irrigation",
@@ -1265,8 +1275,8 @@
    "used": 2.6,
    "deadline": null,
    "status": "done",
-   "started_at": "2026-11-09T05:14:46Z",
-   "ended_at": "2026-11-09T05:23:46Z",
+   "started_at": "2026-11-09T20:39:13Z",
+   "ended_at": "2026-11-09T20:48:13Z",
    "projects": []
   },
   {
@@ -1282,8 +1292,8 @@
    "used": 7.9,
    "deadline": null,
    "status": "partial",
-   "started_at": "2026-11-12T04:14:46Z",
-   "ended_at": "2026-11-12T05:26:46Z",
+   "started_at": "2026-11-12T19:39:13Z",
+   "ended_at": "2026-11-12T20:51:13Z",
    "projects": [
     "tax-prep-2026"
    ]
@@ -1301,8 +1311,8 @@
    "used": 0.8,
    "deadline": null,
    "status": "done",
-   "started_at": "2026-11-11T05:14:46Z",
-   "ended_at": "2026-11-11T05:20:46Z",
+   "started_at": "2026-11-11T20:39:13Z",
+   "ended_at": "2026-11-11T20:45:13Z",
    "projects": []
   },
   {
@@ -1318,8 +1328,8 @@
    "used": 5.5,
    "deadline": null,
    "status": "done",
-   "started_at": "2026-11-10T05:14:46Z",
-   "ended_at": "2026-11-10T05:55:46Z",
+   "started_at": "2026-11-10T20:39:13Z",
+   "ended_at": "2026-11-10T21:20:13Z",
    "projects": [
     "garden-irrigation"
    ]
@@ -1337,8 +1347,8 @@
    "used": 0.4,
    "deadline": null,
    "status": "stopped",
-   "started_at": "2026-11-08T05:14:46Z",
-   "ended_at": "2026-11-08T05:17:46Z",
+   "started_at": "2026-11-08T20:39:13Z",
+   "ended_at": "2026-11-08T20:42:13Z",
    "projects": []
   }
  ],
@@ -1354,9 +1364,9 @@
    "tier": "sonnet/medium",
    "budget": 10.0,
    "used": 3.8,
-   "deadline": "2026-11-15T05:41:46Z",
+   "deadline": "2026-11-15T21:06:13Z",
    "status": "running",
-   "started_at": "2026-11-15T04:56:46Z",
+   "started_at": "2026-11-15T20:21:13Z",
    "ended_at": null,
    "projects": [
     "garden-irrigation",
@@ -1372,8 +1382,8 @@
     "plan": "Switch fallback timer to UTC and add a 10-minute debounce",
     "status": "in_progress",
     "result": "Patched scheduler.py, running the DST test suite (4 of 7 passed so far).",
-    "created_at": "2026-11-15T04:56:46Z",
-    "updated_at": "2026-11-15T05:12:46Z"
+    "created_at": "2026-11-15T20:21:13Z",
+    "updated_at": "2026-11-15T20:37:13Z"
    },
    {
     "id": 2,
@@ -1383,8 +1393,8 @@
     "plan": "File the 6 receipts that arrived this week",
     "status": "planned",
     "result": "Waiting for budget after the firmware fix",
-    "created_at": "2026-11-15T04:56:46Z",
-    "updated_at": "2026-11-15T04:56:46Z"
+    "created_at": "2026-11-15T20:21:13Z",
+    "updated_at": "2026-11-15T20:21:13Z"
    }
   ],
   "changes": {
@@ -1430,7 +1440,7 @@
   {
    "id": 1,
    "run_id": 123,
-   "at": "2026-11-15T04:56:46Z",
+   "at": "2026-11-15T20:21:13Z",
    "kind": "control",
    "simple": true,
    "text": "Woke for planned slot. Reviewer in Monitor mode, every 10 min.",
@@ -1442,7 +1452,7 @@
   {
    "id": 4,
    "run_id": 123,
-   "at": "2026-11-15T05:00:22Z",
+   "at": "2026-11-15T20:24:49Z",
    "kind": "note",
    "simple": true,
    "text": "Reproduced the double trigger with a fake DST clock.",
@@ -1451,7 +1461,7 @@
   {
    "id": 5,
    "run_id": 123,
-   "at": "2026-11-15T05:03:58Z",
+   "at": "2026-11-15T20:28:25Z",
    "kind": "ask",
    "simple": true,
    "text": "Filed a question: flash the fix or leave it?",
@@ -1462,7 +1472,7 @@
   {
    "id": 6,
    "run_id": 123,
-   "at": "2026-11-15T05:06:16Z",
+   "at": "2026-11-15T20:30:43Z",
    "kind": "reviewer",
    "simple": true,
    "text": "Reviewer: the rain-delay timer uses the same comparison. Include it or note it as a follow-up.",
@@ -1473,7 +1483,7 @@
   {
    "id": 8,
    "run_id": 123,
-   "at": "2026-11-15T05:08:46Z",
+   "at": "2026-11-15T20:33:13Z",
    "kind": "diff",
    "simple": true,
    "text": "Patched firmware/scheduler.py  +18 \u22126",
@@ -1487,7 +1497,7 @@
   {
    "id": 9,
    "run_id": 123,
-   "at": "2026-11-15T05:10:46Z",
+   "at": "2026-11-15T20:35:13Z",
    "kind": "shelf",
    "simple": true,
    "text": "Shelved scheduler.py (live, keeping versions).",
@@ -1498,7 +1508,7 @@
   {
    "id": 10,
    "run_id": 123,
-   "at": "2026-11-15T05:12:46Z",
+   "at": "2026-11-15T20:37:13Z",
    "kind": "model",
    "simple": true,
    "text": "Effort medium \u2192 high for the test pass (reviewer approved).",
@@ -1510,7 +1520,7 @@
   {
    "id": 12,
    "run_id": 123,
-   "at": "2026-11-15T05:14:46Z",
+   "at": "2026-11-15T20:39:13Z",
    "kind": "status",
    "simple": true,
    "text": "Running the DST test suite on the patched scheduler",
@@ -1521,7 +1531,7 @@
   {
    "id": 1,
    "run_id": 123,
-   "at": "2026-11-15T04:56:46Z",
+   "at": "2026-11-15T20:21:13Z",
    "kind": "control",
    "simple": true,
    "text": "Woke for planned slot. Reviewer in Monitor mode, every 10 min.",
@@ -1533,7 +1543,7 @@
   {
    "id": 2,
    "run_id": 123,
-   "at": "2026-11-15T04:56:50Z",
+   "at": "2026-11-15T20:21:17Z",
    "kind": "thinking",
    "simple": false,
    "text": "The Sunday log shows the fallback firing 4 s after the main trigger. Probably a local-time comparison.",
@@ -1542,7 +1552,7 @@
   {
    "id": 3,
    "run_id": 123,
-   "at": "2026-11-15T04:56:55Z",
+   "at": "2026-11-15T20:21:22Z",
    "kind": "tool",
    "simple": false,
    "text": "read_file scheduler.py \u00b7 read_file pump-log-1102.csv \u00b7 grep \"fallback\"",
@@ -1553,7 +1563,7 @@
   {
    "id": 4,
    "run_id": 123,
-   "at": "2026-11-15T05:00:22Z",
+   "at": "2026-11-15T20:24:49Z",
    "kind": "note",
    "simple": true,
    "text": "Reproduced the double trigger with a fake DST clock.",
@@ -1562,7 +1572,7 @@
   {
    "id": 5,
    "run_id": 123,
-   "at": "2026-11-15T05:03:58Z",
+   "at": "2026-11-15T20:28:25Z",
    "kind": "ask",
    "simple": true,
    "text": "Filed a question: flash the fix or leave it?",
@@ -1573,7 +1583,7 @@
   {
    "id": 6,
    "run_id": 123,
-   "at": "2026-11-15T05:06:16Z",
+   "at": "2026-11-15T20:30:43Z",
    "kind": "reviewer",
    "simple": true,
    "text": "Reviewer: the rain-delay timer uses the same comparison. Include it or note it as a follow-up.",
@@ -1584,7 +1594,7 @@
   {
    "id": 7,
    "run_id": 123,
-   "at": "2026-11-15T05:06:46Z",
+   "at": "2026-11-15T20:31:13Z",
    "kind": "reviewer",
    "simple": false,
    "text": "Worker: noted, will include it in the same patch.",
@@ -1595,7 +1605,7 @@
   {
    "id": 8,
    "run_id": 123,
-   "at": "2026-11-15T05:08:46Z",
+   "at": "2026-11-15T20:33:13Z",
    "kind": "diff",
    "simple": true,
    "text": "Patched firmware/scheduler.py  +18 \u22126",
@@ -1609,7 +1619,7 @@
   {
    "id": 9,
    "run_id": 123,
-   "at": "2026-11-15T05:10:46Z",
+   "at": "2026-11-15T20:35:13Z",
    "kind": "shelf",
    "simple": true,
    "text": "Shelved scheduler.py (live, keeping versions).",
@@ -1620,7 +1630,7 @@
   {
    "id": 10,
    "run_id": 123,
-   "at": "2026-11-15T05:12:46Z",
+   "at": "2026-11-15T20:37:13Z",
    "kind": "model",
    "simple": true,
    "text": "Effort medium \u2192 high for the test pass (reviewer approved).",
@@ -1632,7 +1642,7 @@
   {
    "id": 11,
    "run_id": 123,
-   "at": "2026-11-15T05:14:16Z",
+   "at": "2026-11-15T20:38:43Z",
    "kind": "usage",
    "simple": false,
    "text": "Usage sample: 3.8 pts used, 38% of budget at 40% of time",
@@ -1644,7 +1654,7 @@
   {
    "id": 12,
    "run_id": 123,
-   "at": "2026-11-15T05:14:46Z",
+   "at": "2026-11-15T20:39:13Z",
    "kind": "status",
    "simple": true,
    "text": "Running the DST test suite on the patched scheduler",
@@ -1732,7 +1742,7 @@
     "name": "CLAUDE.md",
     "dir": false,
     "size": 5200,
-    "modified_at": "2026-11-09T05:14:46Z",
+    "modified_at": "2026-11-09T20:39:13Z",
     "last_run_id": 117,
     "from_owner": false
    },
@@ -1740,10 +1750,143 @@
     "name": "NOW.md",
     "dir": false,
     "size": 900,
-    "modified_at": "2026-11-15T05:14:46Z",
+    "modified_at": "2026-11-15T20:39:13Z",
     "last_run_id": 123,
     "from_owner": false
    }
   ]
+ },
+ "/api/account/sessions": [
+  {
+   "id": "s-current",
+   "kind": "session",
+   "label": "This browser",
+   "ip": "192.168.1.20",
+   "created_at": "2026-11-05T20:39:13Z",
+   "last_seen_at": "2026-11-15T20:39:13Z",
+   "current": true
+  },
+  {
+   "id": "s-firefox",
+   "kind": "session",
+   "label": "Firefox on Linux",
+   "ip": "192.168.1.40",
+   "created_at": "2026-11-15T15:39:13Z",
+   "last_seen_at": "2026-11-15T15:39:13Z",
+   "current": false
+  },
+  {
+   "id": "d-cli",
+   "kind": "device",
+   "label": "l0w CLI on mac-mini",
+   "ip": "192.168.1.20",
+   "created_at": "2026-10-16T20:39:13Z",
+   "last_seen_at": "2026-11-14T20:39:13Z",
+   "current": false
+  }
+ ],
+ "/api/system": {
+  "server_version": "0.0.1",
+  "runner": {
+   "reachable": true,
+   "busy": false,
+   "runtime_version": "2.9.0 (Claude Code)",
+   "logged_in": true,
+   "error": null
+  },
+  "egress": {
+   "reachable": true,
+   "lease_active": false,
+   "error": null
+  },
+  "usage": {
+   "provider": "claude-subscription",
+   "source": "oauth",
+   "fetched_at": "2026-11-15T20:39:13Z",
+   "five_hour_pct": 18.0,
+   "five_hour_resets_at": "2026-11-15T23:39:13Z",
+   "seven_day_pct": 41.0,
+   "seven_day_resets_at": "2026-11-19T20:39:13Z",
+   "error": null
+  },
+  "gate": {
+   "open": true,
+   "reason": null
+  }
+ },
+ "/api/secrets": [
+  {
+   "name": "GITHUB_TOKEN",
+   "description": "Fine-grained, repo: garden-irrigation",
+   "scope": "agent",
+   "created_at": "2026-10-26T20:39:13Z",
+   "updated_at": "2026-11-09T20:39:13Z",
+   "reads": 14,
+   "last_read_at": "2026-11-15T11:39:13Z"
+  },
+  {
+   "name": "HOME_ASSISTANT_TOKEN",
+   "description": "Long-lived token, read-only user",
+   "scope": "agent",
+   "created_at": "2026-10-26T20:39:13Z",
+   "updated_at": "2026-11-09T20:39:13Z",
+   "reads": 3,
+   "last_read_at": "2026-11-15T11:39:13Z"
+  }
+ ],
+ "/api/system/selftest": {
+  "ran_at": "2026-11-15T20:39:13Z",
+  "ok": true,
+  "checks": [
+   {
+    "id": "database",
+    "label": "Database and storage",
+    "result": "ok",
+    "detail": "schema v2"
+   },
+   {
+    "id": "runner",
+    "label": "Agent computer reachable",
+    "result": "ok",
+    "detail": "2.9.0 (Claude Code)"
+   },
+   {
+    "id": "provider_login",
+    "label": "Provider login",
+    "result": "ok",
+    "detail": "Claude"
+   },
+   {
+    "id": "no_direct_internet",
+    "label": "No direct internet (only through egress)",
+    "result": "ok",
+    "detail": null
+   },
+   {
+    "id": "no_lan",
+    "label": "Can't reach the LAN or the host",
+    "result": "ok",
+    "detail": "checked 3 addresses"
+   },
+   {
+    "id": "owner_api_refused",
+    "label": "Control's owner API refuses the agent",
+    "result": "ok",
+    "detail": "HTTP 403"
+   },
+   {
+    "id": "gated_without_lease",
+    "label": "Model provider blocked without a lease",
+    "result": "ok",
+    "detail": "HTTP/1.1 403 Forbidden"
+   },
+   {
+    "id": "internet_via_egress",
+    "label": "Internet works through egress",
+    "result": "warn",
+    "detail": "example.com unreachable"
+   }
+  ],
+  "note": "Mock self-test."
  }
 }

@@ -21,7 +21,7 @@ export function Login() {
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
   const challenge = login.data?.status === 'totp_required' ? login.data.challenge : null
-  const err = login.error ?? totp.error
+  const err = challenge ? totp.error : login.error
 
   return (
     <div className="login">
@@ -30,18 +30,21 @@ export function Login() {
         if (challenge) totp.mutate({ challenge, code })
         else login.mutate({ username, password, want: 'session' })
       }}>
-        <div className="stack" style={{ gap: 4 }}>
-          <h1>l0wagent</h1>
-          <div className="sub">{challenge ? 'Enter the code from your authenticator app' : 'Sign in to your assistant'}</div>
+        <div className="login-head">
+          <div className="login-title">l0wagent</div>
+          <div className="sub" style={{ fontSize: 14, color: 'var(--muted)' }}>{challenge ? 'Enter the code from your authenticator app' : 'Sign in to your assistant'}</div>
         </div>
-        {challenge ? (
-          <label>Code<input className="input" autoFocus inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} /></label>
-        ) : <>
-          <label>Username<input className="input" autoFocus autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} /></label>
-          <label>Password<input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+        {challenge ? <>
+          <input className="input big code-input" aria-label="Code" autoFocus inputMode="numeric" autoComplete="one-time-code" placeholder="6-digit code" value={code} onChange={(e) => setCode(e.target.value)} />
+          {err && <div className="error" role="alert">{message(err)}</div>}
+          <button className="btn primary big" type="submit" disabled={totp.isPending || code.trim().length < 6}>Sign in</button>
+          <div className="sub" style={{ textAlign: 'center' }}>Your other devices will get a new-device notice.</div>
+        </> : <>
+          <input className="input big" aria-label="Username" placeholder="Username" autoFocus autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} />
+          <input className="input big" aria-label="Password" placeholder="Password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          {err && <div className="error" role="alert">{message(err)}</div>}
+          <button className="btn primary big" type="submit" disabled={login.isPending || !username || !password}>Continue</button>
         </>}
-        {err && <div className="error" role="alert">{message(err)}</div>}
-        <button className="btn primary" type="submit" disabled={login.isPending || totp.isPending}>{challenge ? 'Verify' : 'Sign in'}</button>
       </form>
     </div>
   )

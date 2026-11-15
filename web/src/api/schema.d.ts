@@ -143,6 +143,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/account/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Password
+         * @description Online only. Signs out every other session and device.
+         */
+        post: operations["change_password_api_account_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/totp/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Totp Setup
+         * @description A new secret to scan. Nothing changes until it's enabled with a valid code.
+         */
+        post: operations["totp_setup_api_account_totp_setup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/totp/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Totp Enable */
+        post: operations["totp_enable_api_account_totp_enable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/totp/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Totp Disable */
+        post: operations["totp_disable_api_account_totp_disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/status": {
         parameters: {
             query?: never;
@@ -659,6 +733,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Secrets */
+        get: operations["list_secrets_api_secrets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/secrets/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Secret
+         * @description Write-only: the value goes to the agent's environment and is redacted everywhere else.
+         */
+        put: operations["set_secret_api_secrets__name__put"];
+        post?: never;
+        /** Delete Secret */
+        delete: operations["delete_secret_api_secrets__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * System Status
+         * @description The agent computer, egress, usage and whether runs may start.
+         */
+        get: operations["system_status_api_system_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/selftest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Selftest
+         * @description Run the isolation self-test (also shown at the end of the setup wizard).
+         */
+        post: operations["selftest_api_system_selftest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/files/list": {
         parameters: {
             query?: never;
@@ -963,6 +1115,15 @@ export interface components {
             /** Reply Budget Left */
             reply_budget_left: number | null;
         };
+        /** EgressHealth */
+        EgressHealth: {
+            /** Reachable */
+            reachable: boolean;
+            /** Lease Active */
+            lease_active?: boolean | null;
+            /** Error */
+            error?: string | null;
+        };
         /** FileChange */
         FileChange: {
             /** Path */
@@ -1011,6 +1172,16 @@ export interface components {
             removed: number;
             /** Message */
             message: string;
+        };
+        /** GateState */
+        GateState: {
+            /** Open */
+            open: boolean;
+            /**
+             * Reason
+             * @description Why runs can't start right now.
+             */
+            reason?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1235,13 +1406,20 @@ export interface components {
             /** Passkeys */
             passkeys: number;
         };
+        /** PasswordChange */
+        PasswordChange: {
+            /** Current Password */
+            current_password: string;
+            /** New Password */
+            new_password: string;
+        };
         /** PasswordProblem */
         PasswordProblem: {
             /**
              * Error
              * @enum {string}
              */
-            error: "too_short" | "breached" | "already_set_up";
+            error: "too_short" | "breached" | "already_set_up" | "wrong_password";
             /** Detail */
             detail: string;
         };
@@ -1618,6 +1796,19 @@ export interface components {
              */
             reason?: string;
         };
+        /** RunnerHealth */
+        RunnerHealth: {
+            /** Reachable */
+            reachable: boolean;
+            /** Busy */
+            busy?: boolean | null;
+            /** Runtime Version */
+            runtime_version?: string | null;
+            /** Logged In */
+            logged_in?: boolean | null;
+            /** Error */
+            error?: string | null;
+        };
         /** SearchHit */
         SearchHit: {
             /**
@@ -1638,6 +1829,48 @@ export interface components {
             project: string | null;
             /** At */
             at: string | null;
+        };
+        /**
+         * SecretInfo
+         * @description A secret's name and metadata. Values are never returned.
+         */
+        SecretInfo: {
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /**
+             * Scope
+             * @description 'agent' (the agent's environment) until scopes arrive in M6.
+             */
+            scope: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Reads
+             * @description Times the agent fetched it with `assistant secret get`.
+             */
+            reads: number;
+            /** Last Read At */
+            last_read_at: string | null;
+        };
+        /**
+         * SecretSet
+         * @description Online only. Setting a value also scrubs it from everything already stored.
+         */
+        SecretSet: {
+            /** Value */
+            value: string;
+            /** Description */
+            description?: string | null;
         };
         /** SecurityAlert */
         SecurityAlert: {
@@ -1665,6 +1898,40 @@ export interface components {
              * @enum {string}
              */
             decision: "confirm" | "revoke";
+        };
+        /** SelfTestCheck */
+        SelfTestCheck: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Result
+             * @enum {string}
+             */
+            result: "ok" | "warn" | "fail" | "skip";
+            /** Detail */
+            detail?: string | null;
+        };
+        /** SelfTestResult */
+        SelfTestResult: {
+            /**
+             * Ran At
+             * Format: date-time
+             */
+            ran_at: string;
+            /**
+             * Ok
+             * @description No check failed.
+             */
+            ok: boolean;
+            /** Checks */
+            checks: components["schemas"]["SelfTestCheck"][];
+            /**
+             * Note
+             * @description What the self-test can and can't tell you.
+             */
+            note: string;
         };
         /** SetupOwnerRequest */
         SetupOwnerRequest: {
@@ -1791,7 +2058,9 @@ export interface components {
             run_budget?: number | null;
             /** Next Wakeup At */
             next_wakeup_at?: string | null;
-            budget: components["schemas"]["BudgetSummary"];
+            /** @description Absent until budgets exist (M4). */
+            budget?: components["schemas"]["BudgetSummary"] | null;
+            usage?: components["schemas"]["UsageReading"] | null;
             /** Inbox Waiting */
             inbox_waiting: number;
             /** Reply Budget Left */
@@ -1887,6 +2156,15 @@ export interface components {
              * @default false
              */
             reset?: boolean;
+        };
+        /** SystemStatus */
+        SystemStatus: {
+            /** Server Version */
+            server_version: string;
+            runner: components["schemas"]["RunnerHealth"];
+            egress: components["schemas"]["EgressHealth"];
+            usage: components["schemas"]["UsageReading"] | null;
+            gate: components["schemas"]["GateState"];
         };
         /** Task */
         Task: {
@@ -1998,6 +2276,12 @@ export interface components {
             /** First Message */
             first_message?: string | null;
             /**
+             * Upload Ids
+             * @description Attachments for the first message.
+             * @default []
+             */
+            upload_ids?: number[];
+            /**
              * Idempotency Key
              * @description Client-generated key; repeating a create with the same key returns the first result.
              */
@@ -2042,7 +2326,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "control" | "note" | "status" | "message" | "thinking" | "tool" | "diff" | "claim" | "suggestion" | "ask" | "shelf" | "reviewer" | "model" | "usage" | "error";
+            kind: "control" | "note" | "status" | "message" | "text" | "thinking" | "tool" | "diff" | "claim" | "suggestion" | "ask" | "shelf" | "reviewer" | "model" | "usage" | "error";
             /**
              * Simple
              * @description Also shown on the simple view's status timeline.
@@ -2055,12 +2339,39 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** TotpDisable */
+        TotpDisable: {
+            /** Password */
+            password: string;
+        };
+        /** TotpEnable */
+        TotpEnable: {
+            /** Secret */
+            secret: string;
+            /** Code */
+            code: string;
+        };
         /** TotpRequest */
         TotpRequest: {
             /** Challenge */
             challenge: string;
             /** Code */
             code: string;
+        };
+        /**
+         * TotpSetup
+         * @description A new, not yet enabled TOTP secret. Enabling it needs a valid code.
+         */
+        TotpSetup: {
+            /** Secret */
+            secret: string;
+            /** Otpauth Uri */
+            otpauth_uri: string;
+            /**
+             * Qr Svg
+             * @description The otpauth URI as an SVG QR code (generated by control).
+             */
+            qr_svg: string;
         };
         /** Upload */
         Upload: {
@@ -2087,6 +2398,34 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * UsageReading
+         * @description A provider's own usage meter (Claude subscription: 5-hour and weekly %).
+         */
+        UsageReading: {
+            /** Provider */
+            provider: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "oauth" | "stream" | "none";
+            /**
+             * Fetched At
+             * Format: date-time
+             */
+            fetched_at: string;
+            /** Five Hour Pct */
+            five_hour_pct: number | null;
+            /** Five Hour Resets At */
+            five_hour_resets_at: string | null;
+            /** Seven Day Pct */
+            seven_day_pct: number | null;
+            /** Seven Day Resets At */
+            seven_day_resets_at: string | null;
+            /** Error */
+            error: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -2403,6 +2742,152 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_password_api_account_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordProblem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    totp_setup_api_account_totp_setup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TotpSetup"];
+                };
+            };
+        };
+    };
+    totp_enable_api_account_totp_enable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpEnable"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Owner"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    totp_disable_api_account_totp_disable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpDisable"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Owner"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordProblem"];
                 };
             };
             /** @description Validation Error */
@@ -3397,7 +3882,7 @@ export interface operations {
         parameters: {
             query?: {
                 view?: "simple" | "detailed";
-                kind?: ("control" | "note" | "status" | "message" | "thinking" | "tool" | "diff" | "claim" | "suggestion" | "ask" | "shelf" | "reviewer" | "model" | "usage" | "error")[] | null;
+                kind?: ("control" | "note" | "status" | "message" | "text" | "thinking" | "tool" | "diff" | "claim" | "suggestion" | "ask" | "shelf" | "reviewer" | "model" | "usage" | "error")[] | null;
                 /** @description Only items with a larger id. */
                 after?: number | null;
             };
@@ -3487,6 +3972,141 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_secrets_api_secrets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretInfo"][];
+                };
+            };
+        };
+    };
+    set_secret_api_secrets__name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretInfo"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordProblem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_secret_api_secrets__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    system_status_api_system_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemStatus"];
+                };
+            };
+        };
+    };
+    selftest_api_system_selftest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelfTestResult"];
                 };
             };
         };

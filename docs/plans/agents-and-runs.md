@@ -9,7 +9,7 @@ These keep working as they do now (reworked only where this plan says so):
   - **Permissions**: yes/no, with **actions applied on approval**: an egress rule, a secret the owner types in, a setting. Later, more action kinds (e.g. publishing a service).
   - **Tasks**: things only the owner can do, marked done or won't-do with a note.
 
-  The agent can withdraw but never resolve them. Responses are pushed mid-run (after its next tool call) or delivered in the next wakeup brief.
+  The agent can withdraw but never resolve them. Approvals carry a **scope**: *always*; *once* (control undoes the actions when the run that asked ends); *project* (offered for asks in a project's thread; recorded, and treated like *always* until project-scoped rules exist). Responses are pushed mid-run (after its next tool call) or delivered in the next wakeup brief.
 - **Mid-run delivery**: new messages, decisions, answers, finished tasks and new secrets reach the agent after its next tool call (the hook, or the runtime's equivalent).
 - **`assistant wait N`**: pause (no tokens spent) until the owner responds, up to a limit.
 - **`assistant notify`**: a note to its future self, delivered once at the next inbox check, e.g. as the last line of a background job.

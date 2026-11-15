@@ -45,7 +45,7 @@ export function invalidateFor(qc: QueryClient, e: S['LiveEvent']) {
     case 'run':
     case 'timeline':
     case 'status':
-      return inv(['runs'], ['run'], ['status'])
+      return inv(['runs'], ['run'], ['status'], ['system'])
     case 'job':
       return inv(['jobs'])
     case 'shelf':
@@ -55,6 +55,10 @@ export function invalidateFor(qc: QueryClient, e: S['LiveEvent']) {
 }
 
 export type LiveState = 'connecting' | 'live' | 'offline'
+
+/** The server sends a heartbeat every 15 s. A connection silent for longer than this is
+ * dead even if it never closed (e.g. a proxy holding it open after control restarted). */
+export const SILENCE_MS = 40_000
 
 /** Keep one live connection open while signed in; reconnect with backoff. */
 export function useLive(enabled: boolean): LiveState {
@@ -66,8 +70,14 @@ export function useLive(enabled: boolean): LiveState {
     let delay = 1000
     ;(async () => {
       while (!ctl.signal.aborted) {
+        const conn = new AbortController()
+        const onAbort = () => conn.abort()
+        ctl.signal.addEventListener('abort', onAbort)
+        let watchdog = setTimeout(() => conn.abort(), SILENCE_MS)
         try {
-          for await (const e of readEvents(ctl.signal)) {
+          for await (const e of readEvents(conn.signal)) {
+            clearTimeout(watchdog)
+            watchdog = setTimeout(() => conn.abort(), SILENCE_MS)
             if (e.type === 'hello') {
               setState('live')
               delay = 1000
@@ -76,6 +86,9 @@ export function useLive(enabled: boolean): LiveState {
           }
         } catch {
           if (ctl.signal.aborted) return
+        } finally {
+          clearTimeout(watchdog)
+          ctl.signal.removeEventListener('abort', onAbort)
         }
         setState('offline')
         await new Promise((r) => setTimeout(r, delay))

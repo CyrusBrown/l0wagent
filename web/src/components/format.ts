@@ -34,6 +34,12 @@ export function bytes(n: number | null | undefined): string {
   return `${(n / 1e6).toFixed(1)} MB`
 }
 
+/** "weekly 41% · 5-hour 18%" from a provider usage reading (until budgets exist, M4). */
+export function usageText(u: { seven_day_pct?: number | null; five_hour_pct?: number | null } | null | undefined): string {
+  if (!u || u.seven_day_pct == null) return 'usage unknown'
+  return `weekly ${Math.round(u.seven_day_pct)}%` + (u.five_hour_pct != null ? ` · 5-hour ${Math.round(u.five_hour_pct)}%` : '')
+}
+
 export const pts = (n: number | null | undefined) => (n == null ? '–' : Number.isInteger(n) ? String(n) : n.toFixed(1))
 
 /** Map a typed link (l0wagent://thread/12) to an in-app route. Unknown links return null. */

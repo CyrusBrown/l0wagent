@@ -27,6 +27,13 @@ class Conflict(Exception):
         self.detail = detail
 
 
+class BadRequest(Exception):
+    def __init__(self, error: str, detail: str = ""):
+        super().__init__(error)
+        self.error = error
+        self.detail = detail
+
+
 class Unauthorized(Exception):
     pass
 
@@ -39,6 +46,10 @@ class LoginFailed(Exception):
 
 
 class Backend:
+    # lifecycle: called from the app's lifespan (the event loop is running)
+    async def startup(self) -> None: pass
+    async def shutdown(self) -> None: pass
+
     # meta and status
     def meta(self) -> s.Meta: raise NotImplementedError
     def status(self) -> s.Status: raise NotImplementedError
@@ -53,6 +64,10 @@ class Backend:
     def setup_owner(self, req: s.SetupOwnerRequest) -> s.Owner: raise NotImplementedError
     def auth_sessions(self, current_cookie: str | None, current_bearer: str | None) -> list[s.AuthSession]: raise NotImplementedError
     def revoke_session(self, session_id: str) -> None: raise NotImplementedError
+    def change_password(self, req: s.PasswordChange, current_cookie: str | None, current_bearer: str | None) -> None: raise NotImplementedError
+    def totp_setup(self) -> s.TotpSetup: raise NotImplementedError
+    def totp_enable(self, req: s.TotpEnable) -> s.Owner: raise NotImplementedError
+    def totp_disable(self, req: s.TotpDisable) -> s.Owner: raise NotImplementedError
 
     # projects and threads
     def projects(self, status: str | None) -> list[s.Project]: raise NotImplementedError
@@ -92,6 +107,15 @@ class Backend:
     def start_run(self, req: s.RunStart) -> s.Run: raise NotImplementedError
     def stop_run(self, run_id: int) -> s.Run: raise NotImplementedError
     def jobs(self, include_done: bool) -> list[s.Job]: raise NotImplementedError
+
+    # secrets (write-only)
+    def secrets(self) -> list[s.SecretInfo]: raise NotImplementedError
+    def set_secret(self, name: str, req: s.SecretSet) -> s.SecretInfo: raise NotImplementedError
+    def delete_secret(self, name: str) -> None: raise NotImplementedError
+
+    # system
+    def system_status(self) -> s.SystemStatus: raise NotImplementedError
+    def selftest(self) -> s.SelfTestResult: raise NotImplementedError
 
     # files
     def list_dir(self, volume: str, path: str) -> s.Listing: raise NotImplementedError

@@ -2,7 +2,7 @@
 
 A long-running personal AI assistant on the owner's own server. **Start with [docs/plans/development.md](docs/plans/development.md)**: it says which milestone is current and what "done" means. Don't build ahead of the current milestone; ideas for later go in that file's "Later" list.
 
-Current milestone: **M0 (setup and contract)**.
+Current milestone: **M2 (conversations)**, built on top of M1; both are waiting on the owner's review. M3 (files) is next.
 
 ## Sources of truth
 - **UI and styling: the mockup** (`design/mockup/`; readable sources in `design/mockup/src/`). It outranks `docs/plans/ui.md`. Port screens from its markup and tokens; where ui.md disagrees, update ui.md. [design/mockup/REVIEW.md](design/mockup/REVIEW.md) lists every known difference and how it was settled.
@@ -11,23 +11,33 @@ Current milestone: **M0 (setup and contract)**.
 
 ## Layout
 ```
-control/   FastAPI app (Python 3.12, SQLite, no ORM). api/ = schemas + routes; backends/base.py = the
-           interface routes call; mock/ = the in-memory mock backend (M0); db/migrations/ = versioned SQL
+control/   FastAPI app (Python 3.12, SQLite, no ORM). api/ = schemas + owner routes + agent.py (/api/agent/*);
+           backends/base.py = the interface routes call, sqlite.py = the real backend, mock/ = in-memory
+           fixtures for UI work; auth.py; guard.py (request guard); live.py (live stream + sync feed);
+           conv.py (projects, threads, messages, asks, claims, suggestions, delivery to the agent);
+           vault.py (write-only secrets, redaction); runs/ = run manager, runtime adapters,
+           runner/egress clients, usage reader + gate; prompts/ = control-owned prompts and
+           harness news (news.py); db/migrations/ = versioned SQL
+agent/     the agent image: runner/ (runner.py, fake_claude.py, selftest.py), bin/ (assistant CLI, hook), seed/
+egress/    the egress proxy (from the old assistant)      agent-web/  the LAN forwarder for port 8787
 web/       React + TypeScript + Vite. api/ = generated types, client, queries, live stream; app/ = shell;
-           screens/; components/; styles/tokens.css = the mockup's theme tokens
+           screens/; components/; styles/tokens.css = the mockup's theme tokens; e2e/ = Playwright
+dev/       isolation-test.sh and notes on the fake runtime
 design/mockup/  the mockup bundle as exported, its extracted sources, and REVIEW.md
 ```
-Created in their milestones: `agent/`, `egress/`, `agent-web/`, `chat-runtime/`, `cli/`, `dev/`.
+Created in their milestones: `chat-runtime/`, `cli/`.
 
 ## Commands
 ```
 cd control && uv sync                                  # once
-cd control && uv run uvicorn l0w_control.app:app --reload --port 8000   # mock API on :8000
+cd control && uv run python scripts/dev_stack.py --port 8000   # control + runner (fake claude) + egress, no Docker
+cd control && L0W_BACKEND=mock uv run uvicorn l0w_control.app:app --reload --port 8000   # the in-memory mock API
 cd web && pnpm install && pnpm dev                     # UI on :5173, proxies /api to :8000
-docker compose -f compose.dev.yaml up --build          # both, in containers
+docker compose -f compose.dev.yaml up --build          # the whole stack in containers (fake claude by default)
 
-cd control && uv run pytest && uv run ruff check .
-cd web && pnpm typecheck && pnpm test
+cd control && uv run pytest && uv run ruff check .     # includes the restart integration tests (no Docker)
+cd web && pnpm typecheck && pnpm test && pnpm e2e      # e2e starts its own stack on :8100/:5174
+dev/isolation-test.sh                                  # isolation probes against the running compose stack
 ```
 
 ## Changing the API
@@ -42,6 +52,17 @@ cd web && pnpm typecheck && pnpm test
 - Mock data follows the plan's workspace seed and `_inbox/` folders; it lives in `control/l0w_control/mock/fixtures.py`.
 - Web styling: plain CSS on the mockup's tokens (`web/src/styles/`), not Tailwind; it matches the mockup exactly. Light and dark themes come from the same tokens.
 - TypeScript is pinned to 5.x: openapi-typescript needs the JS compiler API that TypeScript 7 dropped.
+- Runs: the runner appends each session to a log; control stores each line and the new offset in one
+  transaction, so re-attaching after a restart never loses or repeats an event. Never make a session
+  depend on control's connection. Test restart behavior with `control/tests/stack.py`.
+- Control-owned prompts live in `control/l0w_control/prompts/` (placeholders until M4). Any change the
+  agent will notice (a new `assistant` command, a changed behavior) gets a new entry in `prompts/news.py`.
+- The owner decides; the agent proposes. Agent routes (`api/agent.py`) may create threads, projects,
+  messages, asks, claims and suggestions and withdraw its own asks, never answer, decide, resolve or
+  edit existing threads. Approved permission actions are applied by control (`conv._apply`).
+- Everything stored from the agent or the owner goes through `vault.redact`.
+- The fake runtime's scenarios (`agent/runner/fake_claude.py`) are how the agent's side is tested
+  without a login: extend them when you add agent-facing behavior.
 
 ## Security invariants (from docs/plans/server-platform.md; binding)
 - The agent container is on the sandbox network only: no Docker socket, no host mounts beyond explicit read-only grants, no NET_ADMIN/NET_RAW. Port 8787 reaches the LAN only through `agent-web`.

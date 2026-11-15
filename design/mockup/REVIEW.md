@@ -27,7 +27,15 @@ Resolutions: **plan** = update the plan to match the mockup. **owner** = needs y
 | # | What | Resolution |
 |---|---|---|
 | 12 | **Mobile** layout (the mockup has a fixed 640 px minimum height; the nav doesn't collapse). | Design it in the mockup's style when building Thread and Inbox for phones; worth a mockup pass first. |
-| 13 | Settings tabs Providers, Reviewer, Standing instructions, Account, Notifications, Extensions and System are empty. | Designed in the mockup's style as each milestone needs them (Account in M1). |
+| 13 | Settings tabs Providers, Reviewer, Standing instructions, Account, Notifications, Extensions and System are empty. | Designed in the mockup's style as each milestone needs them. **M1:** Account (owner, password, 2FA with a QR code, passkeys note, sessions and devices) and System (status rows, self-test list styled like the wizard's). The other tabs show a dashed placeholder (the mockup's extension-tab style) naming the milestone that brings them. |
+| 24 | No way to start a run by hand. | **M1:** a "Wake now" primary button on Runs, next to the title. |
+| 25 | The setup wizard has six steps. | **M1** shows the steps that exist: Owner account, Timezone, Provider (the agent's Claude login status and how to log in), Self-test. Level joins in M4; Hub appears once a hub is advertised (#11). |
+| 26 | Home's budget card assumes points. | **Until M4:** a "Claude usage this week" card with the provider's weekly and 5-hour %, in the budget card's style. |
+| 27 | Threads have no owner actions (the agent's suggestions are the only way to rename, move or archive). | **M2:** a small ⋯ menu in the thread header: Rename, Move to project, Pin, Archive. |
+| 28 | The Secure input card has only Save. | **M2:** a Decline button too, so the owner can refuse without waiting for the agent to withdraw. |
+| 29 | Tools & Secrets copy says the assistant reads secrets "through tools, never as text". | **M2:** the copy describes what's built: secrets are in the agent's environment and redacted from everything shown. Revisit when brokered tools arrive (M6). |
+| 30 | New offers "1:1 chat" and "Assistant · General". | **M2:** 1:1 chat is shown but disabled until M6; `?project=` starts the thread in a project ("New thread in project"). |
+| 31 | The Reply-now line shows a cost and reply points. | **Until M4:** just "Reply now" (no reply budget yet). |
 
 ## Product decisions shown by the mockup's data
 

@@ -1,22 +1,24 @@
 """The control app factory.
 
-    uvicorn l0w_control.app:app            backend from L0W_BACKEND (default: mock until M1)
+    uvicorn l0w_control.app:app            backend from L0W_BACKEND (default: sqlite, the real one)
     L0W_BACKEND=mock uvicorn ...           in-memory fixtures for UI work
 """
 
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
-from . import __version__
+from . import __version__, guard
 from .api import schemas
+from .api.agent import router as agent_router
 from .api.routes import api, public
-from .backends.base import Backend, Conflict, LoginFailed, NotFound, Unauthorized
+from .backends.base import Backend, BadRequest, Conflict, LoginFailed, NotFound, Unauthorized
 
 API_VERSION = "0"
 
@@ -25,10 +27,19 @@ DEFAULT_ORIGINS = ["tauri://localhost", "http://tauri.localhost", "http://localh
 
 
 def create_app(backend: Backend) -> FastAPI:
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        await backend.startup()
+        try:
+            yield
+        finally:
+            await backend.shutdown()
+
     app = FastAPI(
+        lifespan=lifespan,
         title="l0wagent control",
         version=f"{API_VERSION}.{__version__}",
-        description="The owner-facing API. Agent routes (/api/agent/*) and /mcp are separate and come later.",
+        description="The owner-facing API. The agent's routes (/api/agent/*) aren't part of it; /mcp comes later.",
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
         redoc_url=None,
@@ -37,6 +48,11 @@ def create_app(backend: Backend) -> FastAPI:
     app.state.backend = backend
     app.include_router(public)
     app.include_router(api)
+    if hasattr(backend, "runs_mgr"):
+        app.include_router(agent_router)
+    from .config import Env
+
+    guard.install(app, getattr(backend, "env", None) or Env())
 
     origins = [o for o in os.environ.get("L0W_CORS_ORIGINS", "").split(",") if o] or DEFAULT_ORIGINS
     app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -52,6 +68,10 @@ def create_app(backend: Backend) -> FastAPI:
     @app.exception_handler(Conflict)
     async def conflict(_: Request, exc: Conflict) -> JSONResponse:
         return JSONResponse({"error": exc.error, "detail": exc.detail}, status_code=409)
+
+    @app.exception_handler(BadRequest)
+    async def bad_request(_: Request, exc: BadRequest) -> JSONResponse:
+        return JSONResponse({"error": exc.error, "detail": exc.detail}, status_code=400)
 
     @app.exception_handler(Unauthorized)
     async def unauthorized(_: Request, __: Unauthorized) -> JSONResponse:
@@ -78,12 +98,30 @@ def create_app(backend: Backend) -> FastAPI:
 
 
 def _default_backend() -> Backend:
-    kind = os.environ.get("L0W_BACKEND", "mock")
+    kind = os.environ.get("L0W_BACKEND", "sqlite")
     if kind == "mock":
         from .mock.backend import MockBackend
 
         return MockBackend(require_login=os.environ.get("L0W_MOCK_LOGIN") == "1")
-    raise SystemExit(f"unknown L0W_BACKEND={kind!r} (only 'mock' exists before M1)")
+    if kind == "sqlite":
+        from .backends.sqlite import SqliteBackend
+
+        return SqliteBackend()
+    raise SystemExit(f"unknown L0W_BACKEND={kind!r} (mock or sqlite)")
 
 
-app = create_app(_default_backend())
+_app: FastAPI | None = None
+
+
+def __getattr__(name: str) -> FastAPI:
+    """`l0w_control.app:app` for uvicorn, built on first use so importing this module
+    (scripts, tests) doesn't open a database."""
+    global _app
+    if name != "app":
+        raise AttributeError(name)
+    if _app is None:
+        import logging
+
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+        _app = create_app(_default_backend())
+    return _app

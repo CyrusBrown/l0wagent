@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { S } from '../api/client'
 import {
-  useAnswer, useDecidePermission, useDecidePromote, useDecideSecurity, useDecideSuggestion, useResolveTask,
+  problem, useAnswer, useDecidePermission, useSetSecret, useDecidePromote, useDecideSecurity, useDecideSuggestion, useResolveTask,
 } from '../api/queries'
 import { useOnline } from './online'
 import { pts } from './format'
@@ -117,22 +117,77 @@ export function QuestionCard({ q }: { q: S['Question'] }) {
 
 const scopeLabel = { once: 'Allow once', project: 'Allow for project', always: 'Always allow' } as const
 
+type SecretAction = { name: string; description?: string }
+const secretActions = (p: S['Permission']): SecretAction[] =>
+  p.actions.filter((a) => a.kind === 'secret').map((a) => a.payload as unknown as SecretAction)
+
+/** Values typed into a card go straight to the write-only secrets endpoint, then the
+ * permission is decided. They're never sent anywhere else. */
+function useSecretInputs(p: S['Permission']) {
+  const needed = secretActions(p)
+  const [values, setValues] = useState<Record<string, string>>({})
+  const setSecret = useSetSecret()
+  const ready = needed.every((a) => (values[a.name] ?? '').trim())
+  const save = async () => {
+    for (const a of needed) await setSecret.mutateAsync({ name: a.name, value: values[a.name], description: a.description || null })
+  }
+  const fields = needed.map((a) => (
+    <input key={a.name} className="input" type="password" autoComplete="off" aria-label={a.name}
+      placeholder={needed.length > 1 ? `${a.name}${a.description ? ` · ${a.description}` : ''}` : 'Paste the value'}
+      value={values[a.name] ?? ''} onChange={(e) => setValues({ ...values, [a.name]: e.target.value })} />
+  ))
+  return { needed, ready, save, fields, error: setSecret.error }
+}
+
 export function PermissionCard({ p }: { p: S['Permission'] }) {
   const decide = useDecidePermission()
   const online = useOnline()
+  const secrets = useSecretInputs(p)
+  if (secrets.needed.length && secrets.needed.length === p.actions.length) return <SecureInputCard p={p} />
   const decided = p.status !== 'open' && <Decided text={p.status === 'allowed' ? `Allowed${p.scope ? ` (${p.scope})` : ''}` : p.status === 'denied' ? 'Denied' : p.status} note={p.note} />
+  const allow = async (scope: S['Permission']['scopes'][number], note: string) => {
+    await secrets.save()
+    decide.mutate({ id: p.id, decision: 'allow', scope, note: note || null })
+  }
+  const err = decide.error ?? secrets.error
   return (
     <Card id={`p${p.id}`} label="Permission" right="needs connection" decided={decided}
       actions={(note) => <>
         {[...p.scopes].reverse().map((scope, i) => (
-          <button key={scope} className={`btn ${i === 0 ? 'primary' : ''}`} disabled={!online || decide.isPending}
-            onClick={() => decide.mutate({ id: p.id, decision: 'allow', scope, note: note || null })}>{scopeLabel[scope]}</button>
+          <button key={scope} className={`btn ${i === 0 ? 'primary' : ''}`} disabled={!online || decide.isPending || !secrets.ready}
+            onClick={() => allow(scope, note)}>{scopeLabel[scope]}</button>
         ))}
         <button className="btn danger" disabled={!online || decide.isPending} onClick={() => decide.mutate({ id: p.id, decision: 'deny', note: note || null })}>Deny</button>
       </>}>
       <div className="card-text">{p.text}</div>
       {p.reason && <div className="card-sub">{p.reason}</div>}
       {p.actions.map((a, i) => <div key={i} className="card-sub">On approval: {a.summary}</div>)}
+      {p.status === 'open' && secrets.fields}
+      {err && <div className="error">{problem(err)}</div>}
+    </Card>
+  )
+}
+
+/** A permission whose only actions are secrets: the mockup's "Secure input" card. */
+function SecureInputCard({ p }: { p: S['Permission'] }) {
+  const decide = useDecidePermission()
+  const online = useOnline()
+  const secrets = useSecretInputs(p)
+  const names = secrets.needed.map((a) => a.name)
+  const decided = p.status !== 'open' && <Decided text={p.status === 'allowed' ? `Saved as ${names.join(', ')}` : p.status === 'denied' ? 'Declined' : p.status} note={p.note} />
+  const scope = p.scopes.includes('always') ? 'always' : p.scopes[0]
+  const err = decide.error ?? secrets.error
+  return (
+    <Card id={`p${p.id}`} label="Secure input" right="stored as a secret, never sent to a model" decided={decided}
+      actions={(note) => <>
+        <button className="btn primary" disabled={!online || !secrets.ready || decide.isPending}
+          onClick={async () => { await secrets.save(); decide.mutate({ id: p.id, decision: 'allow', scope, note: note || null }) }}>Save</button>
+        <button className="btn" disabled={!online || decide.isPending} onClick={() => decide.mutate({ id: p.id, decision: 'deny', note: note || null })}>Decline</button>
+      </>}>
+      <div style={{ fontSize: 14 }}>{p.text} {names.map((n) => <code key={n}>{n}</code>)}</div>
+      {p.reason && <div className="card-sub">{p.reason}</div>}
+      {p.status === 'open' && secrets.fields}
+      {err && <div className="error">{problem(err)}</div>}
     </Card>
   )
 }

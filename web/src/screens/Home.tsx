@@ -1,7 +1,8 @@
 import { Link } from 'react-router'
-import { useClaims, useInbox, useJobs, useMe, useRecent, useStatus } from '../api/queries'
+import type { S } from '../api/client'
+import { useClaims, useInbox, useJobs, useMe, useRecent, useRun, useStatus } from '../api/queries'
 import { ClaimCard, InboxCard } from '../components/Cards'
-import { ago, pts, until } from '../components/format'
+import { ago, clock, duration, pts, until } from '../components/format'
 import { Markdown } from '../components/Markdown'
 
 function greeting(d = new Date()) {
@@ -71,22 +72,9 @@ export function Home() {
             </section>
           )}
 
-          {st && (
-            <section className="card">
-              <div className="section-label">Budget this week</div>
-              <div><span style={{ font: '500 28px var(--serif)' }}>{pts(st.budget.left)}</span> <span className="sub">of {pts(st.budget.allowance)} {st.budget.unit} left</span></div>
-              <div className="gauge" style={{ display: 'flex' }}>
-                <div style={{ width: `${(st.budget.used_by_owner / st.budget.allowance) * 100}%`, background: 'var(--okInk)', borderRadius: 0 }} />
-                <div style={{ width: `${(st.budget.used_by_chat / st.budget.allowance) * 100}%`, background: 'var(--infoInk)', borderRadius: 0 }} />
-                <div style={{ width: `${(st.budget.used_by_assistant / st.budget.allowance) * 100}%`, borderRadius: 0 }} />
-              </div>
-              <div className="row-between sub">
-                <span><span className="dot ok" style={{ display: 'inline-block', marginRight: 6 }} />You · {pts(st.budget.used_by_owner)}</span>
-                <span><span className="dot info" style={{ display: 'inline-block', marginRight: 6, background: 'var(--infoInk)' }} />Your chats · {pts(st.budget.used_by_chat)}</span>
-                <span><span className="dot working" style={{ display: 'inline-block', marginRight: 6, animation: 'none' }} />Assistant · {pts(st.budget.used_by_assistant)}</span>
-              </div>
-            </section>
-          )}
+          {st?.state === 'working' && st.run_id && <CurrentRun id={st.run_id} />}
+
+          {st?.budget ? <BudgetCard b={st.budget} /> : st && <UsageCard u={st.usage} />}
 
           <section className="stack">
             <div className="section-label">Long jobs <Link to="/runs?tab=jobs">All jobs</Link></div>
@@ -101,5 +89,52 @@ export function Home() {
         </div>
       </div>
     </div>
+  )
+}
+
+function CurrentRun({ id }: { id: number }) {
+  const run = useRun(id)
+  const r = run.data?.run
+  if (!r) return null
+  return (
+    <Link to={`/runs/${id}`} className="card" style={{ color: 'var(--fg)', textDecoration: 'none' }}>
+      <div className="section-label"><span>Current run · #{id}</span><span>{duration(r.started_at)}{r.deadline ? ` · until ${clock(r.deadline)}` : ''}</span></div>
+      {r.about && <div style={{ fontSize: 14 }}>{r.about}</div>}
+      <div className="sub" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span className="dot working" />{r.now ?? 'Starting…'}</div>
+    </Link>
+  )
+}
+
+function BudgetCard({ b }: { b: S['BudgetSummary'] }) {
+  return (
+    <section className="card">
+      <div className="section-label">Budget this week</div>
+      <div><span style={{ font: '500 28px var(--serif)' }}>{pts(b.left)}</span> <span className="sub">of {pts(b.allowance)} {b.unit} left</span></div>
+      <div className="gauge" style={{ display: 'flex' }}>
+        <div style={{ width: `${(b.used_by_owner / b.allowance) * 100}%`, background: 'var(--okInk)', borderRadius: 0 }} />
+        <div style={{ width: `${(b.used_by_chat / b.allowance) * 100}%`, background: 'var(--infoInk)', borderRadius: 0 }} />
+        <div style={{ width: `${(b.used_by_assistant / b.allowance) * 100}%`, borderRadius: 0 }} />
+      </div>
+      <div className="row-between sub">
+        <span><span className="dot ok" style={{ display: 'inline-block', marginRight: 6 }} />You · {pts(b.used_by_owner)}</span>
+        <span><span className="dot info" style={{ display: 'inline-block', marginRight: 6, background: 'var(--infoInk)' }} />Your chats · {pts(b.used_by_chat)}</span>
+        <span><span className="dot working" style={{ display: 'inline-block', marginRight: 6, animation: 'none' }} />Assistant · {pts(b.used_by_assistant)}</span>
+      </div>
+    </section>
+  )
+}
+
+/** Until budgets exist (M4): the provider's own meter. */
+function UsageCard({ u }: { u: S['UsageReading'] | null | undefined }) {
+  const known = u?.seven_day_pct != null
+  return (
+    <section className="card">
+      <div className="section-label"><span>Claude usage this week</span>{u && <span>as of {clock(u.fetched_at)}</span>}</div>
+      {known ? <>
+        <div><span style={{ font: '500 28px var(--serif)' }}>{Math.round(u!.seven_day_pct!)}%</span> <span className="sub">used{u!.seven_day_resets_at ? ` · resets ${until(u!.seven_day_resets_at)}` : ''}</span></div>
+        <div className="gauge"><div style={{ width: `${Math.min(100, u!.seven_day_pct!)}%` }} /></div>
+        {u!.five_hour_pct != null && <div className="sub">5-hour window {Math.round(u!.five_hour_pct)}%{u!.five_hour_resets_at ? ` · resets ${until(u!.five_hour_resets_at)}` : ''}</div>}
+      </> : <div className="sub">Unknown{u?.error ? `: ${u.error}` : ''}. <Link to="/settings/system">System</Link></div>}
+    </section>
   )
 }

@@ -1,7 +1,7 @@
-import type { ReactNode } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import type { RouteObject } from 'react-router'
 import { ApiError } from '../api/client'
-import { useMe } from '../api/queries'
+import { useMe, useMeta } from '../api/queries'
 import { Files } from '../screens/Files'
 import { Home } from '../screens/Home'
 import { Inbox } from '../screens/Inbox'
@@ -9,13 +9,22 @@ import { Login } from '../screens/Login'
 import { NotPorted } from '../screens/NotPorted'
 import { NewItem, Project, Projects } from '../screens/Projects'
 import { Run, Runs } from '../screens/Runs'
+import { Settings } from '../screens/Settings'
+import { Setup } from '../screens/Setup'
 import { Thread } from '../screens/Thread'
+import { Tools } from '../screens/Tools'
 import { Shell } from './Shell'
 
-/** Shows the login screen until /api/auth/me succeeds. */
+/** The setup wizard on a fresh server (kept open until its last step), then the login
+ * screen until /api/auth/me succeeds. */
 function Gate({ children }: { children: ReactNode }) {
+  const meta = useMeta()
   const me = useMe()
-  if (me.isPending) return null
+  const [wizard, setWizard] = useState(false)
+  useEffect(() => { if (meta.data?.setup_complete === false) setWizard(true) }, [meta.data?.setup_complete])
+  if (wizard) return <Setup onDone={() => setWizard(false)} />
+  if (meta.isPending || me.isPending) return null
+  if (meta.data?.setup_complete === false) return null
   if (me.error instanceof ApiError && me.error.status === 401) return <Login />
   return children
 }
@@ -35,10 +44,11 @@ export const routes: RouteObject[] = [
       { path: 'runs/:id', element: <Run /> },
       { path: 'files', element: <Files /> },
       { path: 'calendar', element: <NotPorted name="Calendar" milestone="M4" /> },
-      { path: 'tools', element: <NotPorted name="Tools & Secrets" milestone="M6 (basic secrets in M2)" /> },
+      { path: 'tools', element: <Tools /> },
       { path: 'network', element: <NotPorted name="Network" milestone="M6" /> },
       { path: 'web', element: <NotPorted name="The assistant's web page" milestone="M3" /> },
-      { path: 'settings', element: <NotPorted name="Settings" milestone="M1 (account) and M4 (budgets)" /> },
+      { path: 'settings', element: <Settings /> },
+      { path: 'settings/:tab', element: <Settings /> },
       { path: '*', element: <NotPorted name="Not found" /> },
     ],
   },

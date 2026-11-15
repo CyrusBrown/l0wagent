@@ -1,0 +1,354 @@
+#!/usr/bin/env python3
+"""assistant: talk to control from inside your computer.
+
+  assistant status "one sentence"        what you're doing now (shown live to the owner)
+  assistant status                       the current run and usage
+  assistant run describe "a paragraph"   what this run is for
+  assistant note "one sentence"          a milestone on this run's status timeline
+  assistant inbox [--peek]               anything new for you
+  assistant wait [minutes]               pause (no tokens used) until something arrives, max 9.5 min
+  assistant notify "text"                a note to your future self, delivered once at the next inbox check
+                                         (e.g. as the last line of a background job)
+  assistant news                         changes to your harness
+
+Threads and projects (threads are where you and the owner talk; General = no project):
+  assistant threads [--project P | --general] [--archived]
+  assistant messages --thread N [-n 30]                  a thread's history
+  assistant send --thread N "message"                    reply in a thread (Markdown; - reads stdin)
+  assistant send --new "Title" [--project P] "message"   start a thread
+  assistant project list [--all] | show P | new "Name" [--slug S] [--summary …] [--doc path]
+  assistant project update P [--summary …] [--doc path] [--link Label=URL]
+
+Asks (non-blocking: file them and carry on; answers reach you after your next tool call):
+  assistant question "text" [--kind yes_no|single|multi|text|slot|scale] [-o A -o B] --default X [--thread N]
+  assistant ask "text" [--reason …] [--allow-egress HOST [--full]] [--secret NAME[=desc]] [--setting K=V] [--thread N]
+                                         a permission; its actions are applied by control if the owner approves
+  assistant task "text" [--detail …] [--thread N]        something only the owner can do
+  assistant asks [--status open]  ·  assistant withdraw question|permission|task|suggestion ID
+
+Claims and suggestions:
+  assistant claim N "plan"               you're picking up a concrete task from thread N
+  assistant claim done N "result" [--partial | --dropped]
+  assistant suggest thread_archive|thread_rename|thread_move|thread_merge|thread_split N "why" [--title T] [--project P] [--into M] [--messages 1,2]
+  assistant suggest project_stale|project_archive|project_merge|project_split SLUG "why" [--into S] [--name N] [--threads 1,2]
+
+Other:
+  assistant secret list | get NAME | env  secrets the owner gave you (also in your environment)
+  assistant search "query" [--kind thread|message|project|run]
+  assistant link thread N | project SLUG | run N | file VOLUME/PATH     a typed link for messages
+"""
+
+import argparse
+import json
+import os
+import shlex
+import sys
+import time
+import urllib.error
+import urllib.request
+
+CONTROL = os.environ.get("CONTROL_URL", "http://control:8000").rstrip("/")
+TOKEN = os.environ.get("AGENT_API_TOKEN", "")
+# Control is on the local sandbox network: never route it through the egress proxy.
+_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def call(method: str, path: str, payload=None, timeout: float = 15):
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(f"{CONTROL}/api/agent{path}", data=data, method=method,
+                                 headers={"X-Agent-Token": TOKEN, "Content-Type": "application/json"})
+    try:
+        with _opener.open(req, timeout=timeout) as r:
+            return json.loads(r.read() or b"null")
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")
+        try:
+            body = json.loads(body).get("detail", body)
+        except (json.JSONDecodeError, AttributeError):
+            pass
+        sys.exit(f"control: {e.code}: {str(body)[:500]}")
+    except urllib.error.URLError as e:
+        sys.exit(f"control unreachable: {e.reason}")
+
+
+def run_id():
+    rid = os.environ.get("ASSISTANT_RUN_ID", "")
+    return int(rid) if rid.isdigit() else None
+
+
+def text(parts: list[str]) -> str:
+    joined = " ".join(parts)
+    return sys.stdin.read() if joined == "-" else joined
+
+
+def q(params: dict) -> str:
+    import urllib.parse
+
+    params = {k: v for k, v in params.items() if v not in (None, "", False)}
+    return ("?" + urllib.parse.urlencode(params)) if params else ""
+
+
+def fmt_thread(t: dict) -> str:
+    flags = [f for f in (t.get("project") or "General", "archived" if t["status"] == "archived" else "",
+                         f"{t['unread']} unread" if t.get("unread") else "", f"{t['open_asks']} open ask(s)" if t.get("open_asks") else "") if f]
+    return f"#{t['id']:<5} {t['title']}  [{', '.join(flags)}]"
+
+
+def fmt_project(p: dict) -> str:
+    head = f"{p['slug']:<22} {p['name']}" + (f"  [{p['status']}]" if p["status"] != "active" else "")
+    return head + (f"\n{'':<23}{p['summary']}" if p.get("summary") else "")
+
+
+def ids(text: str | None) -> list[int]:
+    return [int(x) for x in (text or "").replace(" ", "").split(",") if x]
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(prog="assistant", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="cmd", required=True)
+    st = sub.add_parser("status", help="set your 'now' sentence, or show the run and usage")
+    st.add_argument("text", nargs="*")
+    rn = sub.add_parser("run", help="run describe \"…\"")
+    rn.add_argument("action", choices=["describe"])
+    rn.add_argument("text", nargs="+")
+    nt = sub.add_parser("note", help="a milestone on the status timeline")
+    nt.add_argument("text", nargs="+")
+    ib = sub.add_parser("inbox", help="anything new for you")
+    ib.add_argument("--peek", action="store_true", help="don't mark it delivered")
+    wt = sub.add_parser("wait", help="pause until something arrives")
+    wt.add_argument("minutes", type=float, nargs="?", default=5.0)
+    nf = sub.add_parser("notify", help="a note to your future self")
+    nf.add_argument("text", nargs="+")
+    sub.add_parser("news", help="changes to your harness")
+
+    th = sub.add_parser("threads", help="list threads")
+    th.add_argument("--project", "-p")
+    th.add_argument("--general", action="store_true")
+    th.add_argument("--archived", action="store_true")
+    ms = sub.add_parser("messages", help="a thread's history")
+    ms.add_argument("--thread", "-t", type=int, required=True)
+    ms.add_argument("-n", "--limit", type=int, default=30)
+    sd = sub.add_parser("send", help="message the owner in a thread")
+    sd.add_argument("text", nargs="+")
+    where = sd.add_mutually_exclusive_group(required=True)
+    where.add_argument("--thread", "-t", type=int)
+    where.add_argument("--new", metavar="TITLE", help="start a new thread with this title")
+    sd.add_argument("--project", "-p", help="with --new: the project (default General)")
+
+    pr = sub.add_parser("project", help="projects: list | show | new | update")
+    psub = pr.add_subparsers(dest="pcmd", required=True)
+    pl = psub.add_parser("list")
+    pl.add_argument("--all", action="store_true")
+    psh = psub.add_parser("show")
+    psh.add_argument("slug")
+    pn = psub.add_parser("new")
+    pn.add_argument("name")
+    pn.add_argument("--slug")
+    pn.add_argument("--summary", default="")
+    pn.add_argument("--doc")
+    pn.add_argument("--link", action="append", default=[], help="Label=URL")
+    pu = psub.add_parser("update")
+    pu.add_argument("slug")
+    pu.add_argument("--summary")
+    pu.add_argument("--doc")
+    pu.add_argument("--link", action="append", help="Label=URL (replaces the links)")
+
+    qn = sub.add_parser("question", help="ask the owner a question (non-blocking)")
+    qn.add_argument("text")
+    qn.add_argument("--kind", "-k", default="yes_no", choices=["yes_no", "single", "multi", "text", "slot", "scale"])
+    qn.add_argument("--option", "-o", action="append", default=[])
+    qn.add_argument("--default", required=True, help="what you'll assume if there's no answer")
+    qn.add_argument("--scale-low")
+    qn.add_argument("--scale-high")
+    qn.add_argument("--thread", "-t", type=int)
+    ak = sub.add_parser("ask", help="ask for a permission, with actions control applies on approval")
+    ak.add_argument("text")
+    ak.add_argument("--reason", "-r")
+    ak.add_argument("--allow-egress", action="append", default=[], metavar="PATTERN")
+    ak.add_argument("--full", action="store_true", help="egress rules allow writes too (default read-only)")
+    ak.add_argument("--secret", action="append", default=[], metavar="NAME[=description]")
+    ak.add_argument("--setting", action="append", default=[], metavar="KEY=VALUE")
+    ak.add_argument("--thread", "-t", type=int)
+    tk = sub.add_parser("task", help="something only the owner can do")
+    tk.add_argument("text")
+    tk.add_argument("--detail", "-d")
+    tk.add_argument("--thread", "-t", type=int)
+    al = sub.add_parser("asks", help="your questions, permissions and tasks")
+    al.add_argument("--status")
+    wd = sub.add_parser("withdraw", help="withdraw an open ask or suggestion")
+    wd.add_argument("kind", choices=["question", "permission", "task", "suggestion"])
+    wd.add_argument("id", type=int)
+
+    cl = sub.add_parser("claim", help="claim N \"plan\"  |  claim done N \"result\"")
+    cl.add_argument("args", nargs="+")
+    cl.add_argument("--partial", action="store_true")
+    cl.add_argument("--dropped", action="store_true")
+    sg = sub.add_parser("suggest", help="suggest a change to a thread or project")
+    sg.add_argument("kind")
+    sg.add_argument("target")
+    sg.add_argument("text")
+    sg.add_argument("--title")
+    sg.add_argument("--project")
+    sg.add_argument("--into")
+    sg.add_argument("--messages", help="ids, comma-separated (thread_split)")
+    sg.add_argument("--threads", help="ids, comma-separated (project_split)")
+    sg.add_argument("--name", help="the new project's name (project_split)")
+
+    sc = sub.add_parser("secret", help="list | get NAME | env")
+    sc.add_argument("action", choices=["list", "get", "env"])
+    sc.add_argument("name", nargs="?")
+    se = sub.add_parser("search", help="search threads, messages, projects and runs")
+    se.add_argument("query")
+    se.add_argument("--kind")
+    lk = sub.add_parser("link", help="print a typed link")
+    lk.add_argument("kind", choices=["thread", "project", "run", "file"])
+    lk.add_argument("target")
+    a = p.parse_args()
+
+    if a.cmd == "status":
+        if a.text:
+            r = call("POST", "/status", {"text": text(a.text), "run_id": run_id()})
+            print(f"status set (run #{r['run_id']})")
+        else:
+            print(call("GET", "/status")["text"])
+    elif a.cmd == "run":
+        r = call("POST", "/run/describe", {"text": text(a.text), "run_id": run_id()})
+        print(f"run #{r['run_id']} described")
+    elif a.cmd == "note":
+        r = call("POST", "/notes", {"text": text(a.text), "run_id": run_id()})
+        print(f"noted (run #{r['run_id']})")
+    elif a.cmd == "inbox":
+        r = call("GET", "/inbox" + ("?peek=true" if a.peek else ""))
+        print(r.get("text") or "Nothing new.")
+    elif a.cmd == "wait":
+        # Claude Code's Bash tool caps a command at 10 minutes, so stay under it.
+        minutes = max(0.1, min(a.minutes, 9.5))
+        deadline = time.time() + minutes * 60
+        while time.time() < deadline:
+            if call("GET", "/inbox?peek=true").get("text"):
+                print(call("GET", "/inbox").get("text"))
+                return
+            time.sleep(5)
+        print(f"Nothing after {minutes:g} min. Carry on; anything new still reaches you later.")
+    elif a.cmd == "notify":
+        r = call("POST", "/notifications", {"body": text(a.text), "run_id": run_id()})
+        print(f"notification #{r['id']} queued")
+    elif a.cmd == "news":
+        items = call("GET", "/news")
+        print("\n\n".join(f"## {e['date']}: {e['title']}\n\n{e['body']}" for e in items) or "No news.")
+    elif a.cmd == "threads":
+        rows = call("GET", "/threads" + q({"project": a.project, "general": "true" if a.general else "", "archived": "true" if a.archived else ""}))
+        print("\n".join(fmt_thread(t) for t in rows) or "No threads.")
+    elif a.cmd == "messages":
+        r = call("GET", f"/messages?thread={a.thread}&limit={a.limit}")
+        print(fmt_thread(r["thread"]) + "\n\n" + r["text"])
+    elif a.cmd == "send":
+        body = text(a.text)
+        if a.new:
+            t = call("POST", "/threads", {"title": a.new, "project": a.project, "body": body, "run_id": run_id()})
+            print(f"started thread #{t['id']} “{t['title']}” and posted the message")
+        else:
+            m = call("POST", "/messages", {"thread": a.thread, "body": body, "run_id": run_id()})
+            print(f"sent (message #{m['id']} in thread #{m['thread_id']})")
+    elif a.cmd == "project":
+        if a.pcmd == "list":
+            print("\n".join(fmt_project(x) for x in call("GET", "/projects" + q({"all": "true" if a.all else ""}))) or "No projects.")
+        elif a.pcmd == "show":
+            r = call("GET", f"/projects/{a.slug}")
+            print(fmt_project(r) + (f"\ndoc: {r['doc_path']}" if r.get("doc_path") else ""))
+            for link in r.get("links") or []:
+                print(f"link: {link['label']} {link['url']}")
+            print("\n".join(fmt_thread(t) for t in r["threads"]))
+        elif a.pcmd == "new":
+            links = [dict(zip(("label", "url"), x.split("=", 1))) for x in a.link if "=" in x]
+            r = call("POST", "/projects", {"name": a.name, "slug": a.slug, "summary": a.summary, "doc_path": a.doc, "links": links})
+            print(f"created project {r['slug']}")
+        else:
+            patch = {"summary": a.summary, "doc_path": a.doc}
+            if a.link is not None:
+                patch["links"] = [dict(zip(("label", "url"), x.split("=", 1))) for x in a.link if "=" in x]
+            print(fmt_project(call("PATCH", f"/projects/{a.slug}", patch)))
+    elif a.cmd == "question":
+        default = {"true": True, "yes": True, "false": False, "no": False}.get(a.default.lower(), a.default) if a.kind == "yes_no" else a.default
+        if a.kind == "multi":
+            default = [x.strip() for x in a.default.split(",") if x.strip()]
+        if a.kind == "scale":
+            default = int(a.default)
+        labels = [a.scale_low, a.scale_high] if a.scale_low and a.scale_high else None
+        r = call("POST", "/questions", {"text": a.text, "kind": a.kind, "options": a.option, "default": default, "scale_labels": labels,
+                                         "thread": a.thread, "run_id": run_id()})
+        print(f"question #{r['id']} filed; its answer reaches you after a tool call (or `assistant wait`). Default: {r['default']!r}")
+    elif a.cmd == "ask":
+        actions = [{"kind": "egress_rule", "pattern": x, "mode": "allow" if a.full else "allow_ro"} for x in a.allow_egress]
+        for spec in a.secret:
+            name, _, desc = spec.partition("=")
+            actions.append({"kind": "secret", "name": name, "description": desc})
+        for spec in a.setting:
+            key, sep, value = spec.partition("=")
+            if not sep:
+                sys.exit(f"--setting needs KEY=VALUE, got {spec!r}")
+            actions.append({"kind": "setting", "key": key, "value": value})
+        r = call("POST", "/permissions", {"text": a.text, "reason": a.reason, "actions": actions, "thread": a.thread, "run_id": run_id()})
+        print(f"permission #{r['id']} filed")
+        for act in r["actions"]:
+            print(f"  if approved: {act['summary']}")
+    elif a.cmd == "task":
+        r = call("POST", "/tasks", {"text": a.text, "detail": a.detail, "thread": a.thread, "run_id": run_id()})
+        print(f"task #{r['id']} filed for the owner")
+    elif a.cmd == "asks":
+        rows = call("GET", "/asks" + q({"status": a.status}))
+        for r in rows:
+            extra = ""
+            if r["kind"] == "question" and r["status"] == "answered":
+                extra = f" → {r['answer']!r}"
+            if r.get("note"):
+                extra += f" (note: {r['note']})"
+            print(f"{r['kind']} #{r['id']} [{r['status']}] {r['text']}{extra}")
+        if not rows:
+            print("Nothing.")
+    elif a.cmd == "withdraw":
+        call("POST", f"/{a.kind}s/{a.id}/withdraw", {})
+        print(f"{a.kind} #{a.id} withdrawn")
+    elif a.cmd == "claim":
+        if a.args[0] == "done":
+            if len(a.args) < 3 or not a.args[1].isdigit():
+                sys.exit('usage: assistant claim done N "result"')
+            status = "partial" if a.partial else "dropped" if a.dropped else "done"
+            r = call("POST", "/claims/done", {"thread": int(a.args[1]), "result": " ".join(a.args[2:]), "status": status, "run_id": run_id()})
+            print(f"claim on thread #{r['thread_id']} closed: {r['status']}")
+        else:
+            if len(a.args) < 2 or not a.args[0].isdigit():
+                sys.exit('usage: assistant claim N "plan"')
+            r = call("POST", "/claims", {"thread": int(a.args[0]), "plan": " ".join(a.args[1:]), "run_id": run_id()})
+            print(f"claimed thread #{r['thread_id']} “{r['thread_title']}”")
+    elif a.cmd == "suggest":
+        payload = {"title": a.title, "project": a.project, "into": a.into, "name": a.name}
+        if a.kind == "thread_merge" and a.into:
+            payload["into"] = int(a.into)
+        if a.messages:
+            payload["message_ids"] = ids(a.messages)
+        if a.threads:
+            payload["thread_ids"] = ids(a.threads)
+        payload = {k: v for k, v in payload.items() if v is not None}
+        r = call("POST", "/suggestions", {"kind": a.kind, "target": a.target, "text": a.text, "payload": payload, "run_id": run_id()})
+        print(f"suggestion #{r['id']} filed; the owner accepts or dismisses it")
+    elif a.cmd == "secret":
+        if a.action == "list":
+            rows = call("GET", "/secrets")
+            print("\n".join(r["name"] + (f"  {r['description']}" if r["description"] else "") for r in rows) or "No secrets.")
+        else:
+            if a.action == "get" and not a.name:
+                sys.exit("usage: assistant secret get NAME")
+            names = [a.name] if a.action == "get" else [r["name"] for r in call("GET", "/secrets")]
+            for name in names:
+                r = call("GET", f"/secrets/{name}")
+                print(r["value"] if a.action == "get" else f"export {r['name']}={shlex.quote(r['value'])}")
+    elif a.cmd == "search":
+        rows = call("GET", "/search" + q({"q": a.query, "kind": a.kind}))
+        print("\n".join(f"{h['kind']:<8} {h['title']}  {h['link']}" + (f"\n         {h['snippet']}" if h.get("snippet") else "") for h in rows) or "Nothing found.")
+    elif a.cmd == "link":
+        print(f"l0wagent://{a.kind}/{a.target.lstrip('/')}")
+
+
+if __name__ == "__main__":
+    main()

@@ -28,3 +28,31 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+
+  # The M1 flow in a browser, against the real backend (runner + fake claude + egress, no Docker).
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+        working-directory: control
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm, cache-dependency-path: web/pnpm-lock.yaml }
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: web
+      - run: pnpm e2e
+        working-directory: web
+
+  # The isolation checks against the compose stack (sandbox network, egress, guard).
+  isolation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose -f compose.dev.yaml up -d --build --wait control egress agent agent-web
+      - run: dev/isolation-test.sh
+      - if: failure()
+        run: docker compose -f compose.dev.yaml logs --tail 200

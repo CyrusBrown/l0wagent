@@ -46,7 +46,7 @@ Packaging, install, updates, login, extensions and the security invariants. Part
 - **One owner per instance.** Username + password for the owner. Optional **TOTP 2FA** and optional **passkeys** (browsers only; desktop webviews support them unevenly).
 - **Browser**: a session cookie. **Apps** (the Tauri app, the `l0w` CLI): a long-lived, revocable **device token**, kept in the OS keychain and sent as a header. Device pairing (approve a code from an existing session) is an alternative way to sign in an app.
 - **Hardening**, since the login page may face the internet once a hub is joined:
-  - argon2id hashing, a minimum length, and a check against known-breached passwords (k-anonymity range API: the password never leaves the server)
+  - argon2id hashing, a minimum length (12), and a check against known-breached passwords (k-anonymity range API: the password never leaves the server). **The breached-password check is deferred** (owner, 2026-11-14); see the Later list in [development.md](development.md).
   - per-IP and per-account rate limits with backoff, and temporary lockout
   - a push notification and an Inbox card for every new device or session, with one-click revoke
   - a session and device list in Settings

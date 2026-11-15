@@ -41,9 +41,12 @@ def test_openapi_json_is_current():
     assert OUT.read_text() == render(), "run: uv run python scripts/export_openapi.py"
 
 
+LIFECYCLE = {"startup", "shutdown"}  # optional hooks with no-op defaults
+
+
 def test_mock_implements_the_whole_backend():
     missing = [name for name, fn in inspect.getmembers(Backend, inspect.isfunction)
-               if not name.startswith("_") and getattr(MockBackend, name) is fn]
+               if not name.startswith("_") and name not in LIFECYCLE and getattr(MockBackend, name) is fn]
     assert missing == []
 
 

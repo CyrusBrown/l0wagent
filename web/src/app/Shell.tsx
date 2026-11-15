@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { useLive } from '../api/live'
 import { useInboxCounts, useProjects, useStatus, useStopRun, useThreads } from '../api/queries'
-import { pts, until } from '../components/format'
+import { pts, until, usageText } from '../components/format'
 import { useOnline } from '../components/online'
 import { Palette } from './Palette'
 import { useTheme } from './theme'
@@ -86,7 +86,9 @@ function Header({ onSearch, moreOpen, setMoreOpen }: { onSearch: () => void; mor
       <button className="search-btn" onClick={onSearch} title="Search (⌘K)"><span>Search…</span><kbd>⌘K</kbd></button>
       <StatusChip />
       <button className="icon-btn" onClick={toggle} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>{theme === 'dark' ? '☀' : '☾'}</button>
-      <NavLink to="/settings" className={({ isActive }) => `icon-btn ${isActive ? 'active' : ''}`} title="Settings">⚙</NavLink>
+      <NavLink to="/settings" className={({ isActive }) => `icon-btn ${isActive ? 'active' : ''}`} title="Settings">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="17" x2="20" y2="17" /><circle cx="9" cy="7" r="2.4" fill="var(--side)" /><circle cx="15" cy="17" r="2.4" fill="var(--side)" /></svg>
+      </NavLink>
     </header>
   )
 }
@@ -98,7 +100,9 @@ function StatusChip() {
   const working = st.state === 'working'
   const label = { working: 'Working', asleep: 'Asleep', dormant: 'Dormant', paused: 'Paused' }[st.state]
   const text = working ? st.now : st.next_wakeup_at ? `next wakeup ${until(st.next_wakeup_at)}` : 'no wakeups planned'
-  const budget = working && st.run_budget != null ? `${pts(st.run_used)} / ${pts(st.run_budget)} ${st.budget.unit}` : `${pts(st.budget.left)} ${st.budget.unit} left this week`
+  const budget = st.budget
+    ? working && st.run_budget != null ? `${pts(st.run_used)} / ${pts(st.run_budget)} ${st.budget.unit}` : `${pts(st.budget.left)} ${st.budget.unit} left this week`
+    : usageText(st.usage)
   return <>
     <Link to={working && st.run_id ? `/runs/${st.run_id}` : '/runs'} className="chip" title="Open runs">
       <span className={`dot ${working ? 'working' : ''}`} />

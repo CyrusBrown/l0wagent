@@ -19,13 +19,19 @@ GETS = [
     "/api/projects/garden-irrigation", "/api/projects/garden-irrigation/shelf", "/api/threads", "/api/threads?project=garden-irrigation&archived=true",
     "/api/threads/1", "/api/threads/1/items?limit=200", "/api/threads/1/delivery", "/api/runs", "/api/runs/123",
     "/api/runs/123/timeline?view=simple", "/api/runs/123/timeline?view=detailed", "/api/files/list?volume=workspace&path=",
+    "/api/account/sessions", "/api/system", "/api/secrets",
 ]
+POSTS = ["/api/system/selftest"]  # the render tests answer by path, whatever the method
 
 if __name__ == "__main__":
     c = TestClient(create_app(MockBackend()))
     out = {}
     for url in GETS:
         r = c.get(url)
+        r.raise_for_status()
+        out[url] = r.json()
+    for url in POSTS:
+        r = c.post(url)
         r.raise_for_status()
         out[url] = r.json()
     OUT.parent.mkdir(parents=True, exist_ok=True)

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import type { S } from '../api/client'
-import { useJobs, useRun, useRuns, useStopRun, useTimeline } from '../api/queries'
+import { problem, useJobs, useRun, useRuns, useStartRun, useStopRun, useTimeline } from '../api/queries'
 import { ClaimCard } from '../components/Cards'
 import { ago, clock, duration, pts, until } from '../components/format'
 
@@ -16,9 +16,17 @@ export function Runs() {
   const runs = useRuns(kind)
   const jobs = useJobs()
   const nav = useNavigate()
+  const start = useStartRun()
   return (
     <div className="page">
-      <h1>Runs</h1>
+      <div className="page-head">
+        <h1>Runs</h1>
+        <button className="btn primary" disabled={start.isPending} title="Start a run now (manual wakeup)"
+          onClick={() => start.mutate({ reason: 'manual' }, { onSuccess: (r) => nav(`/runs/${r.id}`) })}>
+          {start.isPending ? 'Waking…' : 'Wake now'}
+        </button>
+      </div>
+      {start.error && <div className="error" role="alert">{problem(start.error)}</div>}
       <div className="tabs">
         <button className={tab === 'runs' ? 'on' : ''} onClick={() => setParams({})}>Runs</button>
         <button className={tab === 'jobs' ? 'on' : ''} onClick={() => setParams({ tab: 'jobs' })}>Long jobs · {jobs.data?.length ?? 0}</button>
@@ -90,7 +98,7 @@ export function Run() {
             <button className={view === 'simple' ? 'on' : ''} onClick={() => setView('simple')}>Simple</button>
             <button className={view === 'detailed' ? 'on' : ''} onClick={() => setView('detailed')}>Detailed</button>
           </div>
-          {r.status === 'running' && <button className="btn danger" disabled={stop.isPending} onClick={() => stop.mutate(r.id)}>Stop</button>}
+          {(r.status === 'running' || r.status === 'starting') && <button className="btn danger" disabled={stop.isPending} onClick={() => stop.mutate(r.id)}>Stop</button>}
         </div>
       </div>
       <div className="card" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 24 }}>
@@ -110,15 +118,18 @@ export function Run() {
               <div className="section-label">Status timeline</div>
               {timeline.data?.map((i) => (
                 <div key={i.id} style={{ display: 'flex', gap: 12, fontSize: 13.5 }}>
-                  <span className="sub" style={{ width: 44, flex: 'none' }}>{clock(i.at)}</span>
-                  <span className={`dot ${i.kind === 'control' || i.kind === 'model' ? 'info' : i.kind === 'ask' ? 'warn' : ''}`} style={{ marginTop: 7 }} />
-                  <span style={{ color: i.kind === 'control' ? 'var(--infoInk)' : undefined }}>{i.text}</span>
+                  <span className="sub" style={{ minWidth: 44, flex: 'none', whiteSpace: 'nowrap' }}>{clock(i.at)}</span>
+                  <span className={`dot ${i.kind === 'control' || i.kind === 'model' ? 'info' : i.kind === 'ask' ? 'warn' : i.kind === 'error' ? 'bad' : ''}`} style={{ marginTop: 7 }} />
+                  <span style={{ color: i.kind === 'control' ? 'var(--infoInk)' : i.kind === 'error' ? 'var(--badInk)' : undefined }}>{i.text}</span>
                 </div>
               ))}
             </section>
           </div>
           <section className="card">
             <div className="section-label">Changes</div>
+            {!d.changes.memory.length && !d.changes.work.length && !d.changes.shelved.length && !d.changes.asks.length && !d.changes.threads.length && (
+              <div className="sub">{r.status === 'running' || r.status === 'starting' ? 'Memory changes show when the run ends.' : 'No changes.'}</div>
+            )}
             {([['Memory', d.changes.memory], ['Work files', d.changes.work]] as const).map(([label, files]) => !!files.length && (
               <div key={label} className="stack" style={{ gap: 4 }}>
                 <div className="sub">{label}</div>
@@ -140,8 +151,16 @@ export function Run() {
           {timeline.data?.map((i) => (
             <div key={i.id} id={`t${i.id}`} className="card" style={{ padding: '10px 14px', gap: 6, background: i.kind === 'reviewer' ? 'var(--purpleSoft)' : undefined }}>
               <div className="row-between sub"><span style={{ textTransform: 'capitalize' }}>{i.kind}</span><a href={`#t${i.id}`}>{clock(i.at)}</a></div>
-              <div style={{ fontSize: 13.5, fontStyle: i.kind === 'thinking' ? 'italic' : undefined }}>{i.text}</div>
+              <div style={{ fontSize: 13.5, fontStyle: i.kind === 'thinking' ? 'italic' : undefined, fontFamily: i.kind === 'tool' ? 'var(--mono)' : undefined, color: i.kind === 'error' ? 'var(--badInk)' : undefined }}>{i.text}</div>
               {typeof i.data.patch === 'string' && <pre>{i.data.patch}</pre>}
+              {i.kind === 'tool' && typeof i.data.result === 'string' && (
+                <details><summary className="sub" style={{ cursor: 'pointer' }}>{i.data.is_error ? 'Error output' : 'Output'}</summary><pre style={{ marginTop: 6 }}>{i.data.result}</pre></details>
+              )}
+              {i.kind === 'diff' && Array.isArray(i.data.files) && (
+                <div className="stack" style={{ gap: 2 }}>{(i.data.files as { path: string; added: number | null; removed: number | null }[]).map((f) => (
+                  <div key={f.path} className="row-between" style={{ fontSize: 13 }}><code>{f.path}</code><span><span style={{ color: 'var(--okInk)' }}>+{f.added ?? '?'}</span> <span style={{ color: 'var(--badInk)' }}>−{f.removed ?? '?'}</span></span></div>
+                ))}</div>
+              )}
             </div>
           ))}
         </div>

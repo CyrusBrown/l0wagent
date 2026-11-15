@@ -27,6 +27,10 @@ export function Palette({ onClose }: { onClose: () => void }) {
       { group: 'Actions', title: 'New thread or chat', sub: 'N', to: '/new' },
       { group: 'Actions', title: 'Open Inbox', to: '/inbox' },
       { group: 'Actions', title: 'Browse files', to: '/files' },
+      { group: 'Actions', title: 'New project', to: '/projects' },
+      { group: 'Actions', title: 'Runs · wake the assistant now', to: '/runs' },
+      { group: 'Actions', title: 'Tools & Secrets', to: '/tools' },
+      { group: 'Actions', title: 'Settings', to: '/settings' },
     ].filter((h) => match(h.title))
     const local: Hit[] = [
       ...(threads.data ?? []).filter((t) => match(t.title)).slice(0, 6).map((t) => ({ group: 'Threads', title: t.title, sub: t.project ?? 'General', to: `/t/${t.id}` })),

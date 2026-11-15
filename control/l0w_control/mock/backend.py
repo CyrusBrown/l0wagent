@@ -17,7 +17,7 @@ from typing import Any
 
 from .. import __version__
 from ..api import schemas as s
-from ..backends.base import Backend, Conflict, LoginFailed, NotFound, Unauthorized
+from ..backends.base import Backend, BadRequest, Conflict, LoginFailed, NotFound, Unauthorized
 from . import fixtures
 
 MOCK_PASSWORD = "password"
@@ -74,7 +74,7 @@ class MockBackend(Backend):
             run_used=running.used if running else None, run_budget=running.budget if running else None,
             next_wakeup_at=_now().replace(hour=2, minute=0, second=0) + timedelta(days=1),
             budget=s.BudgetSummary(unit="pts", left=42, allowance=120, used_by_assistant=48, used_by_owner=22, used_by_chat=8, resets_at=_now() + timedelta(days=3)),
-            inbox_waiting=self.inbox_counts().waiting, reply_budget_left=14,
+            usage=self._usage(), inbox_waiting=self.inbox_counts().waiting, reply_budget_left=14,
         )
 
     def sync(self, since: str | None) -> s.SyncResponse:
@@ -143,6 +143,27 @@ class MockBackend(Backend):
 
     def auth_sessions(self, current_cookie: str | None, current_bearer: str | None) -> list[s.AuthSession]:
         return list(self.w.sessions.values())
+
+    def change_password(self, req: s.PasswordChange, current_cookie: str | None, current_bearer: str | None) -> None:
+        if req.current_password != MOCK_PASSWORD:
+            raise BadRequest("wrong_password", "That isn't your current password (the mock's is \"password\").")
+
+    def totp_setup(self) -> s.TotpSetup:
+        secret = "JBSWY3DPEHPK3PXP"
+        return s.TotpSetup(secret=secret, otpauth_uri=f"otpauth://totp/l0wagent:{self.owner.username}?secret={secret}&issuer=l0wagent",
+                           qr_svg='<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120"><rect width="120" height="120" fill="#eee"/></svg>')
+
+    def totp_enable(self, req: s.TotpEnable) -> s.Owner:
+        if req.code != MOCK_TOTP:
+            raise BadRequest("invalid_code", "The mock's code is 123456.")
+        self.owner = self.owner.model_copy(update={"totp_enabled": True})
+        return self.owner
+
+    def totp_disable(self, req: s.TotpDisable) -> s.Owner:
+        if req.password != MOCK_PASSWORD:
+            raise BadRequest("wrong_password", "That isn't your password.")
+        self.owner = self.owner.model_copy(update={"totp_enabled": False})
+        return self.owner
 
     def revoke_session(self, session_id: str) -> None:
         if self.w.sessions.pop(session_id, None) is None:
@@ -479,6 +500,42 @@ class MockBackend(Backend):
             node = node[part]
             git = git or (isinstance(node, dict) and bool(node.get("_git")))
         return node, git
+
+    # ── secrets ────────────────────────────────────────────────────────────
+    def secrets(self) -> list[s.SecretInfo]:
+        return sorted(self.w.secrets.values(), key=lambda x: x.name)
+
+    def set_secret(self, name: str, req: s.SecretSet) -> s.SecretInfo:
+        name = name.strip().upper()
+        now = _now()
+        old = self.w.secrets.get(name)
+        info = s.SecretInfo(name=name, description=req.description if req.description is not None else (old.description if old else ""), scope="agent",
+                            created_at=old.created_at if old else now, updated_at=now, reads=old.reads if old else 0, last_read_at=old.last_read_at if old else None)
+        self.w.secrets[name] = info
+        return info
+
+    def delete_secret(self, name: str) -> None:
+        if self.w.secrets.pop(name.strip().upper(), None) is None:
+            raise NotFound(f"secret {name}")
+
+    # ── system ─────────────────────────────────────────────────────────────
+    def _usage(self) -> s.UsageReading:
+        now = _now()
+        return s.UsageReading(provider="claude-subscription", source="oauth", fetched_at=now, five_hour_pct=18.0, five_hour_resets_at=now + timedelta(hours=3),
+                              seven_day_pct=41.0, seven_day_resets_at=now + timedelta(days=4), error=None)
+
+    def system_status(self) -> s.SystemStatus:
+        return s.SystemStatus(server_version=__version__, runner=s.RunnerHealth(reachable=True, busy=False, runtime_version="2.9.0 (Claude Code)", logged_in=True),
+                              egress=s.EgressHealth(reachable=True, lease_active=False), usage=self._usage(), gate=s.GateState(open=True))
+
+    def selftest(self) -> s.SelfTestResult:
+        rows = [("database", "Database and storage", "ok", "schema v2"), ("runner", "Agent computer reachable", "ok", "2.9.0 (Claude Code)"),
+                ("provider_login", "Provider login", "ok", "Claude"), ("no_direct_internet", "No direct internet (only through egress)", "ok", None),
+                ("no_lan", "Can't reach the LAN or the host", "ok", "checked 3 addresses"), ("owner_api_refused", "Control's owner API refuses the agent", "ok", "HTTP 403"),
+                ("gated_without_lease", "Model provider blocked without a lease", "ok", "HTTP/1.1 403 Forbidden"),
+                ("internet_via_egress", "Internet works through egress", "warn", "example.com unreachable")]
+        checks = [s.SelfTestCheck(id=i, label=label, result=r, detail=d) for i, label, r, d in rows]  # type: ignore[arg-type]
+        return s.SelfTestResult(ran_at=_now(), ok=True, checks=checks, note="Mock self-test.")
 
     def list_dir(self, volume: str, path: str) -> s.Listing:
         node, git = self._node(volume, path)

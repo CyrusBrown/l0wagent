@@ -61,6 +61,14 @@ Code is reused from the old repo where it fits: egress, the agent-web forwarder,
 
 **Done when:** you log in, start a manual run, watch its timeline live, restart control mid-run, and the run carries on.
 
+**Status (2026-11-15): built.** The done-when flow is the browser test `web/e2e/m1.spec.ts`; `control/tests/test_runs_integration.py` also covers the agent computer restarting mid-run (resumed with `--resume`), stopping, and the fail-closed gate; `dev/isolation-test.sh` passes on Docker Desktop. Decisions along the way:
+- **Deferred (owner, 2026-11-14): the breached-password check.** Passwords are argon2id with a 12-character minimum.
+- **The runner owns sessions.** It appends each session's output to a log on the agent's home volume and keeps running when control disconnects. Control stores each log line and the new offset in one transaction. While control is down, nothing supervises a session, but the egress lease (240 s, renewed every 30 s) runs out, so the agent loses model access. An agent-container restart marks the session `lost`; control resumes it (up to `RUN_MAX_RESUMES`).
+- **Usage before budgets:** `Status.budget` is absent until M4, and Home and the status chip show the provider's own meter (weekly and 5-hour %). The gate refuses runs when usage is unknown (`USAGE_UNKNOWN_POLICY=refuse`) or at the reserve (80% weekly, 70% 5-hour). `compose.dev.yaml` sets `allow`, because the fake runtime has no login.
+- **Fake runtime:** `agent/runner/fake_claude.py` replaces the old fake runner. The real runner drives it, so tests exercise the runner too.
+- **Idempotency keys:** the table and contract exist, but M1 has no offline-queued creates (starting a run is online only). The first user is M2's messages.
+- **UI additions not in the mockup**, designed in its style: Settings → Account and System, the M1 steps of the setup wizard, and "Wake now" on Runs (see `design/mockup/REVIEW.md`).
+
 ## M2: Conversations
 **Goal:** talk to the assistant the way the UI plan describes.
 - **Projects, threads, messages**: General and per-project threads, created by owner or assistant; archive; unread counts.
@@ -72,6 +80,17 @@ Code is reused from the old repo where it fits: egress, the agent-web forwarder,
 - **UI**: sidebar, thread view with cards and composer (paste, attachments), project view, projects list, Inbox with History.
 
 **Done when:** you message the assistant, press Reply now, and it replies, claims a task and files a question you answer in place, all live.
+
+**Status (2026-11-15): built, without a logged-in Claude account.** The fake runtime plays the agent: it reads the thread, claims it, replies, files a question, and picks up your answer through the real `assistant-hook` after a tool call. The done-when flow is the browser test `web/e2e/m2.spec.ts` and `test_reply_now_claims_asks_and_hears_the_answer`. Decisions along the way:
+- **Still unverified with real Claude Code:** that the PostToolUse hook fires in a real session (same settings file as the old assistant), and how a real model uses the new commands. One logged-in session covers both.
+- **Reply now has no cost yet.** It runs on `REPLY_TIER` (default sonnet) for up to `REPLY_MAX_MINUTES` (15), and is available whenever no run is active and the usage gate is open. The reply budget and promote-to-run arrive in M4. Promote cards can be decided, but nothing files them yet.
+- **Holding a run open:** if a session messaged you or left an ask open, the run waits `HOLD_MINUTES` (5) for your response and resumes the same conversation with it, up to `HOLD_MAX_ROUNDS` (3). A message to a thread while a run is active reaches the agent after its next tool call; otherwise it waits for the next run's brief.
+- **Approval scopes:** `always` keeps the action. `once` undoes it when the run that asked ends (egress rule removed, setting restored, secret deleted). `project` is offered when the ask is in a project's thread and for now behaves like `always`; it is recorded so project-scoped enforcement can come later.
+- **Secrets (basic):** encrypted at rest, write-only, all in the agent's environment (scope "agent only"), readable by the agent with `assistant secret get` (counted). Values are redacted from everything control stores, and setting a secret scrubs it from stored history. The owner adds them on Tools & Secrets or through a secure-input card (a permission whose actions are secrets).
+- **Uploads came forward from M3:** the composer attaches files, and control writes them into `/work/_inbox/<project|general>/` through a volume subpath mount. `/work` is otherwise read-only to control, and writes never follow symlinks. The files browser and shelf stay in M3.
+- **Typed links:** `@project` and `#thread` in the composer insert `l0wagent://` links, and your messages render as sanitized Markdown so the links work. `/file` links wait for M3.
+- **Suggestions are carried out by control** when accepted (rename, move, archive, merge, split, stale), with "moved here" system messages.
+- **UI additions not in the mockup** (see `design/mockup/REVIEW.md`): a thread actions menu (rename, move, pin, archive), a Decline button on secure-input cards, and the project view's Asks and Activity tabs filled with real data.
 
 ## M3: Files
 **Goal:** see and get what the assistant makes.
@@ -138,6 +157,7 @@ The Tauri app per [ui.md](ui.md#desktop-tauri): connect screen, login → device
 - **Hub**: core and l0w.run on Cloudflare, friends and presence, the board, email, shared spaces, published services, streams, linking. Order in [hub.md](hub.md#build-order). Most of it plugs in as first-party extensions (needs M8).
 - **More providers** (Google AI Studio, OpenRouter, local models), the planner model, the adaptive reserve.
 - The extension catalog, backups, the CAD visual diff, the desktop app starting a local Docker stack.
+- The **breached-password check** at login and setup (k-anonymity range API), deferred from M1.
 
 ### Seams to keep while building the early milestones
 So the later work doesn't need rewrites:

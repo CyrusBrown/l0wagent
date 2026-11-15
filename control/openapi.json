@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "l0wagent control",
-    "description": "The owner-facing API. Agent routes (/api/agent/*) and /mcp are separate and come later.",
+    "description": "The owner-facing API. The agent's routes (/api/agent/*) aren't part of it; /mcp comes later.",
     "version": "0.0.0.1"
   },
   "paths": {
@@ -370,6 +370,214 @@
             }
           }
         }
+      }
+    },
+    "/api/account/password": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Change Password",
+        "description": "Online only. Signs out every other session and device.",
+        "operationId": "change_password_api_account_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/account/totp/setup": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Totp Setup",
+        "description": "A new secret to scan. Nothing changes until it's enabled with a valid code.",
+        "operationId": "totp_setup_api_account_totp_setup_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TotpSetup"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/account/totp/enable": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Totp Enable",
+        "operationId": "totp_enable_api_account_totp_enable_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TotpEnable"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Owner"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/account/totp/disable": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Totp Disable",
+        "operationId": "totp_disable_api_account_totp_disable_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TotpDisable"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Owner"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordProblem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
       }
     },
     "/api/status": {
@@ -2271,6 +2479,7 @@
                       "note",
                       "status",
                       "message",
+                      "text",
                       "thinking",
                       "tool",
                       "diff",
@@ -2443,6 +2652,218 @@
             }
           }
         }
+      }
+    },
+    "/api/secrets": {
+      "get": {
+        "tags": [
+          "secrets"
+        ],
+        "summary": "List Secrets",
+        "operationId": "list_secrets_api_secrets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SecretInfo"
+                  },
+                  "type": "array",
+                  "title": "Response List Secrets Api Secrets Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/secrets/{name}": {
+      "put": {
+        "tags": [
+          "secrets"
+        ],
+        "summary": "Set Secret",
+        "description": "Write-only: the value goes to the agent's environment and is redacted everywhere else.",
+        "operationId": "set_secret_api_secrets__name__put",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecretSet"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordProblem"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "secrets"
+        ],
+        "summary": "Delete Secret",
+        "operationId": "delete_secret_api_secrets__name__delete",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "System Status",
+        "description": "The agent computer, egress, usage and whether runs may start.",
+        "operationId": "system_status_api_system_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/system/selftest": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Selftest",
+        "description": "Run the isolation self-test (also shown at the end of the setup wizard).",
+        "operationId": "selftest_api_system_selftest_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelfTestResult"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
       }
     },
     "/api/files/list": {
@@ -3302,6 +3723,42 @@
         "title": "Delivery",
         "description": "What the thread's delivery indicator shows (server side; 'waiting for connection' is client-only)."
       },
+      "EgressHealth": {
+        "properties": {
+          "reachable": {
+            "type": "boolean",
+            "title": "Reachable"
+          },
+          "lease_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Active"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reachable"
+        ],
+        "title": "EgressHealth"
+      },
       "FileChange": {
         "properties": {
           "path": {
@@ -3449,6 +3906,32 @@
           "message"
         ],
         "title": "FileHistoryEntry"
+      },
+      "GateState": {
+        "properties": {
+          "open": {
+            "type": "boolean",
+            "title": "Open"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Why runs can't start right now."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "open"
+        ],
+        "title": "GateState"
       },
       "HTTPValidationError": {
         "properties": {
@@ -4093,6 +4576,26 @@
         ],
         "title": "Owner"
       },
+      "PasswordChange": {
+        "properties": {
+          "current_password": {
+            "type": "string",
+            "title": "Current Password"
+          },
+          "new_password": {
+            "type": "string",
+            "minLength": 12,
+            "title": "New Password"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "title": "PasswordChange"
+      },
       "PasswordProblem": {
         "properties": {
           "error": {
@@ -4100,7 +4603,8 @@
             "enum": [
               "too_short",
               "breached",
-              "already_set_up"
+              "already_set_up",
+              "wrong_password"
             ],
             "title": "Error"
           },
@@ -5208,6 +5712,64 @@
         "type": "object",
         "title": "RunStart"
       },
+      "RunnerHealth": {
+        "properties": {
+          "reachable": {
+            "type": "boolean",
+            "title": "Reachable"
+          },
+          "busy": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Busy"
+          },
+          "runtime_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Version"
+          },
+          "logged_in": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Logged In"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reachable"
+        ],
+        "title": "RunnerHealth"
+      },
       "SearchHit": {
         "properties": {
           "kind": {
@@ -5278,6 +5840,92 @@
         ],
         "title": "SearchHit"
       },
+      "SecretInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope",
+            "description": "'agent' (the agent's environment) until scopes arrive in M6."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "reads": {
+            "type": "integer",
+            "title": "Reads",
+            "description": "Times the agent fetched it with `assistant secret get`."
+          },
+          "last_read_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Read At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "scope",
+          "created_at",
+          "updated_at",
+          "reads",
+          "last_read_at"
+        ],
+        "title": "SecretInfo",
+        "description": "A secret's name and metadata. Values are never returned."
+      },
+      "SecretSet": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Value"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "value"
+        ],
+        "title": "SecretSet",
+        "description": "Online only. Setting a value also scrubs it from everything already stored."
+      },
       "SecurityAlert": {
         "properties": {
           "id": {
@@ -5335,6 +5983,82 @@
           "decision"
         ],
         "title": "SecurityDecision"
+      },
+      "SelfTestCheck": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "warn",
+              "fail",
+              "skip"
+            ],
+            "title": "Result"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "result"
+        ],
+        "title": "SelfTestCheck"
+      },
+      "SelfTestResult": {
+        "properties": {
+          "ran_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ran At"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "description": "No check failed."
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/SelfTestCheck"
+            },
+            "type": "array",
+            "title": "Checks"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "description": "What the self-test can and can't tell you."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ran_at",
+          "ok",
+          "checks",
+          "note"
+        ],
+        "title": "SelfTestResult"
       },
       "SetupOwnerRequest": {
         "properties": {
@@ -5664,7 +6388,25 @@
             "title": "Next Wakeup At"
           },
           "budget": {
-            "$ref": "#/components/schemas/BudgetSummary"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BudgetSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Absent until budgets exist (M4)."
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsageReading"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "inbox_waiting": {
             "type": "integer",
@@ -5686,7 +6428,6 @@
         "type": "object",
         "required": [
           "state",
-          "budget",
           "inbox_waiting"
         ],
         "title": "Status"
@@ -5899,6 +6640,43 @@
           "changes"
         ],
         "title": "SyncResponse"
+      },
+      "SystemStatus": {
+        "properties": {
+          "server_version": {
+            "type": "string",
+            "title": "Server Version"
+          },
+          "runner": {
+            "$ref": "#/components/schemas/RunnerHealth"
+          },
+          "egress": {
+            "$ref": "#/components/schemas/EgressHealth"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UsageReading"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gate": {
+            "$ref": "#/components/schemas/GateState"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "server_version",
+          "runner",
+          "egress",
+          "usage",
+          "gate"
+        ],
+        "title": "SystemStatus"
       },
       "Task": {
         "properties": {
@@ -6190,6 +6968,15 @@
             ],
             "title": "First Message"
           },
+          "upload_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Upload Ids",
+            "description": "Attachments for the first message.",
+            "default": []
+          },
           "idempotency_key": {
             "anyOf": [
               {
@@ -6352,6 +7139,7 @@
               "note",
               "status",
               "message",
+              "text",
               "thinking",
               "tool",
               "diff",
@@ -6394,6 +7182,41 @@
         ],
         "title": "TimelineItem"
       },
+      "TotpDisable": {
+        "properties": {
+          "password": {
+            "type": "string",
+            "title": "Password"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "password"
+        ],
+        "title": "TotpDisable"
+      },
+      "TotpEnable": {
+        "properties": {
+          "secret": {
+            "type": "string",
+            "title": "Secret"
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 8,
+            "minLength": 6,
+            "title": "Code"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "secret",
+          "code"
+        ],
+        "title": "TotpEnable"
+      },
       "TotpRequest": {
         "properties": {
           "challenge": {
@@ -6414,6 +7237,32 @@
           "code"
         ],
         "title": "TotpRequest"
+      },
+      "TotpSetup": {
+        "properties": {
+          "secret": {
+            "type": "string",
+            "title": "Secret"
+          },
+          "otpauth_uri": {
+            "type": "string",
+            "title": "Otpauth Uri"
+          },
+          "qr_svg": {
+            "type": "string",
+            "title": "Qr Svg",
+            "description": "The otpauth URI as an SVG QR code (generated by control)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "secret",
+          "otpauth_uri",
+          "qr_svg"
+        ],
+        "title": "TotpSetup",
+        "description": "A new, not yet enabled TOTP secret. Enabling it needs a valid code."
       },
       "Upload": {
         "properties": {
@@ -6479,6 +7328,99 @@
           "created_at"
         ],
         "title": "Upload"
+      },
+      "UsageReading": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "oauth",
+              "stream",
+              "none"
+            ],
+            "title": "Source"
+          },
+          "fetched_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Fetched At"
+          },
+          "five_hour_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Five Hour Pct"
+          },
+          "five_hour_resets_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Five Hour Resets At"
+          },
+          "seven_day_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seven Day Pct"
+          },
+          "seven_day_resets_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seven Day Resets At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "provider",
+          "source",
+          "fetched_at",
+          "five_hour_pct",
+          "five_hour_resets_at",
+          "seven_day_pct",
+          "seven_day_resets_at",
+          "error"
+        ],
+        "title": "UsageReading",
+        "description": "A provider's own usage meter (Claude subscription: 5-hour and weekly %)."
       },
       "ValidationError": {
         "properties": {

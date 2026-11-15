@@ -1,0 +1,158 @@
+"""Runtime adapters: the agent CLI that drives a session (Claude Code now, opencode in M8).
+
+An adapter turns a run's settings into the runner's session request, and the runtime's
+raw events into normalized ones control stores and shows. Starting, following and
+stopping a session go through the runner and are the same for every runtime. Mid-run
+delivery is the runtime's job (Claude Code: the PostToolUse hook in the agent image),
+declared with a capability flag. Keep adapters thin: the CLI's headless interface changes.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+TOOL_TEXT_MAX = 300
+RESULT_MAX = 4000
+
+
+@dataclass(frozen=True)
+class Capabilities:
+    hooks: bool
+    resume: bool
+    effort: bool
+    subagents: bool
+
+
+@dataclass
+class Item:
+    """A timeline item to store."""
+
+    kind: str
+    text: str
+    simple: bool = False
+    data: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class Parsed:
+    items: list[Item] = field(default_factory=list)
+    session_id: str | None = None          # the runtime's own id, for resume
+    model: str | None = None
+    tool_results: list[tuple[str, str, bool]] = field(default_factory=list)  # (tool_use_id, text, is_error)
+    result: dict | None = None             # {"ok", "text", "turns", "cost_usd", "subtype", "usage"}
+    rate_limit: dict | None = None         # the raw rate-limit info, for the usage fallback
+    runner: str | None = None              # runner event: started | pre_run | exited | lost
+    runner_data: dict = field(default_factory=dict)
+
+
+class RuntimeAdapter:
+    name: str
+    capabilities: Capabilities
+
+    def session_request(self, *, run_id: int, prompt: str, system: str, tier: str, resume_session: str | None, env: dict[str, str]) -> dict:
+        raise NotImplementedError
+
+    def interrupted_prompt(self, reason: str) -> str:
+        raise NotImplementedError
+
+    def parse(self, event: dict) -> Parsed:
+        raise NotImplementedError
+
+
+def split_tier(tier: str) -> tuple[str, str | None]:
+    """'sonnet/medium' → ('sonnet', 'medium')."""
+    model, _, effort = tier.partition("/")
+    return model.strip() or "sonnet", effort.strip() or None
+
+
+def _clip(text: str, n: int) -> str:
+    text = " ".join(str(text).split())
+    return text if len(text) <= n else text[: n - 1] + "…"
+
+
+def _tool_summary(name: str, inp: dict) -> str:
+    if name == "Bash":
+        return f"$ {_clip(inp.get('command', ''), TOOL_TEXT_MAX)}"
+    for key in ("file_path", "path", "pattern", "url", "query", "description"):
+        if inp.get(key):
+            return f"{name} {_clip(inp[key], TOOL_TEXT_MAX)}"
+    return name
+
+
+class ClaudeCode(RuntimeAdapter):
+    name = "claude-code"
+    capabilities = Capabilities(hooks=True, resume=True, effort=True, subagents=True)
+
+    def session_request(self, *, run_id, prompt, system, tier, resume_session, env):
+        model, effort = split_tier(tier)
+        return {"run_id": run_id, "prompt": prompt, "system_append": system, "model": model, "effort": effort,
+                "resume_session": resume_session, "env": env}
+
+    def interrupted_prompt(self, reason: str) -> str:
+        return (f"[control] Your session was interrupted ({reason}) and has been resumed. "
+                "Anything you were running in the foreground was stopped. Check where you were, then carry on.")
+
+    def parse(self, ev: dict) -> Parsed:
+        p = Parsed()
+        t = ev.get("type")
+        if t == "runner":
+            p.runner = ev.get("event")
+            p.runner_data = ev
+            if p.runner == "started":
+                p.items.append(Item("control", "Session started", True, {"argv": ev.get("argv_summary"), "head": ev.get("head")}))
+            elif p.runner == "pre_run":
+                p.items.append(Item("control", f"Pre-run report (exit {ev.get('returncode')})", False, {"output": _clip(ev.get("output") or "", RESULT_MAX)}))
+            elif p.runner == "lost":
+                p.items.append(Item("error", "The agent computer restarted mid-session", True))
+            elif p.runner == "exited" and ev.get("returncode") not in (0, None, 130):
+                p.items.append(Item("error", f"Claude Code exited with code {ev.get('returncode')}", True, {"stderr": _clip(ev.get("stderr_tail") or "", RESULT_MAX)}))
+            elif p.runner == "exited" and ev.get("error"):
+                p.items.append(Item("error", f"The runner failed: {_clip(ev['error'], 300)}", True))
+            return p
+        if t == "system" and ev.get("subtype") == "init":
+            p.session_id = ev.get("session_id")
+            p.model = ev.get("model")
+            p.items.append(Item("model", f"Model {ev.get('model')}", False, {"model": ev.get("model"), "session_id": p.session_id}))
+            return p
+        if t == "assistant":
+            p.session_id = ev.get("session_id")
+            for block in (ev.get("message") or {}).get("content") or []:
+                bt = block.get("type")
+                if bt == "text" and block.get("text", "").strip():
+                    p.items.append(Item("text", _clip(block["text"], RESULT_MAX)))
+                elif bt == "thinking" and block.get("thinking", "").strip():
+                    p.items.append(Item("thinking", _clip(block["thinking"], RESULT_MAX)))
+                elif bt == "tool_use":
+                    inp = block.get("input") or {}
+                    p.items.append(Item("tool", _tool_summary(block.get("name", "tool"), inp), False,
+                                        {"id": block.get("id"), "name": block.get("name"), "input": {k: _clip(v, 2000) if isinstance(v, str) else v for k, v in inp.items()}}))
+            return p
+        if t == "user":
+            for block in (ev.get("message") or {}).get("content") or []:
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    content = block.get("content")
+                    if isinstance(content, list):
+                        content = "\n".join(c.get("text", "") for c in content if isinstance(c, dict))
+                    p.tool_results.append((block.get("tool_use_id") or "", _clip(content or "", 2000), bool(block.get("is_error"))))
+            return p
+        if t == "rate_limit_event":
+            p.rate_limit = ev.get("rate_limit_info") or {}
+            info = p.rate_limit
+            p.items.append(Item("usage", f"Usage window {info.get('rateLimitType', '?')}: {info.get('status', '?')}", False, {"info": info}))
+            return p
+        if t == "result":
+            p.session_id = ev.get("session_id")
+            ok = not ev.get("is_error")
+            text = ev.get("result") or ev.get("subtype") or ""
+            p.result = {"ok": ok, "text": _clip(text, RESULT_MAX), "turns": ev.get("num_turns"), "cost_usd": ev.get("total_cost_usd"),
+                        "subtype": ev.get("subtype"), "usage": ev.get("usage")}
+            label = "Session finished" if ok else "Session ended with an error"
+            p.items.append(Item("control" if ok else "error", f"{label}: {_clip(text, 200)}", True, {"turns": ev.get("num_turns"), "usage": ev.get("usage")}))
+            return p
+        if t == "raw":
+            p.items.append(Item("error", f"Unparsed output: {_clip(ev.get('text', ''), 300)}"))
+        return p
+
+
+ADAPTERS: dict[str, RuntimeAdapter] = {"claude-code": ClaudeCode()}
