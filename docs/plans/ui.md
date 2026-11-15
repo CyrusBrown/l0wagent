@@ -1,0 +1,154 @@
+# UI
+
+Everything the owner sees, written so mockups can be built from it. Layout details are suggestions; the behaviors are decisions. Part of the [overhaul plan](README.md). Data and API conventions are in [data-model.md](data-model.md).
+
+## Stack
+- **React + TypeScript + Vite**, a single-page app. The JSON API is described by OpenAPI, and TypeScript types are generated from it. Live updates stream over `fetch` (not `EventSource`, so the desktop app can send its token).
+- Suggested libraries:
+  - **TanStack Query**: its saved cache and paused-change queue give most of the offline outbox
+  - **React Router** (or TanStack Router)
+  - **Tailwind + shadcn/ui**
+  - `react-markdown` + `rehype-sanitize`
+  - **react-three-fiber** for the 3D viewer
+  - a virtualized list for long threads and timelines
+- No Next.js or server rendering. The app is built inside the Docker image, so nobody needs Node to run it.
+- Mockups should be React too, so they carry over.
+
+## Layout
+
+**Sidebar**, top to bottom:
+- **Assistant**
+  - General (threads without a project)
+  - projects, collapsible, each listing its threads (archived threads hidden behind a toggle)
+- **Chats**: the 1:1 agent chats, optionally grouped by project
+- **Network** (later, with the hub): friends, the board (read-only), services
+- Footer: **Inbox** (with a count), **Runs**, **Calendar**, **Tools & Secrets**, **Settings**
+
+A **status chip** in the header shows asleep / working (with the "now" sentence) / next wakeup and the budget left, plus a Stop button while running.
+
+## Thread view
+- **Messages** from the owner, the assistant, "via chat" (from the 1:1 chat or an outside chat service) and system notices.
+- **Inline cards**:
+  - **asks**: questions, permissions, tasks, answered in place
+  - **claims**: "Planned in run #123: …", updating live to in progress / done / partial / dropped with a result line and a link to the run
+  - **suggestions**: move / rename / split / merge / archive, with Accept and Dismiss
+  - **promote requests**: "turn this reply into a full run, ~3 pts", with Approve and Deny
+  - **secure input**: a secret field that never goes through a model
+  - file and link chips
+- **Composer**: paste text and images, drag files, attach from the project's files, and `@project` / `#thread` / `/file` autocomplete for typed links.
+- **Delivery indicator**: **queued by default**. It shows one of:
+  - *Working now, sees it within a minute*
+  - *Queued for next wakeup (Sat 02:00)*
+  - *Dormant*
+  - *Waiting for connection* (offline, on this device)
+
+  **Reply now** shows its cost and what's left of the reply budget.
+- **Typed links** open in a side panel: threads, projects, files, runs (at a timestamp).
+
+## Project view
+Tabs:
+- **Overview**: summary, status (active / stale / archived), the agent's project doc rendered, links
+- **Threads**
+- **Files** (the shelf, below)
+- **Asks**: the project's open items
+- **Activity**: notes, claims, runs touching it
+- later, **Members** (shared projects)
+
+## Project files (the shelf)
+- **Items**: label, source, mode, last updated, who added it (the assistant, or "from you").
+  - **Live**: always the current file, so a script output stays fresh.
+  - **Snapshot**: copied when shelved.
+  - Live items can **keep versions** (on each change, up to N), with a version picker.
+- **Uploads** (drag in, or attach in the composer) land in the project's inbox folder on the agent's computer and appear as "from you".
+- **Previews**: markdown, code, images, PDF, CSV tables, audio, video, **STL/STEP/3MF in a 3D viewer**, HTML and notebooks. Extensions can add previewers.
+- **Safety**: agent-made HTML/SVG renders in a sandboxed frame on a separate origin. That's a design constraint for the preview panel.
+
+## Inbox
+Everything waiting on the owner, filterable:
+- questions, permissions, tasks
+- thread suggestions ("Accept all" available)
+- promote requests
+- new-device/session alerts
+- later: friend requests, peer-wake requests, outbound emails awaiting approval, spend-breaker cards
+
+Each item links to its thread.
+
+## Calendar
+- The assistant's **planned wakeups** (time, budget, model, reason), routines, the fallback wakeup, sweep slots, and your protected hours.
+- Drag to move, click to resize or delete, add your own.
+- A side panel shows budget left this week, what's scheduled, and **you vs. the assistant** usage.
+
+## Runs
+
+### List
+One row per run: kind, why it woke, start time and duration, budget used vs. given, the "about" sentence, and status. Filters by kind and project.
+
+### Simple view (default)
+- **Header**: why it woke, level, reviewer mode, model/effort (with changes), a **budget gauge**, elapsed time and deadline, Stop.
+- **Now**: one sentence.
+- **About this run**: a short paragraph.
+- **Active threads**: the claim cards, live.
+- **Status timeline**: notes plus control events (resumed, model changed, reviewer interjected, ask filed, file shelved).
+- **Changes**: memory files and lines (+/−), work files, shelved items, asks filed, threads and projects created or suggested.
+
+### Detailed view
+One unified, filterable, searchable, live timeline:
+- tool calls (grouped, expandable), thinking (toggle)
+- file diffs, messages, claims, suggestions
+- **the reviewer conversation interleaved**
+- model changes, usage samples, control events
+
+Every item has a deep link.
+
+## Chats (1:1)
+- A normal chat layout with streaming replies, model picker (from the chat role's allowed set), paste and file attach.
+- **Tool activity** shown compactly ("read 3 threads", "searched the workspace").
+- **Cards** for sensitive actions, as in threads.
+- **Actions**: Move to the assistant (pick a project) / Ask the assistant / Wake the assistant (shows cost). Once moved, the chat shows "continued in #thread".
+
+## Tools & Secrets
+- **Secrets**: names, descriptions, scopes, last read, read count. Values are write-only.
+- **Integrations**: connected MCP servers and presets, with status, per-tool policy (allowed / ask / blocked) and "Set up with help" (opens a 1:1 chat).
+- **Network rules**: egress allow and block rules, plus the request log (may stay its own page).
+- **Connected apps**: outside chat services connected through MCP, with scopes and revoke.
+
+## Settings
+- **Budgets & levels**: the level picker with a plain explanation, per-provider allowances and reserves, allowed hours, wakeup limits, reply budget, fallback, sweep, Boost.
+- **Providers**: add/login, status, usage source.
+- **Roles**: worker / reviewer / replier / chat / utility, each with provider, model, effort and allowed ranges.
+- **Reviewer**: mode, interval, budget share, tier-change rights.
+- **Standing instructions** for the assistant.
+- **Account**: password, 2FA, passkeys, **sessions and devices** (revoke).
+- **Notifications**: per event type, per thread, quiet hours. **On by default**: anything needing your approval, and new-device logins. Everything else (assistant messages, failed runs…) is opt-in.
+- **Extensions**: installed, enabled, errors. Extensions can add their own pages, sidebar sections, cards and settings panels, so leave room in the layout for them.
+- **System**: updates, the self-test, host resources help.
+- Later: **Hub**: membership, address, published services, peer policies and spend-breaker limits.
+
+## Mobile (installable web app)
+- Thread view, Inbox and cards are designed for one thumb. The sidebar becomes a drawer.
+- **Push notifications** need HTTPS with a valid certificate (a hub, or Tailscale HTTPS). iOS supports push for home-screen web apps. ntfy stays as a fallback for plain-HTTP installs.
+
+## Desktop (Tauri)
+- **Connect screen** on first launch: the server URL (LAN, Tailscale, or later a hub address), then username + password (+ 2FA). The app gets a revocable device token, stored in the OS keychain.
+- **The UI comes from the server, cached locally**: the app downloads the server's versioned UI bundle, serves it from a local app protocol, updates it when the server's version changes, and uses the cached copy offline. So the UI always matches the server, and native permissions are granted only to the local copy.
+- **Native features**, used only inside Tauri: notifications, a tray icon with the assistant's status, `l0wagent://` links, drag-and-drop to the shelf, a global shortcut, multiple windows.
+- **Distribution**:
+  - CI builds unsigned installers (`.dmg`, `.msi`/`.exe`, `.AppImage`/`.deb`).
+  - Mac: approve once in System Settings → Privacy & Security → "Open Anyway". Windows: SmartScreen → "Run anyway".
+  - The app binary rarely changes, since the UI comes from the server.
+  - Building it yourself stays documented.
+  - The installable web app also works on desktop.
+
+## Offline (web app and desktop)
+- **Local cache** of projects, threads, recent messages, the Inbox, shelf metadata, and optionally files you opened.
+- **Outbox**: new messages, new threads, answers to questions, tasks marked done/declined, drafts and uploads. Queued with client IDs, sent in order when the connection returns, with no duplicates.
+- **Shown clearly**: *waiting for connection* (on your device) vs. *queued for next wakeup* (on the server).
+- **Online only**: approving permissions, secrets, settings, budget changes and promote requests.
+
+## Later, with the hub (see [hub.md](hub.md))
+These screens will mostly come from **extensions** (first-party ones bundled with the image), so they plug into the slots extensions get: sidebar sections, pages, thread types and Inbox cards.
+- **Friends**: list with home hub, presence (asleep / working / next wakeup), per-friend policies (wake, spend limits), group chats.
+- **Board** (read-only for people): topics, posts with votes and files, a **Discussions** tab, and "Ask my assistant about this" on every post and discussion.
+- **Services**: what your assistant publishes (with access levels and unpublish), the hub's services, and member services labeled as such. Open a service in a side panel.
+- **Shared projects**: members, the group thread, shared spaces with versions and locks.
+- **Email**: an Email thread, and outbound mails awaiting approval in the Inbox.
