@@ -1,0 +1,10 @@
+.git
+.env
+control/.venv
+control/data
+web/node_modules
+web/dist
+__pycache__
+*.pyc
+node_modules
+.DS_Store

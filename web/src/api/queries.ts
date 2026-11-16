@@ -196,9 +196,40 @@ export async function uploadChatFile(file: File): Promise<S['ChatFile']> {
 
 export const useSecrets = () => useQuery({ queryKey: ['secrets'], queryFn: () => ok(api.GET('/api/secrets')) })
 export const useSetSecret = () =>
-  useInvalidating((a: { name: string } & S['SecretSet']) => ok(api.PUT('/api/secrets/{name}', { params: { path: { name: a.name } }, body: { value: a.value, description: a.description } })), [['secrets']])
+  useInvalidating((a: { name: string } & S['SecretSet']) => ok(api.PUT('/api/secrets/{name}', { params: { path: { name: a.name } }, body: { value: a.value, description: a.description, scope: a.scope } })), [['secrets']])
 export const useDeleteSecret = () =>
   useInvalidating((name: string) => ok(api.DELETE('/api/secrets/{name}', { params: { path: { name } } })), [['secrets']])
+
+// ── M6: network (egress rules and the request log; online only) ────────────
+export type NetFilter = 'all' | 'blocked' | 'get' | 'post' | 'hour'
+export const useNetwork = (filter: NetFilter = 'all') =>
+  useQuery({ queryKey: ['network', filter], refetchInterval: 15_000, queryFn: () => ok(api.GET('/api/network', { params: { query: { filter } } })) })
+export const useAddEgressRule = () =>
+  useInvalidating((b: Omit<S['EgressRuleCreate'], 'idempotency_key'>) => ok(api.POST('/api/network/rules', { body: { ...b, idempotency_key: newKey() } })), [['network']])
+export const useDeleteEgressRule = () =>
+  useInvalidating((id: number) => ok(api.DELETE('/api/network/rules/{rule_id}', { params: { path: { rule_id: id } } })), [['network']])
+
+// ── M6: integrations and connected apps (online only) ─────────────────────
+const intKeys = [['integrations']]
+export const useIntegrations = () => useQuery({ queryKey: ['integrations'], queryFn: () => ok(api.GET('/api/integrations')) })
+export const useIntegrationPresets = () => useQuery({ queryKey: ['integrations', 'presets'], staleTime: 300_000, queryFn: () => ok(api.GET('/api/integrations/presets')) })
+export const useAddIntegration = () =>
+  useInvalidating((b: Omit<S['IntegrationCreate'], 'idempotency_key'>) => ok(api.POST('/api/integrations', { body: { ...b, idempotency_key: newKey() } })), [...intKeys, ['secrets']])
+export const useUpdateIntegration = () =>
+  useInvalidating((a: { name: string } & S['IntegrationPatch']) => {
+    const { name, ...body } = a
+    return ok(api.PATCH('/api/integrations/{name}', { params: { path: { name } }, body }))
+  }, intKeys)
+export const useDeleteIntegration = () =>
+  useInvalidating((name: string) => ok(api.DELETE('/api/integrations/{name}', { params: { path: { name } } })), intKeys)
+export const useSyncIntegration = () =>
+  useInvalidating((name: string) => ok(api.POST('/api/integrations/{name}/sync', { params: { path: { name } } })), intKeys)
+export const useSetToolPolicy = () =>
+  useInvalidating((a: { name: string; tool: string; policy: S['IntegrationTool']['policy'] }) =>
+    ok(api.PUT('/api/integrations/{name}/tools/{tool}', { params: { path: { name: a.name, tool: a.tool } }, body: { policy: a.policy } })), intKeys)
+export const useConnectedApps = () => useQuery({ queryKey: ['connected-apps'], queryFn: () => ok(api.GET('/api/connected-apps')) })
+export const useRevokeApp = () =>
+  useInvalidating((id: number) => ok(api.DELETE('/api/connected-apps/{app_id}', { params: { path: { app_id: id } } })), [['connected-apps']])
 
 // ── M3: files, shelf, web page ─────────────────────────────────────────────
 export const useFileHistory = (volume: S['Listing']['volume'], path: string, enabled = true) =>
@@ -312,7 +343,7 @@ export const useStopChat = (id: number) => useInvalidating(() => ok(api.POST('/a
 export const useDecideChatCard = (id: number) =>
   useInvalidating((a: { message_id: number } & S['ChatCardDecision']) =>
     ok(api.POST('/api/chats/{chat_id}/cards/{message_id}', { params: { path: { chat_id: id, message_id: a.message_id } }, body: { decision: a.decision, value: a.value } })),
-  [...chatKeys, ['secrets'], ['budget'], ['calendar']])
+  [...chatKeys, ['secrets'], ['budget'], ['calendar'], ['integrations']])
 export const useChatHandoff = (id: number) =>
   useInvalidating((b: S['ChatHandoff']) => ok(api.POST('/api/chats/{chat_id}/handoff', { params: { path: { chat_id: id } }, body: b })), [...chatKeys, ['threads']])
 export const useChatAsk = (id: number) =>

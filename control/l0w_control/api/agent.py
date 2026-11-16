@@ -12,7 +12,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ..runs.runtime import Item
@@ -348,7 +349,8 @@ def suggest(body: SuggestionIn, request: Request) -> dict:
 # ── secrets (the agent's to use) and search ─────────────────────────────────
 @router.get("/secrets")
 def secrets(request: Request) -> list[dict]:
-    return [{"name": r["name"], "description": r["description"]} for r in _be(request).vault.listing()]
+    be = _be(request)
+    return [{"name": r["name"], "description": r["description"]} for r in be.vault.listing_for_agent(be.runs_mgr.active_run_id())]
 
 
 @router.get("/secrets/{name}")
@@ -478,7 +480,8 @@ def promote(body: PromoteIn, request: Request) -> dict:
         raise HTTPException(409, "Only a Reply-now run can ask to be promoted; this run already spends the main allowance.")
     left = be.budgets.left(run["provider"])  # type: ignore[index]
     if body.budget > left:
-        raise HTTPException(409, f"Only {left:.0f} pts of the allowance are left this week; ask for less, or claim the thread and plan a wakeup.")
+        period = be.budgets.period_unit(run["provider"])  # type: ignore[index]
+        raise HTTPException(409, f"Only {left:.0f} pts of the allowance are left this {period}; ask for less, or claim the thread and plan a wakeup.")
     pr = be.conv.file_promote(run_id, run["thread_id"], body.reason, body.budget)  # type: ignore[index]
     be.runs_mgr.timeline(run_id, Item("ask", f"Asked to promote this reply to a full run (+{body.budget:g} pts): {body.reason}", True, {"promote_id": pr.id}))
     return pr.model_dump(mode="json") | {"wait_minutes": be.settings.get("PROMOTE_WAIT_MINUTES")}
@@ -559,3 +562,36 @@ async def reviewer(body: ReviewerIn, request: Request) -> dict:
     be = _be(request)
     run_id = _run(be, body.run_id)
     return {"reply": await be.reviewer.from_agent(run_id, body.kind, be.vault.redact(body.body) or body.body), "mode": be.reviewer.mode(run_id)}
+
+
+# ── brokered MCP integrations (control holds the credential) ───────────────
+@router.post("/mcp/{name}")
+async def mcp(name: str, request: Request) -> Response:
+    """Streamable HTTP, JSON responses only (no server-initiated stream)."""
+    be = _be(request)
+    try:
+        body = await request.json()
+    except ValueError:
+        return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400)
+    run_id = be.runs_mgr.active_run_id()
+
+    def handle() -> list | dict | None:
+        if isinstance(body, list):
+            out = [r for m in body[:50] if (r := be.integrations.handle(name, m, run_id)) is not None]
+            return out or None
+        return be.integrations.handle(name, body, run_id)
+
+    from starlette.concurrency import run_in_threadpool
+
+    res = await run_in_threadpool(handle)
+    return Response(status_code=202) if res is None else JSONResponse(res)
+
+
+@router.get("/mcp/{name}")
+def mcp_stream(name: str) -> Response:
+    return Response(status_code=405, headers={"Allow": "POST"})
+
+
+@router.delete("/mcp/{name}")
+def mcp_end(name: str) -> Response:
+    return Response(status_code=204)

@@ -1,8 +1,9 @@
 import { Link, useNavigate } from 'react-router'
 import type { S } from '../api/client'
 import { useCalendar, useClaims, useInbox, useJobs, useMe, useRecent, useStatus, useSystem, useUpdateInfo, useWebPage } from '../api/queries'
+import { useTimeFormat } from '../app/timeFormat'
 import { CardPlace, InboxCard } from '../components/Cards'
-import { ago, pts } from '../components/format'
+import { ago, pts, stamp } from '../components/format'
 import { Markdown } from '../components/Markdown'
 
 // Home, ported from the mockup's HOME screen: the greeting and the assistant's state; on the
@@ -17,12 +18,8 @@ function greeting(d = new Date()) {
 const STATE: Record<string, string> = { working: 'Working', asleep: 'Asleep', dormant: 'Dormant', paused: 'Paused' }
 const CLAIM: Record<string, [string, string]> = { in_progress: ['In progress', 'var(--accentInk)'], planned: ['Planned', 'var(--infoInk)'], done: ['Done', 'var(--okInk)'], dropped: ['Dropped', 'var(--muted)'] }
 
-function when(iso: string): string {
-  const d = new Date(iso)
-  return `${d.toLocaleDateString(undefined, { weekday: 'short' })} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}`
-}
-
 export function Home() {
+  useTimeFormat()
   const me = useMe()
   const status = useStatus()
   const waiting = useInbox('waiting')
@@ -35,7 +32,7 @@ export function Home() {
   const st = status.data
   const top = [...(waiting.data ?? [])].sort((a, b) => Number(b.kind === 'security') - Number(a.kind === 'security')).slice(0, 3)  // security first
   const upcoming = (cal.data?.wakeups ?? []).filter((w) => w.status === 'planned').slice(0, 3)
-  const stateText = !st ? '' : st.state === 'working' ? (st.now ?? 'Starting…') : st.next_wakeup_at ? `next wakeup ${when(st.next_wakeup_at)}` : 'no wakeups planned'
+  const stateText = !st ? '' : st.state === 'working' ? (st.now ?? 'Starting…') : st.next_wakeup_at ? `next wakeup ${stamp(st.next_wakeup_at)}` : 'no wakeups planned'
 
   return (
     <div className="home">
@@ -83,7 +80,7 @@ export function Home() {
             <div className="home-label"><span>Coming up</span><Link to="/calendar">Calendar</Link></div>
             {cal.isSuccess && !upcoming.length && <div className="sub" style={{ padding: '8px 0' }}>Nothing planned.</div>}
             {upcoming.map((w) => (
-              <div key={w.id} className="up-row"><span className="w">{when(w.at)}</span><span className="r">{w.reason}</span><span className="b">{pts(w.budget)} pts</span></div>
+              <div key={w.id} className="up-row"><span className="w">{stamp(w.at)}</span><span className="r">{w.reason}</span><span className="b">{pts(w.budget)} pts</span></div>
             ))}
           </div>
           {st?.budget && <Budget b={st.budget} />}

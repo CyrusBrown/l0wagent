@@ -31,6 +31,9 @@ services:
       L0W_EGRESS_URL: http://egress-admin:8090
       L0W_SANDBOX_SUBNET: ${SANDBOX_SUBNET:?run ./l0w install}
       L0W_AGENT_HOME: /agent-home
+      L0W_CHAT_RUNTIME_URL: http://chat-runtime:8770
+      L0W_CHAT_RUNTIME_TOKEN: ${L0W_CHAT_RUNTIME_TOKEN:?run ./l0w install}
+      L0W_CHAT_SUBNET: ${CHAT_SUBNET:?run ./l0w install}
       L0W_FILES_PORT: "8001"
       L0W_INSTANCE_NAME: ${L0W_INSTANCE_NAME:-l0wagent}
       L0W_CHANNEL: ${L0W_CHANNEL:-stable}
@@ -49,7 +52,7 @@ services:
         source: agent-work
         target: /work/_inbox
         volume: { subpath: _inbox }
-    networks: [outside, sandbox, ctl]
+    networks: [outside, sandbox, ctl, chat]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     depends_on: [agent]
@@ -60,6 +63,7 @@ services:
     environment:
       EGRESS_TOKEN: ${L0W_EGRESS_TOKEN}
       SANDBOX_SUBNET: ${SANDBOX_SUBNET}
+      CHAT_SUBNET: ${CHAT_SUBNET:?run ./l0w install}
       GATED_HOSTS: api.anthropic.com,opencode.ai
       DEFAULT_POLICY: ${EGRESS_DEFAULT_POLICY:-allow}
       DATA_DIR: /data
@@ -68,6 +72,7 @@ services:
     networks:
       outside: {}
       sandbox: {}
+      chat: {}
       ctl:
         aliases: [egress-admin]
     cap_drop: [ALL]
@@ -107,6 +112,26 @@ services:
         limits: { pids: 2048 }  # compose.override.yaml adds memory, CPU and the GPU here
     depends_on: [egress]
 
+  chat-runtime:
+    image: ghcr.io/cyrusbrown/l0wagent-chat-runtime:${L0W_VERSION:-stable}
+    restart: unless-stopped
+    environment:
+      CHAT_RUNTIME_TOKEN: ${L0W_CHAT_RUNTIME_TOKEN}
+      HTTP_PROXY: http://egress:3128
+      HTTPS_PROXY: http://egress:3128
+      http_proxy: http://egress:3128
+      https_proxy: http://egress:3128
+      NO_PROXY: localhost,127.0.0.1,control,egress
+      no_proxy: localhost,127.0.0.1,control,egress
+      NODE_USE_ENV_PROXY: "1"
+    networks: [chat]
+    read_only: true
+    tmpfs: ["/tmp:size=256m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 512
+    depends_on: [egress]
+
   agent-web:
     image: ghcr.io/cyrusbrown/l0wagent-agent-web:${L0W_VERSION:-stable}
     restart: unless-stopped
@@ -129,6 +154,14 @@ networks:
     ipam:
       config:
         - subnet: ${SANDBOX_SUBNET}
+  chat:
+    internal: true
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.inhibit_ipv4: "true"
+    ipam:
+      config:
+        - subnet: ${CHAT_SUBNET}
   ctl:
     internal: true
 

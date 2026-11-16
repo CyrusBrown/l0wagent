@@ -113,7 +113,7 @@ def test_errors_end_the_turn_and_the_subscription_needs_the_sidecar(c, be, monke
     be.chats_.fake = False
     other = ok(c.post("/api/chats", json={"message": "hi"}), 201)
     assert not other["available"]
-    assert "chat sidecar" in settled(c, other["id"])[-1]["body"]
+    assert "chat runtime" in settled(c, other["id"])[-1]["body"]
 
 
 def test_tools_check_their_input():

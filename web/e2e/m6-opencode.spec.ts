@@ -24,10 +24,10 @@ test('opencode Go: key, tier models, roles and a run on opencode', async ({ page
 
   await page.goto('/settings/roles')
   // One searchable picker across providers; it saves right away.
-  await page.getByRole('button', { name: 'worker model' }).click()
+  await page.getByRole('button', { name: 'worker model', exact: true }).click()
   await page.getByLabel('Search worker model').fill('beam')
   await page.getByRole('option', { name: /Beam/ }).first().click()
-  await expect(page.getByRole('button', { name: 'worker model' })).toContainText(/Beam/)
+  await expect(page.getByRole('button', { name: 'worker model', exact: true })).toContainText(/Beam/)
   await expect(page.getByText('Saved')).toBeVisible()
 
   await page.goto('/runs')
@@ -39,8 +39,8 @@ test('opencode Go: key, tier models, roles and a run on opencode', async ({ page
 
   // Put the worker back, so the server is as the other tests expect.
   await page.goto('/settings/roles')
-  await page.getByRole('button', { name: 'worker model' }).click()
+  await page.getByRole('button', { name: 'worker model', exact: true }).click()
   await page.getByLabel('Search worker model').fill('sonnet')
   await page.getByRole('option', { name: /^Sonnet/ }).first().click()
-  await expect(page.getByRole('button', { name: 'worker model' })).toContainText('Sonnet')
+  await expect(page.getByRole('button', { name: 'worker model', exact: true })).toContainText('Sonnet')
 })

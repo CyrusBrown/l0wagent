@@ -18,6 +18,7 @@ from typing import Any
 from .. import __version__
 from ..api import schemas as s
 from ..backends.base import Backend, BadRequest, Conflict, LoginFailed, NotFound, Unauthorized
+from ..integrations import NAME_RE, PRESETS
 from . import fixtures
 
 MOCK_PASSWORD = "password"
@@ -38,7 +39,7 @@ class MockBackend(Backend):
         self.seq = 0
         self.changes: list[tuple[int, s.SyncChange]] = []
         self.listeners: set[asyncio.Queue[s.LiveEvent]] = set()
-        self.owner = s.Owner(username="mara", display_name="Mara", timezone="Europe/Berlin", totp_enabled=False, passkeys=0)
+        self.owner = s.Owner(username="l0w", display_name="l0w", timezone="America/Los_Angeles", totp_enabled=False, passkeys=0)
 
     # ── plumbing ───────────────────────────────────────────────────────────
     def _changed(self, entity: str, id_: Any, model: s.Model | None, event: str | None = None) -> None:
@@ -760,6 +761,132 @@ class MockBackend(Backend):
             git = git or (isinstance(node, dict) and bool(node.get("_git")))
         return node, git
 
+    # ── network ────────────────────────────────────────────────────────────
+    def network(self, filter: str = "all") -> s.NetworkView:
+        log = self.w.egress_log
+        if filter == "blocked":
+            log = [r for r in log if r.action == "blocked"]
+        elif filter in ("get", "post"):
+            log = [r for r in log if (r.method or "").lower() == filter]
+        elif filter == "hour":
+            log = [r for r in log if r.at >= self.w.now - timedelta(hours=1)]
+        hosts: dict[str, list[int]] = {}
+        for r in self.w.egress_log:
+            h = hosts.setdefault(r.host or "", [0, 0])
+            h[0] += 1
+            h[1] += r.action == "blocked"
+        top = sorted(([k, *v] for k, v in hosts.items()), key=lambda x: -x[1])[:6]
+        return s.NetworkView(reachable=True, default_policy="allow", rules=sorted(self.w.egress_rules.values(), key=lambda r: r.id), requests=log,
+                             requests_24h=361, blocked_24h=3, top_hosts=[s.HostStat(host=h, requests=n, blocked=b) for h, n, b in top])
+
+    def add_egress_rule(self, req: s.EgressRuleCreate) -> s.EgressRule:
+        from ..network import check_pattern
+
+        pattern = check_pattern(req.pattern)
+
+        def make() -> s.EgressRule:
+            rid = max(self.w.egress_rules, default=0) + 1
+            self.w.egress_rules[rid] = s.EgressRule(id=rid, pattern=pattern, action=req.action, note=req.note.strip(), created_at=self.w.now, hits_7d=0)
+            return self.w.egress_rules[rid]
+        return self._once(req.idempotency_key, make)
+
+    # ── the MCP connector ──────────────────────────────────────────────────
+    def connect_request(self, params: dict[str, str]) -> s.ConnectRequest:
+        from ..connector import SCOPES
+        if not params.get("client_id"):
+            raise BadRequest("invalid_client", "Unknown client_id: register first.")
+        asked = [x for x in (params.get("scope") or "read").split() if x in SCOPES] or ["read"]
+        return s.ConnectRequest(client_name="Claude Desktop", redirect_host="claude.ai",
+                                scopes=[s.ConnectorScopeInfo(scope=x, description=SCOPES[x]) for x in asked])  # type: ignore[arg-type]
+
+    def connect_consent(self, req: s.ConnectConsent) -> s.ConnectRedirect:
+        state = f"&state={req.params['state']}" if req.params.get("state") else ""
+        base = req.params.get("redirect_uri") or "https://claude.ai/api/mcp/auth_callback"
+        if not req.approve:
+            return s.ConnectRedirect(redirect=f"{base}?error=access_denied{state}")
+        self.w.connected_apps.append(s.ConnectedApp(id=max((a.id for a in self.w.connected_apps), default=0) + 1, name="Claude Desktop",
+                                                    scopes=req.scopes or ["read"], chat_id=None, created_at=_now(), last_used_at=None))
+        return s.ConnectRedirect(redirect=f"{base}?code=mock-code{state}")
+
+    def connected_apps(self) -> list[s.ConnectedApp]:
+        return list(self.w.connected_apps)
+
+    def revoke_connected_app(self, app_id: int) -> None:
+        before = len(self.w.connected_apps)
+        self.w.connected_apps = [a for a in self.w.connected_apps if a.id != app_id]
+        if len(self.w.connected_apps) == before:
+            raise NotFound(f"connected app {app_id}")
+
+    def delete_egress_rule(self, rule_id: int) -> None:
+        if self.w.egress_rules.pop(rule_id, None) is None:
+            raise NotFound(f"rule {rule_id}")
+
+    # ── integrations ───────────────────────────────────────────────────────
+    def _integration(self, name: str) -> s.Integration:
+        i = self.w.integrations.get((name or "").strip().lower())
+        if not i:
+            raise NotFound(f"integration {name}")
+        return i
+
+    def list_integrations(self) -> list[s.Integration]:
+        return sorted(self.w.integrations.values(), key=lambda i: i.title)
+
+    def integration_presets(self) -> list[s.IntegrationPreset]:
+        return [s.IntegrationPreset(id=k, **v) for k, v in PRESETS.items()]
+
+    def create_integration(self, req: s.IntegrationCreate) -> s.Integration:
+        def make() -> s.Integration:
+            p = PRESETS.get(req.preset or "", {}) if req.preset else {}
+            if req.preset and not p:
+                raise BadRequest("bad_preset", f"Unknown preset {req.preset!r}.")
+            name = (req.name or req.preset or "").strip().lower()
+            if not NAME_RE.match(name):
+                raise BadRequest("bad_name", "Integration names look like github or home-assistant: lowercase letters, digits and -, 2–32 characters.")
+            if name in self.w.integrations:
+                raise Conflict("exists", f"An integration named {name} already exists.")
+            url = req.url or p.get("url", "")
+            if not url.startswith(("http://", "https://")):
+                raise BadRequest("bad_url", "The URL must start with http:// or https://.")
+            secret = (req.auth_secret or p.get("auth_secret") or "").strip().upper() or None
+            i = s.Integration(name=name, title=(req.title or p.get("title") or name).strip()[:80], preset=req.preset, url=url, auth_secret=secret,
+                              secret_saved=bool(secret and secret in self.w.secrets), enabled=True, status="new", last_error=None, synced_at=None,
+                              created_at=self.w.now, tools=[], recent_calls=[])
+            self.w.integrations[name] = i
+            return i
+        return self._once(req.idempotency_key, make)
+
+    def get_integration(self, name: str) -> s.Integration:
+        return self._integration(name)
+
+    def update_integration(self, name: str, req: s.IntegrationPatch) -> s.Integration:
+        i = self._integration(name)
+        d = req.model_dump(exclude_unset=True, exclude_none=True)
+        if "auth_secret" in d:
+            d["auth_secret"] = d["auth_secret"].strip().upper() or None
+            d["secret_saved"] = bool(d["auth_secret"] and d["auth_secret"] in self.w.secrets)
+        if "title" in d:
+            d["title"] = d["title"].strip()[:80] or i.name
+        if "url" in d and not d["url"].startswith(("http://", "https://")):
+            raise BadRequest("bad_url", "The URL must start with http:// or https://.")
+        self.w.integrations[i.name] = i.model_copy(update=d)
+        return self.w.integrations[i.name]
+
+    def delete_integration(self, name: str) -> None:
+        del self.w.integrations[self._integration(name).name]
+
+    def sync_integration(self, name: str) -> s.Integration:
+        i = self._integration(name)
+        self.w.integrations[i.name] = i.model_copy(update={"status": "ok", "last_error": None, "synced_at": self.w.now})
+        return self.w.integrations[i.name]
+
+    def set_integration_tool_policy(self, name: str, tool: str, policy: str) -> s.Integration:
+        i = self._integration(name)
+        if not any(t.name == tool for t in i.tools):
+            raise NotFound(f"tool {tool}")
+        tools = [t.model_copy(update={"policy": policy}) if t.name == tool else t for t in i.tools]
+        self.w.integrations[i.name] = i.model_copy(update={"tools": tools})
+        return self.w.integrations[i.name]
+
     # ── secrets ────────────────────────────────────────────────────────────
     # ── 1:1 chats ──────────────────────────────────────────────────────────
     def _chat(self, chat_id: int) -> s.Chat:
@@ -810,8 +937,25 @@ class MockBackend(Backend):
         i = next((i for i, m in enumerate(msgs) if m.id == message_id and m.role == "card"), None)
         if i is None:
             raise NotFound(f"card {message_id}")
-        msgs[i] = msgs[i].model_copy(update={"data": {**msgs[i].data, "state": "done" if req.decision == "approve" else "declined"}})
-        self._chat_add(chat_id, "system", "The owner saved the secret." if req.decision == "approve" else "The owner declined the card.")
+        data = {**msgs[i].data, "state": "done" if req.decision == "approve" else "declined"}
+        note = "The owner saved the secret." if req.decision == "approve" else "The owner declined the card."
+        if req.decision == "approve" and data.get("kind") == "integration":
+            secret = data["secret_name"]
+            if secret not in self.w.secrets and not req.value:
+                raise BadRequest("no_value", "Paste the token to connect.")
+            if req.value:
+                self.set_secret(secret, s.SecretSet(value=req.value, scope="integrations"))
+            try:
+                integ = self.get_integration(data["name"])
+            except NotFound:
+                integ = self.create_integration(s.IntegrationCreate(name=data["name"], title=data["title"], preset=data.get("preset"), url=data["url"],
+                                                                    auth_secret=secret, idempotency_key=None))
+            integ = integ.model_copy(update={"status": "ok", "secret_saved": True, "last_error": None})
+            self.w.integrations[integ.name] = integ
+            data.update(integration=integ.name, status="ok", tool_count=len(integ.tools), last_error=None)
+            note = f"Connected {data['title']}: {len(integ.tools)} tools."
+        msgs[i] = msgs[i].model_copy(update={"data": data})
+        self._chat_add(chat_id, "system", note)
         return msgs[i]
 
     def chat_handoff(self, chat_id: int, req: s.ChatHandoff) -> s.Chat:
@@ -849,7 +993,15 @@ class MockBackend(Backend):
         name = name.strip().upper()
         now = _now()
         old = self.w.secrets.get(name)
-        info = s.SecretInfo(name=name, description=req.description if req.description is not None else (old.description if old else ""), scope="agent",
+        if old is None and req.value is None:
+            raise NotFound(f"secret {name}")
+        scope = req.scope or (old.scope if old else "agent")
+        label = {"agent": "All projects", "integrations": "Integrations only"}.get(scope) or next(
+            (p.name for p in self.w.projects.values() if f"project:{p.slug}" == scope), None) or next(
+            (r.name for r in self.w.routines.values() if f"routine:{r.id}" == scope), None)
+        if label is None:
+            raise BadRequest("bad_scope", "A secret's scope is 'agent', 'integrations', 'project:<slug>' or 'routine:<id>'.")
+        info = s.SecretInfo(name=name, description=req.description if req.description is not None else (old.description if old else ""), scope=scope, scope_label=label,
                             created_at=old.created_at if old else now, updated_at=now, reads=old.reads if old else 0, last_read_at=old.last_read_at if old else None)
         self.w.secrets[name] = info
         return info

@@ -8,7 +8,9 @@ import { Files } from '../screens/Files'
 import { Home } from '../screens/Home'
 import { Inbox } from '../screens/Inbox'
 import { Login } from '../screens/Login'
+import { Network } from '../screens/Network'
 import { NotPorted } from '../screens/NotPorted'
+import { Connect } from '../screens/Connect'
 import { Chat } from '../screens/Chat'
 import { General } from '../screens/General'
 import { NewItem, Project, Projects } from '../screens/Projects'
@@ -19,6 +21,7 @@ import { Thread } from '../screens/Thread'
 import { Tools } from '../screens/Tools'
 import { WebPage } from '../screens/WebPage'
 import { Shell } from './Shell'
+import { TimeFormatProvider } from './timeFormat'
 
 /** The setup wizard on a fresh server (kept open until its last step), then the login
  * screen until /api/auth/me succeeds. */
@@ -34,10 +37,11 @@ function Gate({ children }: { children: ReactNode }) {
     void clearOffline()  // signed out: drop this device's offline copy and outbox
     return <Login />
   }
-  return children
+  return <TimeFormatProvider>{children}</TimeFormatProvider>
 }
 
 export const routes: RouteObject[] = [
+  { path: '/connect', element: <Gate><Connect /></Gate> },
   {
     path: '/',
     element: <Gate><Shell /></Gate>,
@@ -55,7 +59,7 @@ export const routes: RouteObject[] = [
       { path: 'files', element: <Files /> },
       { path: 'calendar', element: <Calendar /> },
       { path: 'tools', element: <Tools /> },
-      { path: 'network', element: <NotPorted name="Network" milestone="M6" /> },
+      { path: 'network', element: <Network /> },
       { path: 'web', element: <WebPage /> },
       { path: 'settings', element: <Settings /> },
       { path: 'settings/:tab', element: <Settings /> },

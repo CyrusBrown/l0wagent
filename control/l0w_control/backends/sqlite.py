@@ -16,20 +16,23 @@ import json
 import mimetypes
 import os
 from collections.abc import AsyncIterator, Coroutine
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, TypeVar
 
-from .. import __version__
+from .. import __version__, network
 from ..api import schemas as s
 from ..auth import Auth, iso, parse, utcnow
 from ..budgets import LEVELS, OPENCODE_GO, RUNTIME, SUBSCRIPTION, TIERS, Budgets
 from ..chat import Chats
 from ..config import Env, Settings
+from ..connector import Connector
 from ..conv import Conversations
 from ..db import Database
 from ..files import Storage, guess_mime
 from ..files_origin import Signer
 from ..files_origin import make_app as files_app
+from ..integrations import Integrations
 from ..jobs import Jobs
 from ..live import Live
 from ..notify import Notifier
@@ -73,6 +76,8 @@ class SqliteBackend(Backend):
         self.routines = Routines(self.db, self.budgets)
         self.routines.ensure_builtin()
         self.conv.routines = self.routines
+        self.integrations = Integrations(self.db, self.vault, self.conv.file_permission)
+        self.conv.integrations = self.integrations
         self.runs_mgr = RunManager(self.env, self.db, self.settings, self.live, self.runner, self.egress, self.usage, self.conv, self.vault, self.budgets)
         self.scheduler = Scheduler(self.db, self.settings, self.budgets, self.runs_mgr, self.live)
         self.routines.scheduler = self.scheduler
@@ -92,6 +97,7 @@ class SqliteBackend(Backend):
         self.notifier = Notifier(self.db, self.env.data_dir)
         self.conv.notify = self.notifier.notify
         self.chats_ = Chats(self.db, self, self.live, self.budgets, self.vault)
+        self.connector = Connector(self.db, self)
         self.signer = Signer(self.vault.key)
         self.files_app = files_app(self.storage, self.signer, self.shelf_.raw)
         self._files_server = None
@@ -526,12 +532,97 @@ class SqliteBackend(Backend):
             reachable = False
         return s.WebPage(url=url, reachable=reachable)
 
+    # ── network ────────────────────────────────────────────────────────────
+    def network(self, filter: str = "all") -> s.NetworkView:
+        async def load() -> tuple:
+            day = iso(utcnow() - timedelta(days=1)).replace("Z", "+00:00")  # egress's format
+            params: dict = {"limit": 200, **network.FILTERS.get(filter, {})}
+            if filter == "hour":
+                params["since"] = iso(utcnow() - timedelta(hours=1)).replace("Z", "+00:00")
+            st, rules, reqs = await self.egress.status(), await self.egress.rules(), await self.egress.requests(**params)
+            day_all = await self.egress.requests(limit=1, since=day)
+            day_blocked = await self.egress.requests(limit=1, since=day, action="blocked")
+            return st, rules, reqs, day_all["total"], day_blocked["total"], await self.egress.host_stats(1), await self.egress.host_stats(7)
+        try:
+            st, rules, reqs, n24, b24, hosts1, hosts7 = self._await(load(), timeout=15)
+        except Exception:  # noqa: BLE001
+            return s.NetworkView(reachable=False, default_policy="allow", rules=[], requests=[], requests_24h=0, blocked_24h=0, top_hosts=[])
+        return network.view(st, rules, reqs["requests"], n24, b24, hosts1, hosts7)
+
+    def add_egress_rule(self, req: s.EgressRuleCreate) -> s.EgressRule:
+        pattern = network.check_pattern(req.pattern)
+
+        def make() -> s.EgressRule:
+            try:
+                rid = self._await(self.egress.add_rule(pattern, req.action, self.vault.redact(req.note.strip()) or ""), timeout=15)
+            except RunnerError as e:
+                raise BadRequest("egress_refused", str(e).removeprefix("egress: ")) from None
+            return next(r for r in self.network().rules if r.id == rid)
+        return self.conv.once(req.idempotency_key, "egress_rule", s.EgressRule, make)
+
+    # ── the MCP connector ──────────────────────────────────────────────────
+    def connect_request(self, params: dict[str, str]) -> s.ConnectRequest:
+        from ..connector import OAuthError
+        try:
+            return s.ConnectRequest(**self.connector.describe(params))
+        except OAuthError as e:
+            raise BadRequest(e.error, e.description) from None
+
+    def connect_consent(self, req: s.ConnectConsent) -> s.ConnectRedirect:
+        from ..connector import OAuthError
+        try:
+            return s.ConnectRedirect(redirect=self.connector.consent(req.params, req.approve, req.scopes))
+        except OAuthError as e:
+            raise BadRequest(e.error, e.description) from None
+
+    def connected_apps(self) -> list[s.ConnectedApp]:
+        return [s.ConnectedApp(**{**a, "created_at": parse(a["created_at"]), "last_used_at": parse(a["last_used_at"])}) for a in self.connector.apps()]
+
+    def revoke_connected_app(self, app_id: int) -> None:
+        self.connector.revoke_app(app_id)
+
+    def delete_egress_rule(self, rule_id: int) -> None:
+        self._await(self.egress.delete_rule(rule_id), timeout=15)
+
+    # ── integrations ───────────────────────────────────────────────────────
+    @staticmethod
+    def _integration(d: dict) -> s.Integration:
+        return s.Integration(**{**d, "synced_at": parse(d["synced_at"]), "created_at": parse(d["created_at"]),
+                                "tools": [s.IntegrationTool(**t) for t in d["tools"]],
+                                "recent_calls": [s.IntegrationCall(**{**c, "at": parse(c["at"])}) for c in d["recent_calls"]]})
+
+    def list_integrations(self) -> list[s.Integration]:
+        return [self._integration(d) for d in self.integrations.listing()]
+
+    def integration_presets(self) -> list[s.IntegrationPreset]:
+        return [s.IntegrationPreset(**p) for p in self.integrations.presets()]
+
+    def create_integration(self, req: s.IntegrationCreate) -> s.Integration:
+        def make() -> s.Integration:
+            return self._integration(self.integrations.create(req.name or "", req.title, req.preset, req.url, req.auth_secret))
+        return self.conv.once(req.idempotency_key, "integration", s.Integration, make)
+
+    def get_integration(self, name: str) -> s.Integration:
+        return self._integration(self.integrations.get(name))
+
+    def update_integration(self, name: str, req: s.IntegrationPatch) -> s.Integration:
+        return self._integration(self.integrations.update(name, **req.model_dump(exclude_unset=True)))
+
+    def delete_integration(self, name: str) -> None:
+        self.integrations.delete(name)
+
+    def sync_integration(self, name: str) -> s.Integration:
+        return self._integration(self.integrations.sync(name))
+
+    def set_integration_tool_policy(self, name: str, tool: str, policy: str) -> s.Integration:
+        return self._integration(self.integrations.set_policy(name, tool, policy))
+
     # ── secrets ────────────────────────────────────────────────────────────
     def _secret(self, name: str) -> s.SecretInfo:
         r = next((x for x in self.vault.listing() if x["name"] == name.upper()), None)
         if not r:
             raise NotFound(f"secret {name}")
-        return s.SecretInfo(name=r["name"], description=r["description"], scope=r["scope"], created_at=parse(r["created_at"]),  # type: ignore[arg-type]
+        return s.SecretInfo(name=r["name"], description=r["description"], scope=r["scope"], scope_label=self.vault.scope_label(r["scope"]), created_at=parse(r["created_at"]),  # type: ignore[arg-type]
                             updated_at=parse(r["updated_at"]), reads=r["reads"], last_read_at=parse(r["last_read_at"]))  # type: ignore[arg-type]
 
     def secrets(self) -> list[s.SecretInfo]:
@@ -578,7 +669,7 @@ class SqliteBackend(Backend):
         return self.chats_.file(file_id)
 
     def set_secret(self, name: str, req: s.SecretSet) -> s.SecretInfo:
-        out = self.vault.set(name, req.value, req.description)
+        out = self.vault.set(name, req.value, req.description, req.scope)
         self.live.emit("status")
         return self._secret(out["name"])
 

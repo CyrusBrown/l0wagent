@@ -33,6 +33,10 @@ log = logging.getLogger("egress")
 
 TOKEN = os.environ.get("EGRESS_TOKEN", "")
 SANDBOX_NET = ipaddress.ip_network(os.environ.get("SANDBOX_SUBNET", "172.31.240.0/24"), strict=False)
+# The chat-runtime sidecar's network: it may reach only CHAT_HOSTS (Claude's API), whatever the rules
+# or the lease say; the chat is the owner's own usage, so it needs no run lease.
+CHAT_NET = ipaddress.ip_network(os.environ["CHAT_SUBNET"], strict=False) if os.environ.get("CHAT_SUBNET") else None
+CHAT_HOSTS = [h.strip().lower() for h in os.environ.get("CHAT_HOSTS", "api.anthropic.com").split(",") if h.strip()]
 GATED_HOSTS = [h.strip().lower() for h in os.environ.get("GATED_HOSTS", "api.anthropic.com,opencode.ai").split(",") if h.strip()]
 DEFAULT_POLICY = os.environ.get("DEFAULT_POLICY", "allow").lower()  # allow | deny (allowlist mode)
 RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "90"))
@@ -139,6 +143,26 @@ def _host_ip(host: str):
 
 
 READ_METHODS = ("GET", "HEAD", "OPTIONS")
+
+
+def from_chat(client: str) -> bool:
+    try:
+        return CHAT_NET is not None and ipaddress.ip_address(client) in CHAT_NET
+    except ValueError:
+        return False
+
+
+async def decide_chat(host: str, port: int) -> tuple[bool, str, str | None, bool]:
+    """The chat sidecar: its model host over TLS (CONNECT to 443), nothing else."""
+    host = host.lower().rstrip(".")
+    if host not in CHAT_HOSTS or port != 443:
+        return False, "the chat runtime may only reach the model provider", None, False
+    try:
+        infos = await asyncio.get_running_loop().getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except socket.gaierror as e:
+        return False, f"DNS lookup failed: {e}", None, False
+    ip = next((info[4][0] for info in infos if ipaddress.ip_address(info[4][0]).is_global), None)
+    return (True, "", ip, False) if ip else (False, "the model provider resolved to no public address", None, False)
 
 
 async def decide(host: str, port: int, method: str = "GET") -> tuple[bool, str, str | None, bool]:
@@ -291,7 +315,10 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
         url = target
 
     host = host.lower()
-    allowed, reason, ip, read_only = await decide(host, port, method)
+    if from_chat(client):
+        allowed, reason, ip, read_only = await decide_chat(host, port)
+    else:
+        allowed, reason, ip, read_only = await decide(host, port, method)
     if not allowed:
         log_request(client=client, method=method, host=host, port=port, url=url, action="blocked", reason=reason, status=403)
         await _respond(writer, 403, "Forbidden", f"Blocked by egress policy: {reason}\n")
@@ -365,7 +392,7 @@ admin = FastAPI(docs_url=None, redoc_url=None)
 @admin.middleware("http")
 async def admin_guard(request: Request, call_next):
     try:
-        if ipaddress.ip_address(request.client.host) in SANDBOX_NET:
+        if ipaddress.ip_address(request.client.host) in SANDBOX_NET or from_chat(request.client.host):
             return JSONResponse({"error": "forbidden"}, status_code=403)
     except (ValueError, AttributeError):
         pass
@@ -412,8 +439,14 @@ async def set_lease(body: LeaseIn):
 
 
 @admin.get("/requests")
-async def list_requests(limit: int = 200, offset: int = 0, host: str = "", action: str = ""):
+async def list_requests(limit: int = 200, offset: int = 0, host: str = "", action: str = "", method: str = "", since: str = ""):
     where, params = [], []
+    if method:
+        where.append("method = ?")
+        params.append(method.upper())
+    if since:
+        where.append("ts >= ?")
+        params.append(since)
     if host:
         where.append("host = ?")
         params.append(host.lower())
@@ -427,7 +460,7 @@ async def list_requests(limit: int = 200, offset: int = 0, host: str = "", actio
 
 
 @admin.get("/stats/hosts")
-async def host_stats(days: int = 7):
+async def host_stats(days: float = 7):
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
     return db_query(
         "SELECT host, COUNT(*) AS n, SUM(action='blocked') AS blocked, SUM(bytes_down) AS bytes_down "

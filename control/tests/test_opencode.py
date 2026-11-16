@@ -151,3 +151,41 @@ def test_reply_now_on_go_hears_the_answer_mid_run(stack: Stack):
     assert done["status"] == "done" and done["provider"] == "opencode-go"
     texts = [i["text"] for i in stack.timeline(run_id)]
     assert any(x.startswith("Delivered mid-run (after a tool call): 1 answer") for x in texts), texts
+
+
+def test_the_runner_registers_brokered_integrations(tmp_path: Path):
+    sys_file = tmp_path / "system.md"
+    wanted = [{"name": "github", "title": "GitHub"}, {"name": "Bad_Name", "title": "x"}, {"name": "a", "title": "x"}]
+    servers = runner.mcp_servers(wanted, "http://control:8000/", "tok")
+    assert servers == {"github": {"url": "http://control:8000/api/agent/mcp/github", "headers": {"X-Agent-Token": "tok"}}}
+    assert runner.opencode_config(sys_file, mcp=servers)["mcp"] == {
+        "github": {"type": "remote", "url": "http://control:8000/api/agent/mcp/github", "headers": {"X-Agent-Token": "tok"}, "enabled": True}}
+    assert "mcp" not in runner.opencode_config(sys_file) and "mcp" not in runner.opencode_config(sys_file, reviewer=True, mcp=servers)
+    runner.os.environ["CONTROL_URL"], runner.os.environ["AGENT_API_TOKEN"] = "http://control:8000", "tok"
+    argv = runner.claude_argv(runner.SessionRequest(run_id=1, prompt="p", mcp=wanted), sys_file)
+    cfg_file = Path(argv[argv.index("--mcp-config") + 1])
+    assert json.loads(cfg_file.read_text()) == {"mcpServers": {"github": {
+        "type": "http", "url": "http://control:8000/api/agent/mcp/github", "headers": {"X-Agent-Token": "tok"}}}}
+    assert cfg_file.stat().st_mode & 0o777 == 0o600
+    assert "--mcp-config" not in runner.claude_argv(runner.SessionRequest(run_id=1, prompt="p"), sys_file)
+
+
+def test_session_payloads_list_usable_integrations(tmp_path: Path):
+    from l0w_control.db import Database
+    from l0w_control.runs.manager import RunManager
+
+    db = Database(str(tmp_path / "c.db"))
+    now = "2026-11-18T00:00:00Z"
+    for i, (name, enabled, policies) in enumerate([("github", 1, ["allowed", "blocked"]), ("locked", 1, ["blocked"]), ("off", 0, ["allowed"])], 1):
+        db.ex("INSERT INTO integrations(id, name, title, url, enabled, created_at, updated_at) VALUES(?,?,?,?,?,?,?)",
+              (i, name, name.title(), "http://x", enabled, now, now))
+        for j, pol in enumerate(policies):
+            db.ex("INSERT INTO integration_tools(integration_id, name, policy) VALUES(?,?,?)", (i, f"t{j}", pol))
+    mgr = RunManager.__new__(RunManager)
+    mgr.db = db
+    mcp = mgr._mcp_servers()
+    assert mcp == [{"name": "github", "title": "Github"}]
+    for name, adapter in ADAPTERS.items():
+        kw = dict(run_id=1, prompt="p", system="s", tier="sonnet", resume_session=None, env={})
+        assert adapter.session_request(**kw, mcp=mcp)["mcp"] == mcp, name
+        assert adapter.session_request(**kw)["mcp"] == []

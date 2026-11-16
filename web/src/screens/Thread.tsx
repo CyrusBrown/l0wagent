@@ -6,7 +6,8 @@ import { ClaimCard, PermissionCard, PromoteCard, QuestionCard, SuggestionCard, T
 import { bytes, pts } from '../components/format'
 import { useLinkPicker } from '../components/LinkPicker'
 import { Markdown } from '../components/Markdown'
-import { ShelfView } from '../components/ShelfView'
+import { useEscape } from '../components/useEscape'
+import { ThreadFiles } from '../components/ThreadFiles'
 import { useOnline } from '../components/online'
 import { useOutbox } from '../api/offline'
 import { api } from '../api/client'
@@ -33,22 +34,21 @@ export function Thread() {
     <>
     <div className="thread">
       <div className="thread-scroll" ref={scroller}>
+        {t && <div className="thread-head"><div className="thread-head-inner"><ThreadHead t={t} messages={(items.data?.items ?? []).filter((i) => i.type === 'message').length} filesOpen={filesOpen} toggleFiles={() => setFilesOpen(!filesOpen)} /></div></div>}
         <div className="thread-items">
-          {t && <ThreadHead t={t} messages={(items.data?.items ?? []).filter((i) => i.type === 'message').length} filesOpen={filesOpen} toggleFiles={() => setFilesOpen(!filesOpen)} />}
           {items.data?.items.map((it) => <Item key={`${it.type}-${itemId(it)}`} it={it} />)}
+          {items.data?.items.length === 0 && <div className="thread-empty">No messages yet. Write the first one below.</div>}
           <Pending threadId={id} />
         </div>
       </div>
       {t && <Composer threadId={id} project={t.project} append={append} appended={() => setAppend(null)} />}
     </div>
     {t?.project && filesOpen && (
-      <aside className="thread-files">
-        <div className="row-between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--lineSoft)' }}>
-          <div className="stack" style={{ gap: 2 }}><span style={{ font: '500 14px var(--sans)' }}>Project files</span><span className="sub">{t.project} · shelf</span></div>
-          <button className="icon-btn" aria-label="Close files" onClick={() => setFilesOpen(false)}>✕</button>
-        </div>
-        <ShelfView project={t.project} compact onLink={(i) => setAppend(`[${i.label}](l0wagent://file/${i.volume}/${i.path})`)} />
-      </aside>
+      <ThreadFiles
+        project={t.project}
+        onClose={() => setFilesOpen(false)}
+        onLink={(i) => setAppend(`[${i.label}](l0wagent://file/${i.volume}/${i.path})`)}
+      />
     )}
     </>
   )
@@ -82,6 +82,7 @@ function ThreadMenu({ t }: { t: S['Thread'] }) {
   const patch = usePatchThread(t.id)
   const projects = useProjects('active')
   const done = () => { setOpen(false); setMode('menu') }
+  useEscape(open, done)
   return (
     <div style={{ position: 'relative', flex: 'none' }}>
       <button className="btn small" aria-label="Thread actions" onClick={() => setOpen(!open)}>⋯</button>

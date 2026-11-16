@@ -5,7 +5,9 @@ import { useLive } from '../api/live'
 import { useChats, useInboxCounts, useProjects, useStatus, useStopRun, useThreads, useUpdateInfo } from '../api/queries'
 import { pts, until, usageText } from '../components/format'
 import { useOnline } from '../components/online'
+import { useEscape } from '../components/useEscape'
 import { useOutbox } from '../api/offline'
+import { useTimeFormat } from './timeFormat'
 import { Palette } from './Palette'
 import { Caret } from '../components/Caret'
 
@@ -23,12 +25,15 @@ export function Shell() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setPalette((p) => !p)
       }
-      const typing = /INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement)?.tagName ?? '')
-      if (!typing && !e.metaKey && !e.ctrlKey && e.key === 'n') nav('/new')
+      const el = e.target as HTMLElement | null
+      const typing = /INPUT|TEXTAREA|SELECT/.test(el?.tagName ?? '')
+      const inDropdown = !!el?.closest?.('.sel-btn, [aria-haspopup="listbox"]')
+      if (!typing && !inDropdown && !e.metaKey && !e.ctrlKey && e.key === 'n') nav('/new')
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -58,6 +63,7 @@ function Header({ onSearch, moreOpen, setMoreOpen }: { onSearch: () => void; mor
   const convActive = CONVERSATION.test(loc.pathname)
   const more = [['/calendar', 'Calendar', 'Wakeups, routines, protected hours'], ['/network', 'Network', 'Request log and egress rules'], ['/web', 'Web page', "The assistant's web port"]]
   const moreCur = more.find(([to]) => loc.pathname.startsWith(to))
+  useEscape(moreOpen, () => setMoreOpen(false))
   return (
     <header className="header">
       <NavLink to="/" end className={({ isActive }) => `logo ${isActive ? 'active' : ''}`} title="Home">
@@ -99,6 +105,7 @@ function Header({ onSearch, moreOpen, setMoreOpen }: { onSearch: () => void; mor
 }
 
 function StatusChip() {
+  useTimeFormat()
   const { data: st } = useStatus()
   const stop = useStopRun()
   if (!st) return <span className="chip"><span className="dot" />…</span>

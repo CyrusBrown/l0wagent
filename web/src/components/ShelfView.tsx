@@ -3,7 +3,9 @@ import { Link } from 'react-router'
 import type { S } from '../api/client'
 import { problem, uploadFile, useRemoveFromShelf, useShelf, useShelfVersions } from '../api/queries'
 import { ago, bytes } from './format'
+import { Select, type Option } from './Select'
 import { Preview, rawUrl } from './Preview'
+import { CopyButton } from './CopyButton'
 
 const ext = (p: string) => (p.includes('.') ? p.split('.').pop()!.toUpperCase().slice(0, 4) : '')
 
@@ -36,7 +38,7 @@ export function ShelfView({ project, compact, onLink }: { project: string; compa
           ))}
         </div>
       </div>
-      {item && <ShelfPreview item={item} compact={compact} onLink={onLink} />}
+      {item && <ShelfPreview key={item.id} item={item} compact={compact} onLink={onLink} />}
     </div>
   )
 }
@@ -55,18 +57,18 @@ function ShelfPreview({ item, compact, onLink }: { item: S['ShelfItem']; compact
           <span className="sub">{item.mode === 'live' ? 'Live' : 'Snapshot'} · {item.added_by === 'owner' ? 'from you' : 'the assistant'}{item.run_id ? <> · <Link to={`/runs/${item.run_id}`}>run #{item.run_id}</Link></> : ''} · {bytes(v?.size ?? item.size)}</span>
         </div>
         {item.mode === 'live' && !!versions.data?.length && (
-          <select className="input version-pick" value={version ?? ''} onChange={(e) => setVersion(e.target.value ? Number(e.target.value) : null)} aria-label="Version">
-            <option value="">Current</option>
-            {versions.data.map((x) => <option key={x.n} value={x.n}>v{x.n} · {ago(x.created_at)}</option>)}
-          </select>
+          <Select variant="input" className="version-pick" value={version ?? ''} label="Version"
+            options={[{ value: '', label: 'Current' }, ...versions.data.map((x) => ({ value: x.n, label: `v${x.n} · ${ago(x.created_at)}` }))] as Option<number | ''>[]}
+            onChange={(v) => setVersion(v === '' ? null : v)} />
         )}
       </div>
       <div className="shelf-preview-body">
         {item.missing && version == null ? <div className="empty">The file is gone from /{item.volume}/{item.path}.{item.versions ? ' Kept versions are still here.' : ''}</div>
           : <Preview src={src} size={v?.size ?? item.size} stamp={`${item.updated_at}-${version}`} compact={compact} />}
       </div>
-      <div className="btns" style={{ padding: compact ? '12px 16px' : '12px 14px' }}>
+      <div className="btns" style={{ padding: compact ? '12px 16px' : '12px 14px', position: 'relative' }}>
         {onLink && <button className="btn small" onClick={() => onLink(item)}>Link in reply</button>}
+        <CopyButton src={src} volume={item.volume} className="btn small" />
         <a className="btn small" href={rawUrl(src, true)}>Download</a>
         {compact ? <Link className="btn small" to={`/p/${item.project}?tab=files`}>Open in project</Link>
           : <Link className="btn small" to={`/files?volume=${item.volume}&path=${encodeURIComponent(item.path.split('/').slice(0, -1).join('/'))}&file=${encodeURIComponent(item.path.split('/').pop()!)}`}>Show in Files</Link>}

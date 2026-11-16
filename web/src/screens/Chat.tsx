@@ -6,9 +6,12 @@ import {
   problem, useChat, useChatMessages, useChatPull, useDecideChatCard, useDelivery, usePatchChat, useProviderCatalog, useProviders,
   uploadChatFile, useReplyNow, useSendChat, useStopChat, useThreads,
 } from '../api/queries'
-import { bytes } from '../components/format'
+import { useTimeFormat } from '../app/timeFormat'
+import { bytes, stamp } from '../components/format'
 import { Markdown } from '../components/Markdown'
 import { joinTier, modelChoices, splitTier, tierLabel } from '../components/models'
+import { Select } from '../components/Select'
+import { useEscape } from '../components/useEscape'
 
 // The mockup's chat screen (M6): a header with the hand-off actions, the conversation (your
 // bubbles, the model's serif replies, one quiet line for its tool use, cards for anything
@@ -17,6 +20,7 @@ import { joinTier, modelChoices, splitTier, tierLabel } from '../components/mode
 const cap = (x: string) => x[0].toUpperCase() + x.slice(1)
 
 export function Chat() {
+  useTimeFormat()
   const id = Number(useParams().id)
   const chat = useChat(id)
   const msgs = useChatMessages(id)
@@ -93,6 +97,7 @@ function ChatHeader({ chat }: { chat: S['Chat'] }) {
   const reply = useReplyNow(thread?.id ?? 0)
   const nav = useNavigate()
   const d = thread ? delivery.data : undefined
+  useEscape(open !== null, () => setOpen(null))
   return (
     <div className="chat-head">
       <span className="chat-title">{chat.title}</span>
@@ -154,18 +159,16 @@ function ModelPicker({ chat }: { chat: S['Chat'] }) {
   }
   return (
     <span className="row-start" style={{ gap: 2 }}>
-      <select className="model-pick" value={`${chat.provider}|${model}`} aria-label="Chat model" onChange={(e) => pick(e.target.value)}>
-        {!cur && <option value={`${chat.provider}|${model}`}>{tierLabel(chat.tier, usable.find((p) => p.id === chat.provider))}</option>}
-        {groups.map(({ p, models }) => (
-          <optgroup key={p.id} label={p.label}>
-            {models.map((m) => <option key={m.id} value={`${p.id}|${m.id}`}>{m.label}{m.price ? ` · ${m.price}` : ''}</option>)}
-          </optgroup>
-        ))}
-      </select>
+      <Select variant="pick" value={`${chat.provider}|${model}`} label="Chat model"
+        options={[
+          ...(!cur ? [{ value: `${chat.provider}|${model}`, label: tierLabel(chat.tier, usable.find((p) => p.id === chat.provider)) }] : []),
+          ...groups.flatMap(({ p, models }) => models.map((m) => ({ value: `${p.id}|${m.id}`, label: `${m.label}${m.price ? ` · ${m.price}` : ''}`, group: p.label }))),
+        ]}
+        onChange={pick} />
       {efforts.length > 0 && (
-        <select className="model-pick" value={effort ?? ''} aria-label="Chat effort" onChange={(e) => patch.mutate({ tier: joinTier(model, e.target.value || null) })}>
-          {efforts.map((e) => <option key={e} value={e}>{e}</option>)}
-        </select>
+        <Select variant="pick" value={effort ?? ''} label="Chat effort"
+          options={efforts.map((e) => ({ value: e, label: e }))}
+          onChange={(v) => patch.mutate({ tier: joinTier(model, v || null) })} />
       )}
     </span>
   )
@@ -208,7 +211,7 @@ const LABELS: Record<string, string> = {
   list_runs: 'listed runs', read_run: 'read a run', shelf: 'checked the shelf', wakeup_plan: 'checked the wakeup plan', list_files: 'browsed the workspace',
   read_file: 'read a file', create_thread: 'started a thread', post_to_thread: 'posted to a thread', create_project: 'created a project',
   reply_now: 'woke the assistant', ask_for_secret: 'asked for a secret', propose_wakeup: 'proposed a wakeup', propose_level: 'proposed a level',
-  propose_egress_rule: 'proposed a network rule',
+  propose_egress_rule: 'proposed a network rule', propose_integration: 'proposed an integration',
 }
 
 function ToolLine({ tools }: { tools: S['ChatMessage'][] }) {
@@ -241,18 +244,18 @@ function SystemNote({ m }: { m: S['ChatMessage'] }) {
 }
 
 const CARD_TITLE: Record<string, string> = {
-  secret: 'Secure input', wakeup: 'Extra wakeup', level: 'Budget level', egress: 'Network rule', settings: 'Settings change', handoff: 'Hand off to the assistant',
+  secret: 'Secure input', wakeup: 'Extra wakeup', level: 'Budget level', egress: 'Network rule', settings: 'Settings change', handoff: 'Hand off to the assistant', integration: 'Connect integration',
 }
 const HANDOFF_TARGET: Record<string, string> = { new_thread: 'a new thread', new_project: 'a new project', existing_thread: 'an existing thread' }
 
-function ChatCard({ chatId, m }: { chatId: number; m: S['ChatMessage'] }) {
+export function ChatCard({ chatId, m }: { chatId: number; m: S['ChatMessage'] }) {
   const decide = useDecideChatCard(chatId)
   const [value, setValue] = useState('')
   const d = (m.data ?? {}) as Record<string, string | number | null | undefined>
   const kind = String(d.kind)
   const open = d.state === 'open'
-  const right = !open ? (d.state === 'done' ? 'done' : 'declined') : kind === 'secret' ? 'stored as a secret, never sent to a model' : 'needs your approval'
-  const act = (decision: 'approve' | 'decline') => decide.mutate({ message_id: m.id, decision, value: decision === 'approve' && kind === 'secret' ? value : null })
+  const right = !open ? (d.state === 'done' ? 'done' : 'declined') : kind === 'secret' || kind === 'integration' ? 'stored as a secret, never sent to a model' : 'needs your approval'
+  const act = (decision: 'approve' | 'decline') => decide.mutate({ message_id: m.id, decision, value: decision === 'approve' && (kind === 'secret' || kind === 'integration') && value ? value : null })
   return (
     <div className="card" aria-label={CARD_TITLE[kind] ?? 'Card'}>
       <div className="card-label"><span>{CARD_TITLE[kind] ?? kind}</span><span className="r">{right}</span></div>
@@ -265,7 +268,24 @@ function ChatCard({ chatId, m }: { chatId: number; m: S['ChatMessage'] }) {
           <button className="btn" disabled={decide.isPending} onClick={() => act('decline')}>Decline</button>
         </div>}
       </>}
-      {kind === 'wakeup' && <div className="card-text">Wake the assistant {d.at ? `at ${new Date(String(d.at)).toLocaleString()}` : 'soon'} with up to {d.budget} pts: {d.reason}</div>}
+      {kind === 'integration' && <>
+        <div className="card-text"><b>{d.title}</b> · <code>{d.url}</code></div>
+        {d.guidance && <div className="card-sub">{d.guidance}</div>}
+        {d.reason && <div className="card-sub">{d.reason}</div>}
+        {d.token_url && <a className="card-sub" href={String(d.token_url)} target="_blank" rel="noreferrer">Open the token page ↗</a>}
+        {open && <>
+          <div className="inline-edit">
+            <input className="input" type="password" autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Token" aria-label={`Token for ${d.title}`} />
+            <button className="btn primary" disabled={decide.isPending} onClick={() => act('approve')}>Connect</button>
+            <button className="btn" disabled={decide.isPending} onClick={() => act('decline')}>Decline</button>
+          </div>
+          <span className="card-sub">Leave empty to use the saved {d.secret_name}</span>
+        </>}
+        {d.state === 'done' && (d.status === 'ok'
+          ? <div className="card-text" style={{ color: 'var(--okInk)' }}>✓ Connected {d.title} · {d.tool_count} tools</div>
+          : <div className="error">Saved the token, but {d.title} answered: {d.last_error}</div>)}
+      </>}
+      {kind === 'wakeup' && <div className="card-text">Wake the assistant {d.at ? `at ${stamp(String(d.at))}` : 'soon'} with up to {d.budget} pts: {d.reason}</div>}
       {kind === 'level' && <div className="card-text">Switch to the <b>{cap(String(d.level))}</b> level{d.reason ? `: ${d.reason}` : '.'}</div>}
       {kind === 'settings' && (
         <div className="stack" style={{ gap: 6 }}>
@@ -287,7 +307,7 @@ function ChatCard({ chatId, m }: { chatId: number; m: S['ChatMessage'] }) {
         </div>
       )}
       {kind === 'egress' && <div className="card-text">{d.action === 'block' ? 'Block' : 'Allow'} <code>{d.host}</code> for the assistant{d.reason ? `: ${d.reason}` : '.'}</div>}
-      {open && kind !== 'secret' && <div className="btns">
+      {open && kind !== 'secret' && kind !== 'integration' && <div className="btns">
         <button className="btn primary" disabled={decide.isPending} onClick={() => act('approve')}>Approve</button>
         <button className="btn" disabled={decide.isPending} onClick={() => act('decline')}>Decline</button>
       </div>}

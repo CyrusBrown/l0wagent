@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 from . import __version__, guard
 from .api import schemas
 from .api.agent import router as agent_router
+from .api.connector_routes import router as connector_router
 from .api.routes import api, public
 from .backends.base import Backend, BadRequest, Conflict, LoginFailed, NotFound, Unauthorized
 
@@ -39,7 +40,7 @@ def create_app(backend: Backend) -> FastAPI:
         lifespan=lifespan,
         title="l0wagent control",
         version=f"{API_VERSION}.{__version__}",
-        description="The owner-facing API. The agent's routes (/api/agent/*) aren't part of it; /mcp comes later.",
+        description="The owner-facing API. The agent's routes (/api/agent/*) and the connector's (/mcp, /oauth/*) aren't part of it.",
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
         redoc_url=None,
@@ -50,12 +51,22 @@ def create_app(backend: Backend) -> FastAPI:
     app.include_router(api)
     if hasattr(backend, "runs_mgr"):
         app.include_router(agent_router)
+    if hasattr(backend, "connector"):
+        app.include_router(connector_router)
     from .config import Env
 
     guard.install(app, getattr(backend, "env", None) or Env())
 
     origins = [o for o in os.environ.get("L0W_CORS_ORIGINS", "").split(",") if o] or DEFAULT_ORIGINS
     app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+    @app.middleware("http")
+    async def no_framing(request: Request, call_next):
+        """Other sites never frame control's pages (clickjacking, e.g. on the connector's consent screen)."""
+        response = await call_next(request)
+        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'self'")
+        return response
 
     @app.exception_handler(NotImplementedError)
     async def not_implemented(_: Request, exc: NotImplementedError) -> JSONResponse:

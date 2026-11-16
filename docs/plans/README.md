@@ -1,6 +1,6 @@
 # l0wagent overhaul plan
 
-Status: **planning only** (as of 2026-11-14). Nothing here is built. Decisions are recorded below; numbers, names and UI details remain open to change.
+Status (2026-11-16): **M6 is current; M1–M5 are built and waiting on the owner's review.** M7 onward and the hub are not built. Decisions are recorded below; numbers, names and UI details remain open to change.
 
 ## The files
 

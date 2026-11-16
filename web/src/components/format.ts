@@ -1,4 +1,15 @@
+import { getTimeFormat } from '../app/timeFormat'
+
 const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+const pad = (n: number) => String(n).padStart(2, '0')
+const hour12 = () => getTimeFormat() === '12h'
+
+function timeText(h: number, m: number, s?: number): string {
+  const minute = pad(m)
+  const second = s == null ? '' : `:${pad(s)}`
+  if (!hour12()) return `${pad(h)}:${minute}${second}`
+  return `${h % 12 || 12}:${minute}${second} ${h < 12 ? 'AM' : 'PM'}`
+}
 
 /** "12 min ago", "Wed", "Nov 3": short and human, like the mockup. */
 export function ago(iso: string | null | undefined, now = Date.now()): string {
@@ -17,10 +28,26 @@ export function until(iso: string, now = Date.now()): string {
   const s = Math.round((new Date(iso).getTime() - now) / 1000)
   if (s < 3600) return rtf.format(Math.max(1, Math.round(s / 60)), 'minute')
   if (s < 86400) return rtf.format(Math.round(s / 3600), 'hour')
-  return new Date(iso).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })
+  const d = new Date(iso)
+  return `${d.toLocaleDateString(undefined, { weekday: 'short' })} ${timeText(d.getHours(), d.getMinutes())}`
 }
 
-export const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })  // 24-hour, as in the mockup
+export const clock = (iso: string) => {
+  const d = new Date(iso)
+  return timeText(d.getHours(), d.getMinutes())
+}
+
+export const clockSeconds = (iso: string) => {
+  const d = new Date(iso)
+  return timeText(d.getHours(), d.getMinutes(), d.getSeconds())
+}
+
+/** A clock time in a time zone, e.g. for the calendar. */
+export function clockIn(iso: string, tz: string): string {
+  const f = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+  const p = Object.fromEntries(f.formatToParts(new Date(iso)).map((x) => [x.type, x.value]))
+  return timeText(Number(p.hour), Number(p.minute))
+}
 
 export function duration(startIso: string, endIso?: string | null): string {
   const m = Math.round(((endIso ? new Date(endIso).getTime() : Date.now()) - new Date(startIso).getTime()) / 60000)
@@ -64,7 +91,7 @@ export function routeFor(link: string): string | null {
 export function stamp(iso: string | null | undefined): string {
   if (!iso) return ''
   const d = new Date(iso)
-  const t = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+  const t = timeText(d.getHours(), d.getMinutes())
   const today = new Date()
   if (d.toDateString() === today.toDateString()) return `Today ${t}`
   if (Math.abs(today.getTime() - d.getTime()) < 6.5 * 86400_000) return `${d.toLocaleDateString(undefined, { weekday: 'short' })} ${t}`

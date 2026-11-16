@@ -53,7 +53,7 @@ class RuntimeAdapter:
     capabilities: Capabilities
 
     def session_request(self, *, run_id: int, prompt: str, system: str, tier: str, resume_session: str | None, env: dict[str, str],
-                        model: str | None = None, effort: str | None = None) -> dict:
+                        model: str | None = None, effort: str | None = None, mcp: list[dict] | None = None) -> dict:
         raise NotImplementedError
 
     def interrupted_prompt(self, reason: str) -> str:
@@ -88,12 +88,12 @@ class ClaudeCode(RuntimeAdapter):
     label = "Claude Code"
     capabilities = Capabilities(hooks=True, resume=True, effort=True, subagents=True)
 
-    def session_request(self, *, run_id, prompt, system, tier, resume_session, env, model=None, effort=None):
+    def session_request(self, *, run_id, prompt, system, tier, resume_session, env, model=None, effort=None, mcp=None):
         """`model`/`effort` come resolved from the provider (Budgets.runtime_spec); else from the tier."""
         if model is None:
             model, effort = split_tier(tier)
         return {"run_id": run_id, "prompt": prompt, "system_append": system, "runtime": self.name, "model": model, "effort": effort,
-                "resume_session": resume_session, "env": env}
+                "resume_session": resume_session, "env": env, "mcp": list(mcp or [])}
 
     def interrupted_prompt(self, reason: str) -> str:
         return (f"[control] Your session was interrupted ({reason}) and has been resumed. "

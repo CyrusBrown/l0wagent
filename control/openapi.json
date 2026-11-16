@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "l0wagent control",
-    "description": "The owner-facing API. The agent's routes (/api/agent/*) aren't part of it; /mcp comes later.",
+    "description": "The owner-facing API. The agent's routes (/api/agent/*) and the connector's (/mcp, /oauth/*) aren't part of it.",
     "version": "0.0.5.0-dev"
   },
   "paths": {
@@ -4654,6 +4654,717 @@
         }
       }
     },
+    "/api/network": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Network",
+        "description": "Egress rules, the request log (newest first, up to 200, filtered) and the last day's busiest hosts.",
+        "operationId": "network_api_network_get",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "all",
+                "blocked",
+                "get",
+                "post",
+                "hour"
+              ],
+              "type": "string",
+              "default": "all",
+              "title": "Filter"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/network/rules": {
+      "post": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Add Egress Rule",
+        "description": "Online only. Blocking a model provider the assistant runs on is refused.",
+        "operationId": "add_egress_rule_api_network_rules_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EgressRuleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EgressRule"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/network/rules/{rule_id}": {
+      "delete": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Delete Egress Rule",
+        "operationId": "delete_egress_rule_api_network_rules__rule_id__delete",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "rule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Rule Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations": {
+      "get": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "List Integrations",
+        "operationId": "list_integrations_api_integrations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Integration"
+                  },
+                  "type": "array",
+                  "title": "Response List Integrations Api Integrations Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Create Integration",
+        "description": "Online only. Connects to the server and lists its tools when the token (if any) is already saved.",
+        "operationId": "create_integration_api_integrations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntegrationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Integration"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/integrations/presets": {
+      "get": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Integration Presets",
+        "operationId": "integration_presets_api_integrations_presets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IntegrationPreset"
+                  },
+                  "type": "array",
+                  "title": "Response Integration Presets Api Integrations Presets Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/integrations/{name}": {
+      "get": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Get Integration",
+        "operationId": "get_integration_api_integrations__name__get",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Integration"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Update Integration",
+        "operationId": "update_integration_api_integrations__name__patch",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntegrationPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Integration"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Delete Integration",
+        "operationId": "delete_integration_api_integrations__name__delete",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/{name}/sync": {
+      "post": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Sync Integration",
+        "description": "Ask the server for its tools again. New tools get the default policy; existing policies stay.",
+        "operationId": "sync_integration_api_integrations__name__sync_post",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Integration"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/integrations/{name}/tools/{tool}": {
+      "put": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Set Integration Tool Policy",
+        "operationId": "set_integration_tool_policy_api_integrations__name__tools__tool__put",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "tool",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tool"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ToolPolicySet"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Integration"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/connector/request": {
+      "get": {
+        "tags": [
+          "connector"
+        ],
+        "summary": "Connect Request",
+        "description": "Describe an OAuth authorization request (its query parameters, as /oauth/authorize got them).",
+        "operationId": "connect_request_api_connector_request_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectRequest"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/connector/consent": {
+      "post": {
+        "tags": [
+          "connector"
+        ],
+        "summary": "Connect Consent",
+        "operationId": "connect_consent_api_connector_consent_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectConsent"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectRedirect"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/connected-apps": {
+      "get": {
+        "tags": [
+          "connector"
+        ],
+        "summary": "Connected Apps",
+        "operationId": "connected_apps_api_connected_apps_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectedApp"
+                  },
+                  "type": "array",
+                  "title": "Response Connected Apps Api Connected Apps Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/connected-apps/{app_id}": {
+      "delete": {
+        "tags": [
+          "connector"
+        ],
+        "summary": "Revoke Connected App",
+        "operationId": "revoke_connected_app_api_connected_apps__app_id__delete",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "App Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/secrets": {
       "get": {
         "tags": [
@@ -6344,7 +7055,7 @@
           "allowance": {
             "type": "number",
             "title": "Allowance",
-            "description": "Points a week the assistant may plan with."
+            "description": "Points in the provider's period the assistant may plan with."
           },
           "allowed_hours": {
             "items": {
@@ -7445,6 +8156,184 @@
         ],
         "title": "ClaudeLoginStart"
       },
+      "ConnectConsent": {
+        "properties": {
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Params",
+            "description": "The authorization request's query parameters, unchanged."
+          },
+          "approve": {
+            "type": "boolean",
+            "title": "Approve"
+          },
+          "scopes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "read",
+                    "write",
+                    "wake"
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scopes",
+            "description": "A subset of the requested scopes to grant; omit for all."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "params",
+          "approve"
+        ],
+        "title": "ConnectConsent",
+        "description": "The owner's answer on the consent screen. Online only."
+      },
+      "ConnectRedirect": {
+        "properties": {
+          "redirect": {
+            "type": "string",
+            "title": "Redirect",
+            "description": "Send the browser here (the client's redirect URI, with a code or an error)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "redirect"
+        ],
+        "title": "ConnectRedirect"
+      },
+      "ConnectRequest": {
+        "properties": {
+          "client_name": {
+            "type": "string",
+            "title": "Client Name",
+            "description": "The name the client registered with (self-declared, so shown as such)."
+          },
+          "redirect_host": {
+            "type": "string",
+            "title": "Redirect Host",
+            "description": "Where the browser goes back to after the answer."
+          },
+          "scopes": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectorScopeInfo"
+            },
+            "type": "array",
+            "title": "Scopes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "client_name",
+          "redirect_host",
+          "scopes"
+        ],
+        "title": "ConnectRequest",
+        "description": "What the consent screen shows for an authorization request."
+      },
+      "ConnectedApp": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "scopes": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "read",
+                "write",
+                "wake"
+              ]
+            },
+            "type": "array",
+            "title": "Scopes"
+          },
+          "chat_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Id",
+            "description": "The chat where its tool calls and cards appear."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "scopes",
+          "chat_id",
+          "created_at",
+          "last_used_at"
+        ],
+        "title": "ConnectedApp",
+        "description": "An outside client the owner connected. Revoking it ends every token it holds."
+      },
+      "ConnectorScopeInfo": {
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "read",
+              "write",
+              "wake"
+            ],
+            "title": "Scope"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "scope",
+          "description"
+        ],
+        "title": "ConnectorScopeInfo"
+      },
       "Delivery": {
         "properties": {
           "state": {
@@ -7547,6 +8436,208 @@
           "reachable"
         ],
         "title": "EgressHealth"
+      },
+      "EgressRequest": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action",
+            "description": "allowed, blocked or error."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "bytes_down": {
+            "type": "integer",
+            "title": "Bytes Down"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "at",
+          "method",
+          "host",
+          "port",
+          "url",
+          "action",
+          "reason",
+          "status",
+          "bytes_down"
+        ],
+        "title": "EgressRequest"
+      },
+      "EgressRule": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "pattern": {
+            "type": "string",
+            "title": "Pattern",
+            "description": "A host, *.domain, host:port or CIDR."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "allow",
+              "allow_ro",
+              "block"
+            ],
+            "title": "Action",
+            "description": "allow_ro: read-only (GET over plain HTTP)."
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "hits_7d": {
+            "type": "integer",
+            "title": "Hits 7D",
+            "description": "Requests in the last 7 days to hosts this rule matches."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "pattern",
+          "action",
+          "note",
+          "created_at",
+          "hits_7d"
+        ],
+        "title": "EgressRule"
+      },
+      "EgressRuleCreate": {
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Pattern"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "allow",
+              "allow_ro",
+              "block"
+            ],
+            "title": "Action"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Note",
+            "default": ""
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "pattern",
+          "action"
+        ],
+        "title": "EgressRuleCreate",
+        "description": "Online only."
       },
       "FileChange": {
         "properties": {
@@ -7806,6 +8897,30 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "HostStat": {
+        "properties": {
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "requests": {
+            "type": "integer",
+            "title": "Requests"
+          },
+          "blocked": {
+            "type": "integer",
+            "title": "Blocked"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "host",
+          "requests",
+          "blocked"
+        ],
+        "title": "HostStat"
+      },
       "InboxCounts": {
         "properties": {
           "waiting": {
@@ -7966,6 +9081,450 @@
           "project"
         ],
         "title": "InboxEntry"
+      },
+      "Integration": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Short lowercase id, like github."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "preset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "auth_secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Secret",
+            "description": "Name of the saved secret sent as the bearer token."
+          },
+          "secret_saved": {
+            "type": "boolean",
+            "title": "Secret Saved",
+            "description": "The named secret has a value."
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "new",
+              "ok",
+              "error"
+            ],
+            "title": "Status"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "synced_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synced At"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrationTool"
+            },
+            "type": "array",
+            "title": "Tools"
+          },
+          "recent_calls": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrationCall"
+            },
+            "type": "array",
+            "title": "Recent Calls"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "title",
+          "preset",
+          "url",
+          "auth_secret",
+          "secret_saved",
+          "enabled",
+          "status",
+          "last_error",
+          "synced_at",
+          "created_at",
+          "tools",
+          "recent_calls"
+        ],
+        "title": "Integration"
+      },
+      "IntegrationCall": {
+        "properties": {
+          "tool": {
+            "type": "string",
+            "title": "Tool"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "error",
+              "asked",
+              "blocked"
+            ],
+            "title": "Outcome"
+          },
+          "permission_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permission Id"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tool",
+          "run_id",
+          "outcome",
+          "permission_id",
+          "detail",
+          "at"
+        ],
+        "title": "IntegrationCall"
+      },
+      "IntegrationCreate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "preset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "auth_secret": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Secret"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "IntegrationCreate",
+        "description": "Online only. Name defaults to the preset's id."
+      },
+      "IntegrationPatch": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "auth_secret": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Secret",
+            "description": "Empty clears it."
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "IntegrationPatch"
+      },
+      "IntegrationPreset": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "auth_secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Secret"
+          },
+          "token_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Url",
+            "description": "Where to create the token."
+          },
+          "guidance": {
+            "type": "string",
+            "title": "Guidance"
+          },
+          "egress": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Egress",
+            "description": "Hosts the agent's sandbox needs to reach, if any."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "url",
+          "auth_secret",
+          "token_url",
+          "guidance",
+          "egress"
+        ],
+        "title": "IntegrationPreset"
+      },
+      "IntegrationTool": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "read_only": {
+            "type": "boolean",
+            "title": "Read Only",
+            "description": "The server says this tool only reads."
+          },
+          "policy": {
+            "type": "string",
+            "enum": [
+              "allowed",
+              "ask",
+              "blocked"
+            ],
+            "title": "Policy",
+            "description": "allowed runs at once, ask needs your approval, blocked never runs."
+          },
+          "present": {
+            "type": "boolean",
+            "title": "Present",
+            "description": "False when the server no longer lists the tool."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "description",
+          "read_only",
+          "policy",
+          "present"
+        ],
+        "title": "IntegrationTool"
       },
       "Job": {
         "properties": {
@@ -8434,6 +9993,64 @@
         ],
         "title": "Meta"
       },
+      "NetworkView": {
+        "properties": {
+          "reachable": {
+            "type": "boolean",
+            "title": "Reachable"
+          },
+          "default_policy": {
+            "type": "string",
+            "enum": [
+              "allow",
+              "deny"
+            ],
+            "title": "Default Policy"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/EgressRule"
+            },
+            "type": "array",
+            "title": "Rules"
+          },
+          "requests": {
+            "items": {
+              "$ref": "#/components/schemas/EgressRequest"
+            },
+            "type": "array",
+            "title": "Requests"
+          },
+          "requests_24h": {
+            "type": "integer",
+            "title": "Requests 24H"
+          },
+          "blocked_24h": {
+            "type": "integer",
+            "title": "Blocked 24H"
+          },
+          "top_hosts": {
+            "items": {
+              "$ref": "#/components/schemas/HostStat"
+            },
+            "type": "array",
+            "title": "Top Hosts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reachable",
+          "default_policy",
+          "rules",
+          "requests",
+          "requests_24h",
+          "blocked_24h",
+          "top_hosts"
+        ],
+        "title": "NetworkView",
+        "description": "Egress's rules, the recent request log and the busiest hosts. `reachable` false: egress\ndidn't answer, and the lists are empty."
+      },
       "NotificationSettings": {
         "properties": {
           "events": {
@@ -8748,7 +10365,8 @@
               "egress_rule",
               "secret",
               "setting",
-              "routine"
+              "routine",
+              "mcp_call"
             ],
             "title": "Kind"
           },
@@ -9278,7 +10896,7 @@
           "left": {
             "type": "number",
             "title": "Left",
-            "description": "Allowance left this week, capped by the room below the owner's weekly reserve."
+            "description": "Allowance left this period, capped by the room below the owner's reserve."
           },
           "used_by_assistant": {
             "type": "number",
@@ -9316,7 +10934,7 @@
           "scheduled": {
             "type": "number",
             "title": "Scheduled",
-            "description": "Points in planned wakeups for the rest of this week."
+            "description": "Points in planned wakeups for the rest of this period."
           },
           "week_start": {
             "type": "string",
@@ -9335,7 +10953,7 @@
           "native": {
             "type": "string",
             "title": "Native",
-            "description": "The provider's own unit, e.g. '46% of the week used' or '$3.10 this week'."
+            "description": "The provider's own unit, e.g. '46% of the week used' or '$3.10 this period'."
           },
           "pts_per_usd": {
             "type": "number",
@@ -10882,7 +12500,12 @@
           "scope": {
             "type": "string",
             "title": "Scope",
-            "description": "'agent' (the agent's environment) until scopes arrive in M6."
+            "description": "Who gets the value: 'agent' (every worker session), 'project:<slug>' (runs on that project's threads), 'routine:<id>' (that routine's runs) or 'integrations' (never the sandbox; only brokered tools). The reviewer, the 1:1 chat and the connector never get values."
+          },
+          "scope_label": {
+            "type": "string",
+            "title": "Scope Label",
+            "description": "The scope for people: 'All projects', a project's or routine's name, or 'Integrations only'."
           },
           "created_at": {
             "type": "string",
@@ -10918,6 +12541,7 @@
           "name",
           "description",
           "scope",
+          "scope_label",
           "created_at",
           "updated_at",
           "reads",
@@ -10929,10 +12553,18 @@
       "SecretSet": {
         "properties": {
           "value": {
-            "type": "string",
-            "maxLength": 20000,
-            "minLength": 1,
-            "title": "Value"
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20000,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "Omit to change only the description or scope of an existing secret."
           },
           "description": {
             "anyOf": [
@@ -10945,13 +12577,22 @@
               }
             ],
             "title": "Description"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope",
+            "description": "See SecretInfo.scope. Omit to keep the current one ('agent' for a new secret)."
           }
         },
         "additionalProperties": false,
         "type": "object",
-        "required": [
-          "value"
-        ],
         "title": "SecretSet",
         "description": "Online only. Setting a value also scrubs it from everything already stored."
       },
@@ -11452,7 +13093,7 @@
                 "type": "null"
               }
             ],
-            "description": "Absent until budgets exist (M4)."
+            "description": "The worker provider's budget."
           },
           "usage": {
             "anyOf": [
@@ -12256,6 +13897,25 @@
           "data"
         ],
         "title": "TimelineItem"
+      },
+      "ToolPolicySet": {
+        "properties": {
+          "policy": {
+            "type": "string",
+            "enum": [
+              "allowed",
+              "ask",
+              "blocked"
+            ],
+            "title": "Policy"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "policy"
+        ],
+        "title": "ToolPolicySet"
       },
       "TotpDisable": {
         "properties": {

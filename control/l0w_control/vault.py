@@ -2,8 +2,11 @@
 
 - Values are encrypted at rest (Fernet; the key is L0W_SECRET_KEY or `secret.key` in the
   data dir, created on first use). No API returns a value to a person.
-- Every session gets every secret as an environment variable (scope 'agent', the only one
-  until M6); `assistant secret get NAME` reads one and is logged.
+- Scopes (M6): 'agent' (every worker session), 'project:<slug>' (only runs on that project's
+  threads), 'routine:N' (only that routine's runs) and 'integrations' (never in the sandbox;
+  only control's brokered tools use it). The reviewer, the 1:1 chat and the connector never
+  get values. A session's environment holds the secrets in its scope; `assistant secret get
+  NAME` reads one (scope-checked) and is logged.
 - `redact()` replaces any secret value (8+ characters) with `[secret:NAME]`. Control applies
   it to everything it stores or shows from the agent or the owner, and setting a secret
   scrubs it from what's already stored.
@@ -70,14 +73,67 @@ class Vault:
                 text = text.replace(value, f"[secret:{name}]")
         return text
 
-    def env(self) -> dict[str, str]:
-        """Every secret, for a session's environment."""
-        return {name: value for value, name in self._all()}
+    # ── scopes ─────────────────────────────────────────────────────────────
+    def _run_ctx(self, run_id: int | None) -> dict | None:
+        if run_id is None:
+            return None
+        return self.db.q1("SELECT r.kind, r.routine_id, p.slug AS project FROM runs r LEFT JOIN threads t ON t.id = r.thread_id "
+                          "LEFT JOIN projects p ON p.id = t.project_id WHERE r.id=?", (run_id,))
+
+    def in_scope(self, scope: str, run_id: int | None) -> bool:
+        """Whether a session of this run may see a secret with this scope."""
+        ctx = self._run_ctx(run_id)
+        if ctx and ctx["kind"] == "reviewer":
+            return False
+        if scope == "agent":
+            return True
+        kind, _, ref = scope.partition(":")
+        if not ctx or not ref:
+            return False
+        if kind == "project":
+            return ctx["project"] == ref
+        if kind == "routine":
+            return str(ctx["routine_id"]) == ref
+        return False  # 'integrations' and anything unknown
+
+    def validate_scope(self, scope: str) -> str:
+        scope = (scope or "").strip().lower()
+        if scope in ("agent", "integrations"):
+            return scope
+        if self._scope_row(scope):
+            return scope
+        raise BadRequest("bad_scope", "A secret's scope is 'agent', 'integrations', 'project:<slug>' or 'routine:<id>' of an existing project or routine.")
+
+    def _scope_row(self, scope: str) -> dict | None:
+        kind, _, ref = scope.partition(":")
+        if kind == "project" and ref:
+            return self.db.q1("SELECT name FROM projects WHERE slug=?", (ref,))
+        if kind == "routine" and ref.isdigit():
+            return self.db.q1("SELECT name FROM routines WHERE id=?", (int(ref),))
+        return None
+
+    def scope_label(self, scope: str) -> str:
+        if scope == "agent":
+            return "All projects"
+        if scope == "integrations":
+            return "Integrations only"
+        row = self._scope_row(scope)
+        return row["name"] if row else f"{scope} (deleted)"
+
+    def env(self, run_id: int | None) -> dict[str, str]:
+        """The secrets in scope for a session of this run, for its environment."""
+        scopes = {r["name"]: r["scope"] for r in self.db.q("SELECT name, scope FROM secrets")}
+        return {name: value for value, name in self._all() if self.in_scope(scopes.get(name, "integrations"), run_id)}
+
+    def value_for_control(self, name: str) -> str | None:
+        """A value for control's own use (brokered tools). Never goes to the sandbox or a model."""
+        row = self.db.q1("SELECT value_enc FROM secrets WHERE name=?", ((name or "").strip().upper(),))
+        return self.fernet.decrypt(row["value_enc"]).decode() if row else None
 
     def get_for_agent(self, name: str, run_id: int | None) -> str:
         name = (name or "").strip().upper()
-        row = self.db.q1("SELECT id, value_enc FROM secrets WHERE name=?", (name,))
-        if not row:
+        row = self.db.q1("SELECT id, value_enc, scope FROM secrets WHERE name=?", (name,))
+        if not row or not self.in_scope(row["scope"], run_id):
             raise NotFound(f"secret {name}")
         now = self.db.now()
         self.db.ex("UPDATE secrets SET reads=reads+1, last_read_at=? WHERE id=?", (now, row["id"]))
@@ -88,21 +144,32 @@ class Vault:
     def listing(self) -> list[dict]:
         return self.db.q("SELECT name, description, scope, created_at, updated_at, reads, last_read_at FROM secrets ORDER BY name")
 
+    def listing_for_agent(self, run_id: int | None) -> list[dict]:
+        return [r for r in self.listing() if self.in_scope(r["scope"], run_id)]
+
     def exists(self, name: str) -> bool:
         return self.db.q1("SELECT 1 FROM secrets WHERE name=?", (name.upper(),)) is not None
 
-    def set(self, name: str, value: str, description: str | None = None) -> dict:
+    def set(self, name: str, value: str | None, description: str | None = None, scope: str | None = None) -> dict:
+        """Save a value, or (value None) change an existing secret's description or scope."""
         name = validate_name(name)
+        now = self.db.now()
+        existing = self.db.q1("SELECT description, scope FROM secrets WHERE name=?", (name,))
+        desc = (description if description is not None else (existing or {}).get("description")) or ""
+        scope = self.validate_scope(scope) if scope is not None else (existing or {}).get("scope", "agent")
+        if value is None:
+            if not existing:
+                raise NotFound(f"secret {name}")
+            self.db.ex("UPDATE secrets SET description=?, scope=?, updated_at=? WHERE name=?", (desc.strip(), scope, now, name))
+            return {"name": name, "created": False, "scrubbed": 0}
         value = value.strip()
         if not value:
             raise BadRequest("empty_value", "The secret's value is empty.")
-        now = self.db.now()
-        existing = self.db.q1("SELECT description FROM secrets WHERE name=?", (name,))
-        desc = (description if description is not None else (existing or {}).get("description")) or ""
         self.db.ex(
-            "INSERT INTO secrets(name, description, value_enc, created_at, updated_at) VALUES(?,?,?,?,?) "
-            "ON CONFLICT(name) DO UPDATE SET value_enc=excluded.value_enc, description=excluded.description, updated_at=excluded.updated_at, announced_at=NULL",
-            (name, desc.strip(), self.fernet.encrypt(value.encode()), now, now),
+            "INSERT INTO secrets(name, description, value_enc, scope, created_at, updated_at) VALUES(?,?,?,?,?,?) "
+            "ON CONFLICT(name) DO UPDATE SET value_enc=excluded.value_enc, description=excluded.description, scope=excluded.scope, "
+            "updated_at=excluded.updated_at, announced_at=NULL",
+            (name, desc.strip(), self.fernet.encrypt(value.encode()), scope, now, now),
         )
         with self._lock:
             self._values = None

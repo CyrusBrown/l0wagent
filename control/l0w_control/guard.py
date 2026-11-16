@@ -1,6 +1,8 @@
 """The request guard: who may call what, before any route runs.
 
 - `/api/agent/*` needs the agent token (and is the only thing the sandbox may call).
+- The chat-runtime sidecar's subnet may only call `/api/chat-runtime/*`, which takes a
+  per-turn token (chat.py), never the owner's or the agent's credentials.
 - Anything else from the sandbox subnet is refused, so the agent can never reach the
   owner API (it could approve its own requests) whatever credentials it finds.
 - `/api/peer/*` and `/api/hub/*` are reserved for the hub (signed requests, later).
@@ -29,6 +31,13 @@ SESSION_COOKIE = "l0w_session"
 
 def install(app: FastAPI, env: Env) -> None:
     sandbox = ipaddress.ip_network(env.sandbox_subnet, strict=False)
+    chat_net = ipaddress.ip_network(env.chat_subnet, strict=False) if env.chat_subnet else None
+
+    def from_chat(request: Request) -> bool:
+        try:
+            return chat_net is not None and ipaddress.ip_address(request.client.host) in chat_net  # type: ignore[union-attr]
+        except (ValueError, AttributeError):
+            return False
 
     def from_sandbox(request: Request) -> bool:
         try:
@@ -39,6 +48,15 @@ def install(app: FastAPI, env: Env) -> None:
     @app.middleware("http")
     async def guard(request: Request, call_next):
         path = request.url.path
+        if from_chat(request):
+            if path.startswith("/api/chat-runtime/"):
+                return await call_next(request)
+            return JSONResponse({"error": "forbidden_from_chat_runtime"}, status_code=403)
+        if path.startswith("/api/chat-runtime/"):
+            # With a chat subnet configured (Docker), only the sidecar may call it; without one (dev), anyone but the sandbox.
+            if chat_net is not None or from_sandbox(request):
+                return JSONResponse({"error": "chat_runtime_only"}, status_code=403)
+            return await call_next(request)
         if path.startswith("/api/agent/") or path == "/api/agent":
             token = request.headers.get("x-agent-token", "")
             if not env.agent_token or not token or not secrets.compare_digest(token, env.agent_token):

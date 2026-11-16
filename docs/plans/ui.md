@@ -52,6 +52,7 @@ What opens first. At a glance:
   - **claims**: "Planned in run #123: …", updating live to in progress / done / partial / dropped with a result line and a link to the run
   - **suggestions**: move / rename / split / merge / archive a thread, or split / merge / archive a project, with Accept and Dismiss
   - **promote requests**: "turn this reply into a full run, ~3 pts", with Approve and Deny
+  - **security alerts**: "That was me" or Revoke, without the "+ Add comment" note the other cards have
   - **secure input**: a secret field that never goes through a model
   - file and link chips
 - **Composer**: paste text and images, drag files, attach from the project's files, and `@project` / `#thread` / `/file` autocomplete for typed links.
@@ -62,6 +63,9 @@ What opens first. At a glance:
   - *Waiting for connection* (offline, on this device)
 
   **Reply now** shows its cost and what's left of the reply budget.
+- **Empty thread**: "No messages yet. Write the first one below."
+- **Header**: the thread header stays at the top while the messages scroll.
+- **Project files panel**: a sidebar beside the thread listing the project's files; drag its left edge to resize it. It scrolls instead of overflowing the window.
 - **Typed links** open in a side panel: threads, projects, chats, files, runs (at a timestamp). Links can be pasted or inserted from autocomplete, by you or the assistant.
 
 ## Project view
@@ -80,6 +84,7 @@ Tabs:
   - Live items can **keep versions** (on each change, up to N), with a version picker.
 - **Uploads** (drag in, or attach in the composer) land in `/work/<project>/_inbox/` on the agent's computer (the only place control may write there) and appear as "from you". Uploads to General threads go to `/work/_inbox/`.
 - **Previews**: markdown, code, images, PDF, CSV tables, audio, video, **STL/STEP/3MF in a 3D viewer**, HTML and notebooks. Extensions can add previewers.
+- **Copy**: each shelf item has a copy menu (contents or path), as in Files.
 - **Safety**: agent-made HTML/SVG renders in a sandboxed frame on a separate origin. That's a design constraint for the preview panel.
 
 ## Inbox
@@ -172,6 +177,8 @@ Every item has a deep link.
 ## Throughout
 - **Empty states** that explain what goes there ("No projects yet: the assistant creates them as work grows, or create one").
 - **Light and dark themes**.
+- **Controls** are the app's own, not native ones. Dropdowns (`Select`) open a popup under the field, work from the keyboard (arrows, Enter, Tab) and close on outside click; date and time use `DateTimePicker` (Calendar, notification quiet hours). **Escape** closes the topmost popup, menu or dialog.
+- **Time format**: Settings → Appearance switches every time between 24-hour (default) and 12-hour. It's kept per browser, like the theme.
 - **Keyboard shortcuts** (palette, new thread, next unread, Reply now).
 - **Unread counts** per thread, project and Inbox.
 - **Extension slots**: pages, sidebar sections, project tabs, card and thread types, previewers, settings panels (see [server-platform.md](server-platform.md#extensions)).

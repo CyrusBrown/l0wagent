@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { S } from '../api/client'
 import { problem, subscribePush, useNotificationSettings, usePushTest, useRemovePushSubscription, useSetNotificationSettings } from '../api/queries'
+import { useTimeFormat } from '../app/timeFormat'
 import { ago } from '../components/format'
+import { TimePicker } from '../components/DateTimePicker'
 
 // Settings → Notifications (M5), in the mockup's style: this device's push, which events
 // notify (approvals and new sign-ins are on by default), quiet hours, and ntfy for installs
@@ -15,6 +17,7 @@ function deviceLabel(): string {
 }
 
 export function Notifications() {
+  const { hour12 } = useTimeFormat()
   const q = useNotificationSettings()
   const save = useSetNotificationSettings()
   const test = usePushTest()
@@ -76,9 +79,9 @@ export function Notifications() {
         <div className="set-title">Quiet hours</div>
         <div className="sub" style={{ fontSize: 13 }}>Hold back everything except approvals and new sign-ins.</div>
         <div className="inline-edit">
-          <input className="input" type="time" value={c.quiet_start ?? ''} onChange={(e) => put({ quiet_start: e.target.value || null })} aria-label="Quiet from" />
+          <TimePicker label="Quiet from" value={c.quiet_start ?? ''} onChange={(v) => put({ quiet_start: v || null })} hour12={hour12} clearable />
           <span className="sub">to</span>
-          <input className="input" type="time" value={c.quiet_end ?? ''} onChange={(e) => put({ quiet_end: e.target.value || null })} aria-label="Quiet until" />
+          <TimePicker label="Quiet until" value={c.quiet_end ?? ''} onChange={(v) => put({ quiet_end: v || null })} hour12={hour12} clearable />
           {(c.quiet_start || c.quiet_end) && <button className="link-btn" onClick={() => put({ quiet_start: null, quiet_end: null })}>Clear</button>}
         </div>
       </section>

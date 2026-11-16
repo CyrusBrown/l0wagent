@@ -122,7 +122,7 @@ This replaces today's nightly, review, turbo and chat modes.
   - `assistant wake plan` (list / replace)
   - `assistant wake at 2026-11-15T19:05 --budget 1.5 --tier sonnet/medium --reason "race results posted at 19:00"`
 - Later, with the hub: it coordinates with friends' assistants through their presence (their next wakeup) rather than waking them.
-- `assistant budget` and `assistant wake plan --check` show what's left, what's scheduled, a suggested pace (*"7 pts unscheduled, 4.5 days left: ~1.5/day"*), conflicts and gaps. Control does the arithmetic; the agent decides what's worth it.
+- `assistant budget` and `assistant wake plan` show what's left, what's scheduled, a suggested pace (*"7 pts unscheduled, 4.5 days left: ~1.5/day"*), conflicts and gaps. Control does the arithmetic; the agent decides what's worth it.
 
 ### What control does
 - Validates every planned wakeup against the limits, rejecting with a reason. Shows the plan as an editable **calendar**.

@@ -12,9 +12,9 @@ import { pts } from './format'
 export const CardPlace = createContext<{ mode: 'home' | 'inbox'; where?: ReactNode; when?: string } | null>(null)
 
 /** The shared frame: label row, body, optional note ("+ Add comment"), and the decided state. */
-function Card({ label, right, children, decided, actions, id }: {
+function Card({ label, right, children, decided, actions, id, allowNote = true }: {
   label: string; right?: ReactNode; children: ReactNode; decided?: ReactNode | false
-  actions?: (note: string) => ReactNode; id?: string
+  actions?: (note: string) => ReactNode; id?: string; allowNote?: boolean
 }) {
   const [noteOpen, setNoteOpen] = useState(false)
   const [note, setNote] = useState('')
@@ -27,12 +27,12 @@ function Card({ label, right, children, decided, actions, id }: {
       {children}
       {decided ? decided : actions && (
         <>
-          {noteOpen && <textarea className="textarea" rows={2} placeholder="A note for the assistant (optional)" value={note} onChange={(e) => setNote(e.target.value)} />}
+          {allowNote && noteOpen && <textarea className="textarea" rows={2} placeholder="A note for the assistant (optional)" value={note} onChange={(e) => setNote(e.target.value)} />}
           <div className="btns">
             {actions(note.trim())}
-            <button className="link-btn" style={{ marginLeft: 'auto' }} onClick={() => { setNoteOpen(!noteOpen); if (noteOpen) setNote('') }}>
+            {allowNote && <button className="link-btn" style={{ marginLeft: 'auto' }} onClick={() => { setNoteOpen(!noteOpen); if (noteOpen) setNote('') }}>
               {noteOpen ? 'Remove comment' : '+ Add comment'}
-            </button>
+            </button>}
           </div>
         </>
       )}
@@ -218,14 +218,16 @@ const sugLabel = (k: S['Suggestion']['kind']) => 'Suggestion · ' + k.split('_')
 
 export function SuggestionCard({ s }: { s: S['Suggestion'] }) {
   const decide = useDecideSuggestion()
+  const online = useOnline()
   const decided = s.status !== 'open' && <Decided text={s.status === 'accepted' ? 'Accepted' : s.status === 'dismissed' ? 'Dismissed' : s.status} />
   return (
-    <Card id={`s${s.id}`} label={sugLabel(s.kind)} decided={decided}
+    <Card id={`s${s.id}`} label={sugLabel(s.kind)} decided={decided} allowNote={false}
       actions={() => <>
-        <button className="btn primary" disabled={decide.isPending} onClick={() => decide.mutate({ id: s.id, decision: 'accept' })}>Accept</button>
-        <button className="btn" disabled={decide.isPending} onClick={() => decide.mutate({ id: s.id, decision: 'dismiss' })}>Dismiss</button>
+        <button className="btn primary" disabled={!online || decide.isPending} onClick={() => decide.mutate({ id: s.id, decision: 'accept' })}>Accept</button>
+        <button className="btn" disabled={!online || decide.isPending} onClick={() => decide.mutate({ id: s.id, decision: 'dismiss' })}>Dismiss</button>
       </>}>
       <div className="card-text">{s.text}</div>
+      {decide.error && <div className="error">{problem(decide.error)}</div>}
     </Card>
   )
 }
@@ -244,20 +246,23 @@ export function PromoteCard({ p }: { p: S['PromoteRequest'] }) {
         <div style={{ fontWeight: 500 }}>Turn this reply into a full run</div>
         <div className="card-sub">{p.reason}</div>
       </div>
+      {decide.error && <div className="error">{problem(decide.error)}</div>}
     </Card>
   )
 }
 
 export function SecurityCard({ a }: { a: S['SecurityAlert'] }) {
   const decide = useDecideSecurity()
+  const online = useOnline()
   const decided = a.status !== 'open' && <Decided text={a.status === 'confirmed' ? 'Confirmed' : 'Revoked'} />
   return (
-    <Card label="Security" decided={decided}
+    <Card label="Security" decided={decided} allowNote={false}
       actions={() => <>
-        <button className="btn" disabled={decide.isPending} onClick={() => decide.mutate({ id: a.id, decision: 'confirm' })}>That was me</button>
-        <button className="btn danger" disabled={decide.isPending} onClick={() => decide.mutate({ id: a.id, decision: 'revoke' })}>Revoke</button>
+        <button className="btn" disabled={!online || decide.isPending} onClick={() => decide.mutate({ id: a.id, decision: 'confirm' })}>That was me</button>
+        <button className="btn danger" disabled={!online || decide.isPending} onClick={() => decide.mutate({ id: a.id, decision: 'revoke' })}>Revoke</button>
       </>}>
       <div className="card-text">{a.text}</div>
+      {decide.error && <div className="error">{problem(decide.error)}</div>}
     </Card>
   )
 }

@@ -10,7 +10,13 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
-    proxy: { '/api': { target: api, changeOrigin: false } },
+    proxy: {
+      '/api': { target: api, changeOrigin: false },
+      '/mcp': { target: api, changeOrigin: false },
+      '/oauth': { target: api, changeOrigin: false },
+      '/connector/': { target: api, changeOrigin: false },
+      '/.well-known': { target: api, changeOrigin: false },
+    },
   },
   test: {
     environment: 'jsdom',

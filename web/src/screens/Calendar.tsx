@@ -1,6 +1,12 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import type { S } from '../api/client'
+import { useTimeFormat } from '../app/timeFormat'
+import { clockIn } from '../components/format'
+import { Select } from '../components/Select'
+import { DatePicker, TimePicker } from '../components/DateTimePicker'
+import { Switch } from '../components/settings'
+import { useEscape } from '../components/useEscape'
 import {
   problem, useCalendar, useCancelWakeup, useCreateRoutine, useCreateWakeup, useDeleteRoutine, usePatchRoutine, usePatchWakeup, useRoutines,
 } from '../api/queries'
@@ -32,10 +38,11 @@ function zonedToUtc(date: string, minutes: number, tz: string): Date {
 }
 
 const fmtDay = (iso: string, tz: string) => new Date(iso).toLocaleDateString(undefined, { timeZone: tz, month: 'short', day: 'numeric' })
-const when = (iso: string, tz: string) => new Date(iso).toLocaleString(undefined, { timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+const when = (iso: string, tz: string) => `${new Date(iso).toLocaleDateString(undefined, { timeZone: tz, weekday: 'short' })} ${clockIn(iso, tz)}`
 const tierText = (t: string) => t.split('/').map((x, i) => (i === 0 ? x[0].toUpperCase() + x.slice(1) : x)).join(' · ')  // "Sonnet · medium"
 
 export function Calendar() {
+  useTimeFormat()
   const [offset, setOffset] = useState(0)
   const [start, end] = useMemo(() => {
     if (!offset) return [undefined, undefined]
@@ -85,6 +92,7 @@ export function Calendar() {
 type Day = ReturnType<typeof parts>
 
 function Week({ c, days, today, onOpen }: { c: S['Calendar']; days: Day[]; today: string; onOpen: (id: number) => void }) {
+  const { hour12 } = useTimeFormat()
   const tz = c.timezone
   const patch = usePatchWakeup()
   const grid = useRef<HTMLDivElement>(null)
@@ -137,7 +145,7 @@ function Week({ c, days, today, onOpen }: { c: S['Calendar']; days: Day[]; today
       </div>
       <div className="cal-body">
         <div className="cal-hours" style={{ height: DAY_H }}>
-          {[0, 3, 6, 9, 12, 15, 18, 21].map((h) => <span key={h} style={{ top: h * H + 2 }}>{String(h).padStart(2, '0')}</span>)}
+          {[0, 3, 6, 9, 12, 15, 18, 21].map((h) => <span key={h} style={{ top: h * H + 2 }}>{hour12 ? `${h % 12 || 12} ${h < 12 ? 'AM' : 'PM'}` : String(h).padStart(2, '0')}</span>)}
         </div>
         {days.map((d, i) => (
           <div key={d.date} data-day={d.date} className={`cal-day ${d.date === today ? 'today' : ''}`} style={{ height: DAY_H }}>
@@ -214,6 +222,7 @@ function Side({ c }: { c: S['Calendar'] }) {
 }
 
 function Routines() {
+  const { hour12 } = useTimeFormat()
   const routines = useRoutines()
   const patch = usePatchRoutine()
   const del = useDeleteRoutine()
@@ -228,7 +237,7 @@ function Routines() {
         <div key={r.id} className="cal-sched">
           <div className="row-between" style={{ font: '500 13px var(--sans)' }}>
             <span>{r.name}{r.status === 'proposed' ? ' (proposed)' : ''}</span>
-            <label className="switch-label"><input type="checkbox" checked={r.enabled} onChange={(e) => patch.mutate({ id: r.id, enabled: e.target.checked })} aria-label={`${r.name} on`} /></label>
+            <Switch on={r.enabled} onChange={(v) => patch.mutate({ id: r.id, enabled: v })} label={`${r.name} on`} />
           </div>
           <span className="sub" style={{ fontSize: 12.5 }}>{r.schedule_text} · {r.budget} pts · {tierText(r.tier)}{r.created_by === 'assistant' ? ' · proposed by the assistant' : ''}</span>
           {!r.builtin && <button className="link-btn" style={{ alignSelf: 'flex-start', fontSize: 12 }} onClick={() => del.mutate(r.id)}>Delete</button>}
@@ -243,13 +252,13 @@ function Routines() {
           <input className="input" placeholder="Name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required />
           <textarea className="textarea" placeholder="What the assistant does each time" rows={3} value={f.prompt} onChange={(e) => setF({ ...f, prompt: e.target.value })} required />
           <div style={{ display: 'flex', gap: 6 }}>
-            <select className="input" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })} aria-label="Schedule">
-              <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="before_reset">Before the reset</option>
-            </select>
-            {f.kind === 'weekly' && <select className="input" value={f.day} onChange={(e) => setF({ ...f, day: Number(e.target.value) })} aria-label="Day">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, i) => <option key={d} value={i}>{d}</option>)}</select>}
+            <Select variant="input" value={f.kind} label="Schedule"
+              options={[{ value: 'daily', label: 'Daily' }, { value: 'weekly', label: 'Weekly' }, { value: 'before_reset', label: 'Before the reset' }]}
+              onChange={(v) => setF({ ...f, kind: v })} />
+            {f.kind === 'weekly' && <Select variant="input" value={f.day} label="Day" options={['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, i) => ({ value: i, label: d }))} onChange={(v) => setF({ ...f, day: v })} />}
             {f.kind === 'before_reset'
               ? <input className="input" type="number" min={0.5} max={72} step={0.5} value={f.hours} onChange={(e) => setF({ ...f, hours: Number(e.target.value) })} aria-label="Hours before" />
-              : <input className="input" type="time" value={f.time} onChange={(e) => setF({ ...f, time: e.target.value })} aria-label="Time" />}
+              : <TimePicker label="Time" value={f.time} onChange={(v) => setF({ ...f, time: v })} hour12={hour12} />}
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <input className="input" value={f.tier} onChange={(e) => setF({ ...f, tier: e.target.value })} aria-label="Tier" />
@@ -264,6 +273,32 @@ function Routines() {
 }
 
 function WakeupEditor({ w, tz, tiers, onClose }: { w?: S['Wakeup']; tz: string; tiers: string[]; onClose: () => void }) {
+  useEscape(true, onClose)
+  const { hour12 } = useTimeFormat()
+  const opener = useRef<HTMLElement | null>(null)
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = document.activeElement
+    opener.current = el instanceof HTMLElement ? el : null
+    const first = box.current?.querySelector<HTMLElement>('input:not([disabled]), button:not([disabled]):not(.icon-btn)')
+    ;(first ?? box.current)?.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !box.current) return
+      const sel = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      const pops = Array.from(document.querySelectorAll<HTMLElement>('.sel-pop:not(.closing), .dtp-pop:not(.closing)'))
+      const items = [box.current, ...pops].flatMap((r) => Array.from(r.querySelectorAll<HTMLElement>(sel)))
+      if (!items.length) return
+      const i = items.indexOf(document.activeElement as HTMLElement)
+      const next = e.shiftKey ? (i <= 0 ? items.length - 1 : i - 1) : (i < 0 || i === items.length - 1 ? 0 : i + 1)
+      e.preventDefault()
+      items[next].focus()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      if (opener.current?.isConnected) opener.current.focus()
+    }
+  }, [])
   const local = w ? parts(w.at, tz) : parts(new Date(Date.now() + 3600_000), tz)
   const [date, setDate] = useState(local.date)
   const [time, setTime] = useState(`${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`)
@@ -285,17 +320,19 @@ function WakeupEditor({ w, tz, tiers, onClose }: { w?: S['Wakeup']; tz: string; 
   return (
     <>
       <div className="scrim" onClick={onClose} />
-      <div className="cal-editor card" role="dialog" aria-label={w ? 'Wakeup' : 'Add wakeup'}>
+      <div ref={box} tabIndex={-1} className="cal-editor card" role="dialog" aria-modal="true" aria-label={w ? 'Wakeup' : 'Add wakeup'}>
         <div className="row-between"><div style={{ font: '500 15px var(--sans)' }}>{w ? `Wakeup #${w.id}` : 'Add a wakeup'}</div><button className="icon-btn" onClick={onClose} aria-label="Close">×</button></div>
         {w && <div className="sub" style={{ fontSize: 12.5 }}>{{ planned: 'Planned by the assistant', fallback: 'Fallback, added by control', sweep: 'Sweep, added by control', routine: 'A routine', owner: 'Yours' }[w.kind]} · {w.status}{w.status_reason ? ` · ${w.status_reason}` : ''}</div>}
         <div style={{ display: 'flex', gap: 6 }}>
-          <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={!editable} aria-label="Date" />
-          <input className="input" type="time" value={time} onChange={(e) => setTime(e.target.value)} disabled={!editable} aria-label="Time" />
+          <DatePicker label="Date" value={date} onChange={setDate} disabled={!editable} className="dtp-grow" />
+          <TimePicker label="Time" value={time} onChange={setTime} disabled={!editable} className="dtp-grow" hour12={hour12} />
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           <label className="stack" style={{ gap: 3, flex: 1 }}><span className="sub" style={{ fontSize: 12 }}>Budget (pts)</span><input className="input" type="number" min={1} value={budget} onChange={(e) => setBudget(Number(e.target.value))} disabled={!editable} /></label>
           <label className="stack" style={{ gap: 3, flex: 1 }}><span className="sub" style={{ fontSize: 12 }}>Tier</span>
-            <select className="input" value={tier} onChange={(e) => setTier(e.target.value)} disabled={!editable}>{Array.from(new Set([tier, ...tiers])).map((t) => <option key={t}>{t}</option>)}</select></label>
+            <Select variant="input" value={tier} label="Tier" disabled={!editable}
+              options={Array.from(new Set([tier, ...tiers])).map((t) => ({ value: t, label: t }))}
+              onChange={setTier} /></label>
         </div>
         <input className="input" placeholder="Reason" value={reason} onChange={(e) => setReason(e.target.value)} disabled={!editable} />
         {w?.run_id && <Link to={`/runs/${w.run_id}`} className="sub">Run #{w.run_id}{w.used != null ? ` · used ${w.used} pts` : ''}</Link>}

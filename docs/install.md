@@ -51,7 +51,8 @@ Open the address in a browser. The wizard:
    **No Claude subscription?** Choose **Use opencode Go** instead and paste your opencode
    API key (opencode.ai → your workspace → API keys). The assistant then runs on opencode
    with open models, and every role moves onto it. Settings → Providers shows which model
-   is behind each tier (small, medium, large) and lets you change them;
+   is behind each tier (haiku, sonnet, opus) and lets you change them, with an effort
+   (low, medium, high) for each role;
 4. picks a level: how much of your week the assistant may plan with (you can change it any
    time);
 5. runs the isolation self-test. Every check should pass; if one doesn't, see

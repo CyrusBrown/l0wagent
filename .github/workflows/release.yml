@@ -20,6 +20,7 @@ jobs:
           - { name: agent, context: agent, file: agent/Dockerfile }
           - { name: egress, context: egress, file: egress/Dockerfile }
           - { name: agent-web, context: agent-web, file: agent-web/Dockerfile }
+          - { name: chat-runtime, context: chat-runtime, file: chat-runtime/Dockerfile }
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3

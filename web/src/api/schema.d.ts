@@ -1261,6 +1261,228 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/network": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Network
+         * @description Egress rules, the request log (newest first, up to 200, filtered) and the last day's busiest hosts.
+         */
+        get: operations["network_api_network_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/network/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Egress Rule
+         * @description Online only. Blocking a model provider the assistant runs on is refused.
+         */
+        post: operations["add_egress_rule_api_network_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/network/rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Egress Rule */
+        delete: operations["delete_egress_rule_api_network_rules__rule_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Integrations */
+        get: operations["list_integrations_api_integrations_get"];
+        put?: never;
+        /**
+         * Create Integration
+         * @description Online only. Connects to the server and lists its tools when the token (if any) is already saved.
+         */
+        post: operations["create_integration_api_integrations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Integration Presets */
+        get: operations["integration_presets_api_integrations_presets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Integration */
+        get: operations["get_integration_api_integrations__name__get"];
+        put?: never;
+        post?: never;
+        /** Delete Integration */
+        delete: operations["delete_integration_api_integrations__name__delete"];
+        options?: never;
+        head?: never;
+        /** Update Integration */
+        patch: operations["update_integration_api_integrations__name__patch"];
+        trace?: never;
+    };
+    "/api/integrations/{name}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Integration
+         * @description Ask the server for its tools again. New tools get the default policy; existing policies stay.
+         */
+        post: operations["sync_integration_api_integrations__name__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/integrations/{name}/tools/{tool}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Integration Tool Policy */
+        put: operations["set_integration_tool_policy_api_integrations__name__tools__tool__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/connector/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Connect Request
+         * @description Describe an OAuth authorization request (its query parameters, as /oauth/authorize got them).
+         */
+        get: operations["connect_request_api_connector_request_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/connector/consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect Consent */
+        post: operations["connect_consent_api_connector_consent_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/connected-apps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Connected Apps */
+        get: operations["connected_apps_api_connected_apps_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/connected-apps/{app_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Connected App */
+        delete: operations["revoke_connected_app_api_connected_apps__app_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/secrets": {
         parameters: {
             query?: never;
@@ -1856,7 +2078,7 @@ export interface components {
         BudgetLimits: {
             /**
              * Allowance
-             * @description Points a week the assistant may plan with.
+             * @description Points in the provider's period the assistant may plan with.
              */
             allowance: number;
             /** Allowed Hours */
@@ -2313,6 +2535,86 @@ export interface components {
             url: string;
         };
         /**
+         * ConnectConsent
+         * @description The owner's answer on the consent screen. Online only.
+         */
+        ConnectConsent: {
+            /**
+             * Params
+             * @description The authorization request's query parameters, unchanged.
+             */
+            params: {
+                [key: string]: string;
+            };
+            /** Approve */
+            approve: boolean;
+            /**
+             * Scopes
+             * @description A subset of the requested scopes to grant; omit for all.
+             */
+            scopes?: ("read" | "write" | "wake")[] | null;
+        };
+        /** ConnectRedirect */
+        ConnectRedirect: {
+            /**
+             * Redirect
+             * @description Send the browser here (the client's redirect URI, with a code or an error).
+             */
+            redirect: string;
+        };
+        /**
+         * ConnectRequest
+         * @description What the consent screen shows for an authorization request.
+         */
+        ConnectRequest: {
+            /**
+             * Client Name
+             * @description The name the client registered with (self-declared, so shown as such).
+             */
+            client_name: string;
+            /**
+             * Redirect Host
+             * @description Where the browser goes back to after the answer.
+             */
+            redirect_host: string;
+            /** Scopes */
+            scopes: components["schemas"]["ConnectorScopeInfo"][];
+        };
+        /**
+         * ConnectedApp
+         * @description An outside client the owner connected. Revoking it ends every token it holds.
+         */
+        ConnectedApp: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Scopes */
+            scopes: ("read" | "write" | "wake")[];
+            /**
+             * Chat Id
+             * @description The chat where its tool calls and cards appear.
+             */
+            chat_id: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Used At */
+            last_used_at: string | null;
+        };
+        /** ConnectorScopeInfo */
+        ConnectorScopeInfo: {
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "read" | "write" | "wake";
+            /** Description */
+            description: string;
+        };
+        /**
          * Delivery
          * @description What the thread's delivery indicator shows (server side; 'waiting for connection' is client-only).
          */
@@ -2341,6 +2643,80 @@ export interface components {
             lease_active?: boolean | null;
             /** Error */
             error?: string | null;
+        };
+        /** EgressRequest */
+        EgressRequest: {
+            /** Id */
+            id: number;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Method */
+            method: string | null;
+            /** Host */
+            host: string | null;
+            /** Port */
+            port: number | null;
+            /** Url */
+            url: string | null;
+            /**
+             * Action
+             * @description allowed, blocked or error.
+             */
+            action: string;
+            /** Reason */
+            reason: string | null;
+            /** Status */
+            status: number | null;
+            /** Bytes Down */
+            bytes_down: number;
+        };
+        /** EgressRule */
+        EgressRule: {
+            /** Id */
+            id: number;
+            /**
+             * Pattern
+             * @description A host, *.domain, host:port or CIDR.
+             */
+            pattern: string;
+            /**
+             * Action
+             * @description allow_ro: read-only (GET over plain HTTP).
+             * @enum {string}
+             */
+            action: "allow" | "allow_ro" | "block";
+            /** Note */
+            note: string;
+            /** Created At */
+            created_at: string | null;
+            /**
+             * Hits 7D
+             * @description Requests in the last 7 days to hosts this rule matches.
+             */
+            hits_7d: number;
+        };
+        /**
+         * EgressRuleCreate
+         * @description Online only.
+         */
+        EgressRuleCreate: {
+            /** Pattern */
+            pattern: string;
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "allow" | "allow_ro" | "block";
+            /**
+             * Note
+             * @default
+             */
+            note?: string;
+            /** Idempotency Key */
+            idempotency_key?: string | null;
         };
         /** FileChange */
         FileChange: {
@@ -2437,6 +2813,15 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HostStat */
+        HostStat: {
+            /** Host */
+            host: string;
+            /** Requests */
+            requests: number;
+            /** Blocked */
+            blocked: number;
+        };
         /** InboxCounts */
         InboxCounts: {
             /** Waiting */
@@ -2472,6 +2857,143 @@ export interface components {
             suggestion?: components["schemas"]["Suggestion"] | null;
             promote?: components["schemas"]["PromoteRequest"] | null;
             security?: components["schemas"]["SecurityAlert"] | null;
+        };
+        /** Integration */
+        Integration: {
+            /**
+             * Name
+             * @description Short lowercase id, like github.
+             */
+            name: string;
+            /** Title */
+            title: string;
+            /** Preset */
+            preset: string | null;
+            /** Url */
+            url: string;
+            /**
+             * Auth Secret
+             * @description Name of the saved secret sent as the bearer token.
+             */
+            auth_secret: string | null;
+            /**
+             * Secret Saved
+             * @description The named secret has a value.
+             */
+            secret_saved: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "new" | "ok" | "error";
+            /** Last Error */
+            last_error: string | null;
+            /** Synced At */
+            synced_at: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Tools */
+            tools: components["schemas"]["IntegrationTool"][];
+            /** Recent Calls */
+            recent_calls: components["schemas"]["IntegrationCall"][];
+        };
+        /** IntegrationCall */
+        IntegrationCall: {
+            /** Tool */
+            tool: string;
+            /** Run Id */
+            run_id: number | null;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "ok" | "error" | "asked" | "blocked";
+            /** Permission Id */
+            permission_id: number | null;
+            /** Detail */
+            detail: string | null;
+            /** At */
+            at: string | null;
+        };
+        /**
+         * IntegrationCreate
+         * @description Online only. Name defaults to the preset's id.
+         */
+        IntegrationCreate: {
+            /** Name */
+            name?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Preset */
+            preset?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Auth Secret */
+            auth_secret?: string | null;
+            /** Idempotency Key */
+            idempotency_key?: string | null;
+        };
+        /** IntegrationPatch */
+        IntegrationPatch: {
+            /** Title */
+            title?: string | null;
+            /** Url */
+            url?: string | null;
+            /**
+             * Auth Secret
+             * @description Empty clears it.
+             */
+            auth_secret?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+        };
+        /** IntegrationPreset */
+        IntegrationPreset: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+            /** Auth Secret */
+            auth_secret: string | null;
+            /**
+             * Token Url
+             * @description Where to create the token.
+             */
+            token_url: string | null;
+            /** Guidance */
+            guidance: string;
+            /**
+             * Egress
+             * @description Hosts the agent's sandbox needs to reach, if any.
+             */
+            egress: string[];
+        };
+        /** IntegrationTool */
+        IntegrationTool: {
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
+            /**
+             * Read Only
+             * @description The server says this tool only reads.
+             */
+            read_only: boolean;
+            /**
+             * Policy
+             * @description allowed runs at once, ask needs your approval, blocked never runs.
+             * @enum {string}
+             */
+            policy: "allowed" | "ask" | "blocked";
+            /**
+             * Present
+             * @description False when the server no longer lists the tool.
+             */
+            present: boolean;
         };
         /** Job */
         Job: {
@@ -2649,6 +3171,30 @@ export interface components {
             instance_name: string;
         };
         /**
+         * NetworkView
+         * @description Egress's rules, the recent request log and the busiest hosts. `reachable` false: egress
+         *     didn't answer, and the lists are empty.
+         */
+        NetworkView: {
+            /** Reachable */
+            reachable: boolean;
+            /**
+             * Default Policy
+             * @enum {string}
+             */
+            default_policy: "allow" | "deny";
+            /** Rules */
+            rules: components["schemas"]["EgressRule"][];
+            /** Requests */
+            requests: components["schemas"]["EgressRequest"][];
+            /** Requests 24H */
+            requests_24h: number;
+            /** Blocked 24H */
+            blocked_24h: number;
+            /** Top Hosts */
+            top_hosts: components["schemas"]["HostStat"][];
+        };
+        /**
          * NotificationSettings
          * @description Which events notify (approval and new_device are on by default), ntfy, quiet hours.
          */
@@ -2760,7 +3306,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "egress_rule" | "secret" | "setting" | "routine";
+            kind: "egress_rule" | "secret" | "setting" | "routine" | "mcp_call";
             /** Summary */
             summary: string;
             /** Payload */
@@ -2975,7 +3521,7 @@ export interface components {
             allowance: number;
             /**
              * Left
-             * @description Allowance left this week, capped by the room below the owner's weekly reserve.
+             * @description Allowance left this period, capped by the room below the owner's reserve.
              */
             left: number;
             /** Used By Assistant */
@@ -2998,7 +3544,7 @@ export interface components {
             reply_left: number;
             /**
              * Scheduled
-             * @description Points in planned wakeups for the rest of this week.
+             * @description Points in planned wakeups for the rest of this period.
              */
             scheduled: number;
             /**
@@ -3015,7 +3561,7 @@ export interface components {
             pace: string;
             /**
              * Native
-             * @description The provider's own unit, e.g. '46% of the week used' or '$3.10 this week'.
+             * @description The provider's own unit, e.g. '46% of the week used' or '$3.10 this period'.
              */
             native: string;
             /**
@@ -3588,9 +4134,14 @@ export interface components {
             description: string;
             /**
              * Scope
-             * @description 'agent' (the agent's environment) until scopes arrive in M6.
+             * @description Who gets the value: 'agent' (every worker session), 'project:<slug>' (runs on that project's threads), 'routine:<id>' (that routine's runs) or 'integrations' (never the sandbox; only brokered tools). The reviewer, the 1:1 chat and the connector never get values.
              */
             scope: string;
+            /**
+             * Scope Label
+             * @description The scope for people: 'All projects', a project's or routine's name, or 'Integrations only'.
+             */
+            scope_label: string;
             /**
              * Created At
              * Format: date-time
@@ -3614,10 +4165,18 @@ export interface components {
          * @description Online only. Setting a value also scrubs it from everything already stored.
          */
         SecretSet: {
-            /** Value */
-            value: string;
+            /**
+             * Value
+             * @description Omit to change only the description or scope of an existing secret.
+             */
+            value?: string | null;
             /** Description */
             description?: string | null;
+            /**
+             * Scope
+             * @description See SecretInfo.scope. Omit to keep the current one ('agent' for a new secret).
+             */
+            scope?: string | null;
         };
         /** SecurityAlert */
         SecurityAlert: {
@@ -3812,7 +4371,7 @@ export interface components {
             run_budget?: number | null;
             /** Next Wakeup At */
             next_wakeup_at?: string | null;
-            /** @description Absent until budgets exist (M4). */
+            /** @description The worker provider's budget. */
             budget?: components["schemas"]["BudgetSummary"] | null;
             usage?: components["schemas"]["UsageReading"] | null;
             /** Inbox Waiting */
@@ -4099,6 +4658,14 @@ export interface components {
             data: {
                 [key: string]: unknown;
             };
+        };
+        /** ToolPolicySet */
+        ToolPolicySet: {
+            /**
+             * Policy
+             * @enum {string}
+             */
+            policy: "allowed" | "ask" | "blocked";
         };
         /** TotpDisable */
         TotpDisable: {
@@ -7084,6 +7651,442 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    network_api_network_get: {
+        parameters: {
+            query?: {
+                filter?: "all" | "blocked" | "get" | "post" | "hour";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_egress_rule_api_network_rules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EgressRuleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EgressRule"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_egress_rule_api_network_rules__rule_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_integrations_api_integrations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Integration"][];
+                };
+            };
+        };
+    };
+    create_integration_api_integrations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntegrationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Integration"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    integration_presets_api_integrations_presets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationPreset"][];
+                };
+            };
+        };
+    };
+    get_integration_api_integrations__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Integration"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_integration_api_integrations__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_integration_api_integrations__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntegrationPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Integration"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_integration_api_integrations__name__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Integration"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_integration_tool_policy_api_integrations__name__tools__tool__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                tool: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ToolPolicySet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Integration"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connect_request_api_connector_request_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectRequest"];
+                };
+            };
+        };
+    };
+    connect_consent_api_connector_consent_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectConsent"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectRedirect"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    connected_apps_api_connected_apps_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectedApp"][];
+                };
+            };
+        };
+    };
+    revoke_connected_app_api_connected_apps__app_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                app_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
             };
             /** @description Validation Error */
             422: {

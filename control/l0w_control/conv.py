@@ -54,6 +54,7 @@ class Conversations:
         self.delete_egress_rule: Callable[[int], None] | None = None
         # Set by the backend: routine proposals (validate, apply on approval, revert).
         self.routines: Any = None
+        self.integrations: Any = None  # integrations.Integrations, set by the backend
         # Set by the backend: notifications (kind, title, body, url, ref_kind, ref_id).
         self.notify: Callable[..., None] = lambda *a, **k: None
         live.getters.update(
@@ -178,6 +179,8 @@ class Conversations:
         return self.question_model(self._get("questions", qid, "question"))
 
     def _scopes(self, r: dict) -> list:
+        if self.db.q1("SELECT 1 FROM permission_actions WHERE permission_id=? AND kind='mcp_call'", (r["id"],)):
+            return ["once", "always"]  # this exact call once, or the tool always
         has_project = r["thread_id"] and self.db.q1("SELECT project_id FROM threads WHERE id=?", (r["thread_id"],))["project_id"]
         return ["once", "project", "always"] if has_project else ["once", "always"]
 
@@ -399,8 +402,12 @@ class Conversations:
         self.notify("question", "The assistant asks", self._preview(q.text), self._url(q.thread_id), "question", str(qid))
         return q
 
-    def file_permission(self, run_id: int | None, thread_id: int | None, text: str, reason: str | None, actions: list[dict]) -> s.Permission:
-        checked = [self._check_routine(a) if a.get("kind") == "routine" else _check_action(a) for a in actions]
+    def file_permission(self, run_id: int | None, thread_id: int | None, text: str, reason: str | None, actions: list[dict],
+                        trusted: bool = False) -> s.Permission:
+        """`trusted`: filed by control itself (a brokered call), so 'mcp_call' actions are accepted."""
+        checked = [self._check_routine(a) if a.get("kind") == "routine"
+                   else self.integrations.check_action(a) if trusted and a.get("kind") == "mcp_call" and self.integrations
+                   else _check_action(a) for a in actions]
         with self.db.tx() as db:
             pid = db.ex("INSERT INTO permissions(thread_id, run_id, text, reason, created_at) VALUES(?,?,?,?,?)",
                         (self._ask_thread(thread_id), run_id, self.r(text), self.r(reason), db.now()))
@@ -474,17 +481,21 @@ class Conversations:
                 if not self.vault.exists(name):
                     raise Conflict("secret_missing", f"Enter the value for {name} first.")
             for a in self.db.q("SELECT * FROM permission_actions WHERE permission_id=? AND applied_at IS NULL ORDER BY id", (pid,)):
-                self._apply(a)
+                self._apply(a, req.scope)
         self.db.ex("UPDATE permissions SET status=?, scope=?, note=?, decided_at=? WHERE id=?",
                    ("allowed" if req.decision == "allow" else "denied", req.scope if req.decision == "allow" else None, self.r(req.note), self.db.now(), pid))
         self._card("permission", pid, p.thread_id)
         return self.permission(pid)
 
-    def _apply(self, a: dict) -> None:
+    def _apply(self, a: dict, scope: str | None = None) -> None:
         """Apply one approved action. Control does this, never the agent."""
         payload = _j(a["payload_json"], {})
         result: dict[str, Any] = {}
         try:
+            if a["kind"] == "mcp_call":
+                if scope == "always" and self.integrations:
+                    self.integrations.apply_always(payload)
+                return  # a one-time approval is used by the call itself (integrations._grant)
             if a["kind"] == "egress_rule":
                 if self.add_egress_rule is None:
                     raise RuntimeError("egress isn't configured")
@@ -509,6 +520,8 @@ class Conversations:
         undone = []
         for a in rows:
             payload, result = _j(a["payload_json"], {}), _j(a["result_json"], {})
+            if a["kind"] == "mcp_call":
+                continue
             try:
                 if a["kind"] == "egress_rule" and result.get("rule_id") and self.delete_egress_rule:
                     self.delete_egress_rule(int(result["rule_id"]))
@@ -871,6 +884,9 @@ def _action_summary(kind: str, p: dict) -> str:
         return f"you enter the secret {p.get('name')}" + (f" ({p['description']})" if p.get("description") else "")
     if kind == "routine":
         return f"add the routine “{p.get('name')}”: {p.get('schedule_text')}, {p.get('tier')}, {p.get('budget', 0):g} pts each time"
+    if kind == "mcp_call":
+        args = json.dumps(p.get("args") or {}, sort_keys=True)
+        return f"call {p.get('title') or p.get('integration')} → {p.get('tool')} with {args if len(args) <= 400 else args[:399] + '…'}"
     if kind == "setting":
         v = p.get("value")
         return f"set {p.get('key')} to {v:g}" if isinstance(v, float) else f"set {p.get('key')} to {v}"

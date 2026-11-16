@@ -8,7 +8,9 @@ html, body, #root { margin: 0; height: 100% }
 body { background: var(--bg); color: var(--fg); font: 400 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; transition: background .2s }
 a { color: var(--accentInk); text-decoration: none }
 a:hover { color: var(--fg); text-decoration: underline }
-button, input, textarea, select { font: inherit; color: inherit }
+button, input, textarea { font: inherit; color: inherit }
+input[type=number] { appearance: textfield; -moz-appearance: textfield }
+input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { appearance: none; -webkit-appearance: none; margin: 0 }
 button { cursor: pointer; transition: background-color .16s, border-color .16s, color .16s, opacity .16s }
 button:active:not(:disabled) { transform: scale(.97) }
 button:disabled { cursor: default; opacity: .5 }
@@ -138,7 +140,11 @@ h2 { margin: 0; font: 500 18px/1.3 var(--serif) }
 /* ── Thread ────────────────────────────────────────────────────────────── */
 .thread { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0 }
 .thread-scroll { flex: 1; overflow: auto }
+.thread-head { position: sticky; top: 0; z-index: 10; padding: 22px 0 10px; background: var(--bg) }
+.thread-head-inner { max-width: 928px; margin: 0 auto; padding: 0 24px }
+.thread-head + .thread-items { padding-top: 12px }
 .thread-items { max-width: 928px; margin: 0 auto; padding: 28px 24px 24px; display: flex; flex-direction: column; gap: 22px }
+.thread-empty { padding: 8px 0; text-align: center; color: var(--muted); font-size: 13px }
 .sys { align-self: center; font-size: 12px; color: var(--faint); background: var(--side); border-radius: 999px; padding: 4px 12px }
 .mine { align-self: flex-end; max-width: 80%; display: flex; flex-direction: column; gap: 6px; align-items: flex-end }
 .bubble { background: var(--bubble); border-radius: 14px; padding: 11px 15px; font-size: 14.5px; line-height: 1.55; white-space: pre-wrap }
@@ -282,6 +288,22 @@ h2 { margin: 0; font: 500 18px/1.3 var(--serif) }
 .new-chip { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; color: var(--fg); min-width: 0 }
 a.new-chip:hover { background: var(--rowh); text-decoration: none; color: var(--fg) }
 .secrets-row { display: grid; grid-template-columns: minmax(0, 1.4fr) 140px 120px 70px 60px; gap: 12px; align-items: center; padding: 11px 14px; border-bottom: 1px solid var(--soft); font-size: 12.5px }
+/* Network (the mockup's NETWORK and the Network rules tab) */
+.net-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 20px; align-items: start }
+@media (max-width: 760px) { .net-grid { grid-template-columns: minmax(0, 1fr) } }
+.net-label { font: 500 12px var(--sans); color: var(--faint) }
+.net-row { display: grid; grid-template-columns: 70px 52px minmax(0, 1fr) 54px 60px; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--soft); font: 400 12.5px var(--mono); color: var(--fg2) }
+.net-row.head { font: 500 11.5px var(--sans); color: var(--faint); padding: 9px 14px; border-bottom: 1px solid var(--lineSoft) }
+.net-row.blocked { background: var(--badSoft); color: var(--badInk) }
+.rule-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 140px 20px; column-gap: 12px; row-gap: 2px; align-items: baseline; padding: 11px 14px; border-bottom: 1px solid var(--soft); font-size: 13px }
+.rule-row.compact { grid-template-columns: 88px minmax(0, 1fr) 20px; column-gap: 10px; padding: 9px 12px; font-size: 12.5px }
+.rule-kind { font: 500 11.5px var(--sans) }
+.rule-row.compact .rule-kind { font-size: 11px }
+.rule-kind.ok { color: var(--okInk) } .rule-kind.info { color: var(--infoInk) } .rule-kind.bad { color: var(--badInk) }
+.rule-hits { font-size: 12.5px; color: var(--faint); justify-self: end }
+.rule-note { grid-column: 2 / -1; font: 400 11.5px var(--sans); color: var(--faint) }
+.icon-x { border: none; background: none; padding: 0; color: var(--faint2); font-size: 12px; cursor: pointer; justify-self: end }
+.icon-x:hover:not(:disabled) { color: var(--badInk) }
 .secrets-row.head { font: 500 11.5px var(--sans); color: var(--faint); padding: 9px 14px; border-bottom: 1px solid var(--lineSoft) }
 @media (max-width: 760px) {
   .secrets-row { grid-template-columns: minmax(0, 1fr) auto }
@@ -357,10 +379,23 @@ a.btn:hover { text-decoration: none; color: var(--fg) }
 .shelf-preview-head { padding: 12px 14px; border-bottom: 1px solid var(--lineSoft) }
 .shelf-preview-body { padding: 0 } .shelf-preview-body > * { border-radius: 0 !important; border-left: none !important; border-right: none !important }
 .shelf.compact .shelf-preview-body .code-preview { font-size: 11.5px; padding: 12px 16px }
-.version-pick { width: auto; padding: 4px 9px; font-size: 12px; flex: none }
 .drop-zone { border: 1.5px dashed var(--line3); border-radius: 12px; padding: 14px; text-align: center; font-size: 13px; color: var(--faint); cursor: pointer }
 .drop-zone.over { border-color: var(--accent); color: var(--fg) }
-.thread-files { width: 310px; flex: none; border-left: 1px solid var(--line); background: var(--card); display: flex; flex-direction: column; min-height: 0; animation: fade .2s ease both }
+.thread-files { width: var(--thread-files-w, 360px); max-width: 100%; flex: none; min-width: 0; position: relative; border-left: 1px solid var(--line); background: var(--card); display: flex; flex-direction: column; min-height: 0; overflow: hidden; animation: fade .2s ease both }
+.thread-files > * { min-width: 0 }
+.thread-files .shelf, .thread-files .shelf.compact, .thread-files .shelf.compact > .stack, .thread-files .shelf-preview, .thread-files .shelf-preview-body { min-width: 0; max-width: 100% }
+.thread-files .shelf.compact > .stack { overflow-x: hidden }
+.thread-files .shelf-preview-head, .thread-files .shelf-preview-body { overflow-wrap: anywhere }
+.thread-files-handle { position: absolute; left: 0; top: 0; bottom: 0; width: 10px; z-index: 3; cursor: col-resize; touch-action: none; outline: none }
+.thread-files-handle::before { content: ''; position: absolute; left: 3px; top: 0; bottom: 0; width: 2px; border-radius: 2px; background: transparent; transition: background-color .15s ease }
+.thread-files-handle:hover::before, .thread-files-handle:focus-visible::before { background: var(--line3) }
+.thread-files-handle:focus-visible::before { background: var(--accent) }
+.thread-files.resizing { user-select: none }
+.thread-files.resizing .thread-files-handle::before { background: var(--accent) }
+@media (max-width: 960px) {
+  .thread-files { position: fixed; inset: 52px 0 0 auto; width: min(100vw, 360px); z-index: 30; box-shadow: var(--shadow) }
+  .thread-files-handle { display: none }
+}
 .web-page { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 16px 20px 20px; gap: 10px; min-height: calc(100vh - 52px) }
 .url-bar { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line2); background: var(--card); border-radius: 8px; padding: 6px 11px; font: 400 12.5px var(--mono); color: var(--muted) }
 .web-frame { flex: 1; min-height: 320px; border: 1px solid var(--line); border-radius: 12px; background: #fff; width: 100% }
@@ -369,7 +404,9 @@ a.btn:hover { text-decoration: none; color: var(--fg) }
   .files-side { display: none }
   .fs-row { grid-template-columns: minmax(0, 1fr) 70px }
   .fs-row > :nth-child(3), .fs-row > :nth-child(4) { display: none }
-  .thread-files { position: fixed; inset: 52px 0 0 auto; width: min(100vw, 360px); z-index: 30; box-shadow: var(--shadow) }
+  .thread-head { padding: 14px 0 8px }
+  .thread-head-inner { padding: 0 16px }
+  .thread-head + .thread-items { padding-top: 10px }
   .shelf { grid-template-columns: minmax(0, 1fr) }
 }
 
@@ -470,7 +507,6 @@ a.btn:hover { text-decoration: none; color: var(--fg) }
 .bar > div { height: 100%; background: var(--accent); transition: width .5s ease }
 .bar.big { height: 8px; border-radius: 4px }
 .bar .time-mark { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--faint) }
-select.filter { appearance: none; cursor: pointer }
 .empty-big { border: 1.5px dashed var(--line3); border-radius: 14px; padding: 44px 24px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center }
 .empty-big .empty-title { font: 500 18px var(--serif) }
 .empty-big .sub { font-size: 13.5px; line-height: 1.55; color: var(--muted); max-width: 420px }
@@ -546,22 +582,22 @@ select.filter { appearance: none; cursor: pointer }
 
 /* ── Motion, from the mockup: list rows rise in, staggered 22 ms (capped at 12); sections that
    appear fade in; links and fields ease their colors. Off for people who ask for less motion. */
-:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt) { animation: rise .32s cubic-bezier(.2,.7,.3,1) both }
-:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(2) { animation-delay: 22ms }
-:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(3) { animation-delay: 44ms }
-:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(4) { animation-delay: 66ms }
-:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(5) { animation-delay: 88ms }
-:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(6) { animation-delay: 110ms }
-:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(7) { animation-delay: 132ms }
-:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(8) { animation-delay: 154ms }
-:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(9) { animation-delay: 176ms }
-:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(10) { animation-delay: 198ms }
-:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(11) { animation-delay: 220ms }
-:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(12) { animation-delay: 242ms }
-:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(n+13) { animation-delay: 264ms }
+:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .net-row, .rule-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt) { animation: rise .32s cubic-bezier(.2,.7,.3,1) both }
+:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .net-row, .rule-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(2) { animation-delay: 22ms }
+:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .net-row, .rule-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(3) { animation-delay: 44ms }
+:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .net-row, .rule-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(4) { animation-delay: 66ms }
+:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .net-row, .rule-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(5) { animation-delay: 88ms }
+:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .net-row, .rule-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(6) { animation-delay: 110ms }
+:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .net-row, .rule-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(7) { animation-delay: 132ms }
+:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .net-row, .rule-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(8) { animation-delay: 154ms }
+:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .net-row, .rule-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(9) { animation-delay: 176ms }
+:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .net-row, .rule-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(10) { animation-delay: 198ms }
+:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .net-row, .rule-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(11) { animation-delay: 220ms }
+:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .net-row, .rule-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(12) { animation-delay: 242ms }
+:is(.proj-row, .run-row, .detail-row, .tl-row, .shelf-row, .hist-row, .fs-row, .tree-row, .thread-row, .secrets-row, .net-row, .rule-row, .selftest-row, .set-row, .roles-row, .model-row, .allowance-row, .change-row, .claim-mini, .job-card, .level-opt, .new-chip, .cal-ev, .budget-field, .wakeup, .routine, .side > a, .side-chats a, .pills > *, .tabs > *, .menu > *, .settings-nav > *, .table tbody tr, .opt, .provider-card, .cal-legend > *, .setup-step, .theme-opt):nth-child(n+13) { animation-delay: 264ms }
 .done, .error, .custom-banner, .tool-detail, .empty, .empty-big, .menu, .link-picker, .chat-pop, .back-link, .banner, .offline-bar, .tool-line, .sys, .cal-editor, .inline-edit { animation: fade .22s ease both }
 a, .link-btn { transition: color .16s ease, background-color .16s ease, border-color .16s ease }
-input, textarea, select { transition: border-color .16s ease }
+input, textarea { transition: border-color .16s ease }
 .card, .tl-card, .claim-card, .run-row, .proj-row, .provider-card { transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0ms !important; transition-duration: .01ms !important } }
 
@@ -643,28 +679,74 @@ input, textarea, select { transition: border-color .16s ease }
 .ap-row:hover, .ap-row:focus-visible { background: var(--rowh); outline: none }
 .ap-row .t { font: 500 14px var(--sans) } .ap-row .sub { font-size: 12.5px }
 
-/* ── Dropdowns: one look for every <select> (owner feedback, 2026-11-17) ────────
-   The native arrow is replaced by a quiet chevron (its gray reads in both themes); the
-   option list follows the theme through color-scheme and these colors. */
-select, select.input, select.filter, select.model-pick {
-  -webkit-appearance: none; appearance: none; cursor: pointer; color: var(--fg);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5 5 6.5 8 3.5' fill='none' stroke='%238f8a81' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-position: right 10px center; background-size: 10px 10px;
+/* ── The app's dropdown (components/Select.tsx): a button and its listbox ────── */
+.sel-btn {
+  position: relative;
+  display: inline-flex; align-items: center; max-width: 100%; min-width: 0;
+  border: 0; background-color: transparent; color: var(--fg); font: inherit; text-align: left; cursor: pointer;
   transition: border-color .16s ease, background-color .16s ease;
 }
-select, select.input { background-color: var(--card); border: 1px solid var(--line2); border-radius: 8px; padding: 7px 30px 7px 11px; font: 400 13.5px/1.3 var(--sans); min-height: 34px; text-overflow: ellipsis }
-select:hover, select.input:hover { border-color: var(--dim) }
-select:focus-visible, select.input:focus-visible { outline: none; border-color: var(--accentLine); box-shadow: 0 0 0 3px var(--accentSoft) }
-select:disabled { cursor: default; opacity: .55 }
-select option, select optgroup { background: var(--card); color: var(--fg) }
-select optgroup { color: var(--faint); font-weight: 500 }
-select.filter { border-radius: 999px; padding: 4px 28px 4px 12px; min-height: 0; font: 500 12.5px var(--sans); background-color: var(--card); background-position: right 11px center; color: var(--fg2) }
-select.filter.on { background-color: var(--fg); color: var(--bg); border-color: var(--fg) }
-select.model-pick { border: none; background-color: transparent; padding: 3px 20px 3px 6px; border-radius: 6px; min-height: 0; font: 400 12.5px var(--sans); color: var(--muted); background-position: right 5px center; max-width: 240px }
-select.model-pick:hover { background-color: var(--hover); color: var(--fg) }
-select.model-pick:focus-visible { box-shadow: none; background-color: var(--hover) }
-.roles-row select { width: 100%; min-width: 0 }
-.roles-row select.input, .inline-edit select.input { padding-right: 28px; background-position: right 9px center }
+.sel-btn::after, .combo-btn::after {
+  content: ''; position: absolute; top: 50%; right: 10px; width: 10px; height: 10px;
+  transform: translateY(-50%); background-color: var(--faint2); pointer-events: none;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5 5 6.5 8 3.5' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 10px 10px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5 5 6.5 8 3.5' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 10px 10px no-repeat;
+}
+.sel-btn:focus-visible { outline: none }
+.sel-btn.open { color: var(--fg) }
+.sel-btn:disabled { cursor: default; opacity: .55 }
+.sel-text { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.sel-placeholder { color: var(--faint) }
+.sel-input {
+  width: 100%; background-color: var(--card); border: 1px solid var(--line2); border-radius: 8px;
+  padding: 7px 30px 7px 11px; min-height: 34px; font: 400 13.5px/1.3 var(--sans); color: var(--fg);
+}
+.sel-input:hover, .sel-input.open { border-color: var(--dim) }
+.sel-input:focus-visible { border-color: var(--accentLine); box-shadow: 0 0 0 3px var(--accentSoft) }
+.sel-big {
+  width: 100%; background-color: var(--card); border: 1px solid var(--line2); border-radius: 9px;
+  padding: 10px 30px 10px 12px; font: 400 14px/1.3 var(--sans); color: var(--fg);
+}
+.sel-big:hover, .sel-big.open { border-color: var(--dim) }
+.sel-big:focus-visible { border-color: var(--accentLine); box-shadow: 0 0 0 3px var(--accentSoft) }
+.sel-filter {
+  border: 1px solid var(--line2); background-color: var(--card); color: var(--fg2);
+  border-radius: 999px; padding: 4px 28px 4px 12px; font: 500 12.5px var(--sans);
+}
+.sel-filter:hover, .sel-filter.open { border-color: var(--dim) }
+.sel-filter:focus-visible { border-color: var(--accentLine); box-shadow: 0 0 0 3px var(--accentSoft) }
+.sel-filter.on { background-color: var(--fg); color: var(--bg); border-color: var(--fg) }
+.sel-pick {
+  border: 0; background-color: transparent; color: var(--muted);
+  border-radius: 6px; padding: 3px 20px 3px 6px; font: 400 12.5px var(--sans);
+  max-width: 240px;
+}
+.sel-pick:hover, .sel-pick.open { background-color: var(--hover); color: var(--fg) }
+.sel-pick:focus-visible { background-color: var(--hover); color: var(--fg) }
+.sel-pick::after { right: 5px }
+.sel-input.version-pick {
+  width: auto; height: 28px; min-height: 0; padding: 4px 22px 4px 9px; font-size: 12px;
+  border-radius: 7px; color: var(--fg2); flex: none;
+}
+.sel-input.version-pick::after { right: 7px }
+.model-picker .sel-input, .set-row2 .ctl .sel-input { width: auto }
+.sel-scrim { position: fixed; inset: 0; z-index: 80; background: transparent }
+.sel-pop {
+  position: fixed; z-index: 81; min-width: 180px; max-height: 320px; overflow: auto;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 6px;
+  animation: pop .14s ease both;
+}
+.sel-pop.closing { animation: sink .16s ease both }
+.sel-group { padding: 8px 10px 3px; font: 500 11.5px var(--sans); color: var(--faint) }
+.sel-opt {
+  display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; align-items: start;
+  padding: 7px 10px; border-radius: 8px; font-size: 13.5px; color: var(--fg); cursor: pointer;
+}
+.sel-opt:hover, .sel-opt.act { background: var(--side) }
+.sel-opt.on { font-weight: 500 }
+.sel-opt.dis { opacity: .5; cursor: default }
+.sel-opt.dis:hover { background: transparent }
+.sel-check { color: var(--accentInk); font-size: 12px; line-height: 1.35; text-align: center }
 
 /* The reviewer's mode: one slider, four locked stops, each including the ones before it. */
 .mode-slider { display: flex; flex-direction: column; gap: 6px; padding: 6px 12px 0 }
@@ -707,11 +789,11 @@ select.model-pick:focus-visible { box-shadow: none; background-color: var(--hove
 .chip-opt { border: 1px solid var(--line2); background: var(--card); color: var(--fg2); border-radius: 999px; padding: 4px 10px; font: 500 12px var(--sans) }
 .chip-opt.on { border-color: var(--accentLine); background: var(--accentSoft); color: var(--accentInk) }
 .model-picker { display: inline-flex; align-items: center; gap: 6px; min-width: 0 }
-.combo-btn { display: inline-flex; align-items: center; text-align: left; min-width: 160px; max-width: 280px; padding: 7px 30px 7px 11px; cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5 5 6.5 8 3.5' fill='none' stroke='%238f8a81' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-position: right 10px center; background-size: 10px; background-color: var(--card); font: 400 13.5px var(--sans); color: var(--fg); border: 1px solid var(--line2); border-radius: 8px }
+.combo-btn { position: relative; display: inline-flex; align-items: center; text-align: left; min-width: 160px; max-width: 280px; padding: 7px 30px 7px 11px; cursor: pointer;
+  background-color: var(--card); font: 400 13.5px var(--sans); color: var(--fg); border: 1px solid var(--line2); border-radius: 8px }
 .combo-btn:hover { border-color: var(--dim) }
-.model-pick.combo-btn { min-width: 0; border: none; background-color: transparent; padding: 3px 20px 3px 6px; font-size: 12.5px; color: var(--muted); background-position: right 5px center }
+.model-pick.combo-btn { min-width: 0; border: none; background-color: transparent; padding: 3px 20px 3px 6px; font-size: 12.5px; color: var(--muted) }
+.model-pick.combo-btn::after { right: 5px }
 .combo-scrim { position: fixed; inset: 0; z-index: 60 }
 .combo-pop { position: fixed; max-height: 340px; display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; animation: fade .14s ease both }
 .combo-search { border: none; border-bottom: 1px solid var(--line); outline: none; background: transparent; padding: 10px 12px; font: 400 13.5px var(--sans); color: var(--fg) }
@@ -729,3 +811,30 @@ select.model-pick:focus-visible { box-shadow: none; background-color: var(--hove
 .palette.add-provider { animation: pop .2s cubic-bezier(.2,.7,.3,1) both }
 .view-fwd { animation: slideR .22s cubic-bezier(.2,.7,.3,1) both }
 .view-back { animation: slideL .22s cubic-bezier(.2,.7,.3,1) both }
+.connect-card { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 12px }
+.connect-title { font: 500 20px/1.3 var(--serif); margin: 0; text-align: center }
+.connect-scopes { display: flex; flex-direction: column; gap: 8px }
+.connect-scope { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px }
+.connect-scope span { display: flex; flex-direction: column; gap: 2px }
+.connect-actions { display: flex; gap: 8px; justify-content: flex-end }
+
+/* ── Tools & Secrets: integrations and connected apps, from the mockup's tools tabs ── */
+.int-list { display: flex; flex-direction: column; gap: 12px }
+.int-card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; animation: rise .32s cubic-bezier(.2,.7,.3,1) both }
+.int-card.off .int-tool, .int-card.off .int-calls { opacity: .55 }
+.int-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--soft); flex-wrap: wrap }
+.int-title { display: flex; align-items: center; gap: 10px; min-width: 0 }
+.int-dot { width: 7px; height: 7px; border-radius: 50%; flex: none }
+.int-name { font: 500 14px var(--sans) }
+.int-status { font: 400 12.5px var(--sans); color: var(--faint); min-width: 0; overflow-wrap: anywhere }
+.int-actions, .int-confirm, .app-actions { display: flex; align-items: center; gap: 12px }
+.int-note { padding: 9px 14px; font: 400 12.5px var(--sans); color: var(--muted); border-bottom: 1px solid var(--soft); animation: fade .22s ease both }
+.int-tool { display: flex; align-items: center; gap: 10px; padding: 8px 14px 8px 31px; animation: rise .32s cubic-bezier(.2,.7,.3,1) both; transition: opacity .18s ease }
+.int-tool.gone { opacity: .5 }
+.int-tool-name { font: 400 12.5px var(--mono); color: var(--fg2); margin-right: auto; min-width: 0; overflow-wrap: anywhere }
+.int-tool .seg button { padding: 3px 9px; font-size: 11.5px }
+.int-tool .seg button:disabled { opacity: .6 }
+.int-calls { padding: 8px 14px 12px; border-top: 1px solid var(--soft); display: flex; flex-direction: column; gap: 4px }
+.int-call { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; gap: 10px; font-size: 12.5px; align-items: baseline; animation: rise .32s cubic-bezier(.2,.7,.3,1) both }
+.app-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 14px; border-bottom: 1px solid var(--soft); animation: rise .32s cubic-bezier(.2,.7,.3,1) both }
+.app-name { font: 500 14px var(--sans) }

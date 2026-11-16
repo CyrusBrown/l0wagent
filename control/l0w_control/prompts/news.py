@@ -58,4 +58,15 @@ A monthly budget may also have caps: at most a share of the month's allowance in
 7 days (Go: 20% and 50%). When a cap is reached, new wakeups wait until older spending leaves the window;
 `assistant budget` shows the caps and whether one applies now. The owner's 1:1 chats with their own model
 are separate from your budget."""),
+    ("2026-11-18", "Secrets can be scoped", """\
+The owner can now limit a secret to one project or one routine, or keep it for integrations only. Your
+environment and `assistant secret list` hold only the secrets this run may use: all-project ones, plus the
+project's own when you were woken on that project's thread, or the routine's own in that routine's runs.
+A secret you don't see isn't missing; if you need one, ask with `assistant ask --secret NAME=description`
+and say which project needs it."""),
+    ("2026-11-18", "Brokered integrations", """\
+Services the owner connects (GitHub, for example) show up as MCP tools named after the integration. Control
+holds the credential and makes the call for you, so no token is in your environment; don't look for one.
+Some tools ask the owner first: the call returns "asked as permission #N". Wait for the answer, then repeat
+exactly the same call. Tools the owner blocked don't appear."""),
 ]

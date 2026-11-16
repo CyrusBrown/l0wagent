@@ -3,9 +3,11 @@ import { Link, useSearchParams } from 'react-router'
 import type { S } from '../api/client'
 import { problem, uploadFile, useAddToShelf, useFileDiff, useFileHistory, useListing, useProjects } from '../api/queries'
 import { ago, bytes } from '../components/format'
-import { copyText } from '../components/clipboard'
+import { CopyButton } from '../components/CopyButton'
 import { kindOf, Preview, rawUrl } from '../components/Preview'
 import { Caret } from '../components/Caret'
+import { Select } from '../components/Select'
+import { useEscape } from '../components/useEscape'
 
 type Volume = S['Listing']['volume']
 const ROOTS: [Volume | 'shared', string, string][] = [
@@ -125,6 +127,7 @@ function FolderActions({ volume, path }: { volume: Volume; path: string }) {
   const [status, setStatus] = useState<string | null>(null)
   const picker = useRef<HTMLInputElement>(null)
   const [target, setTarget] = useState<string | null>(null)
+  useEscape(open, () => setOpen(false))
   return (
     <div className="btns" style={{ position: 'relative' }}>
       <button className="btn" onClick={() => setOpen(!open)}>Upload to a project</button>
@@ -153,11 +156,12 @@ function FolderActions({ volume, path }: { volume: Volume; path: string }) {
 function FileActions({ volume, path, git, rev, setRev }: { volume: Volume; path: string; git: boolean; rev: string | null; setRev: (r: string | null) => void }) {
   const [menu, setMenu] = useState<'history' | 'shelf' | null>(null)
   const history = useFileHistory(volume, path, git)
+  useEscape(!!menu, () => setMenu(null))
   return (
     <div className="btns" style={{ position: 'relative' }}>
       {git && <button className={`btn ${menu === 'history' ? 'pressed' : ''}`} onClick={() => setMenu(menu === 'history' ? null : 'history')}>History ▾</button>}
       <button className={`btn ${menu === 'shelf' ? 'pressed' : ''}`} onClick={() => setMenu(menu === 'shelf' ? null : 'shelf')}>Add to shelf ▾</button>
-      <CopyButton volume={volume} path={path} />
+      <CopyButton src={{ kind: 'file', volume, path }} />
       <a className="btn" href={rawUrl({ kind: 'file', volume, path }, true)}>Download</a>
       {menu && <div className="menu-scrim" onClick={() => setMenu(null)} />}
       {menu === 'history' && (
@@ -179,37 +183,6 @@ function FileActions({ volume, path, git, rev, setRev }: { volume: Volume; path:
   )
 }
 
-/** Copy the file's text (for text files) or its path; the menu says which was copied. */
-function CopyButton({ volume, path }: { volume: Volume; path: string }) {
-  const [open, setOpen] = useState(false)
-  const [done, setDone] = useState<string | null>(null)
-  const textual = kindOf(path) !== 'binary' && !['image', 'pdf', 'audio', 'video', 'model'].includes(kindOf(path))
-  const full = `/${volume}/${path}`.replace(/\/+/g, '/')
-  const flash = (msg: string) => { setDone(msg); setOpen(false); setTimeout(() => setDone(null), 1600) }
-  const copy = async (what: 'contents' | 'path') => {
-    if (what === 'path') return flash((await copyText(full)) ? 'Path copied' : 'Couldn\'t copy')
-    try {
-      const r = await fetch(rawUrl({ kind: 'file', volume, path }), { credentials: 'include' })
-      if (!r.ok) throw new Error(String(r.status))
-      flash((await copyText(await r.text())) ? 'Copied' : 'Couldn\'t copy')
-    } catch { flash('Couldn\'t copy') }
-  }
-  return (
-    <div style={{ position: 'relative' }}>
-      <button className={`btn ${open ? 'pressed' : ''}`} onClick={() => (textual ? setOpen(!open) : copy('path'))} aria-label="Copy">
-        {done ?? (textual ? 'Copy ▾' : 'Copy path')}
-      </button>
-      {open && <>
-        <div className="menu-scrim" onClick={() => setOpen(false)} />
-        <div className="menu" style={{ left: 0, right: 'auto' }}>
-          <button onClick={() => copy('contents')}>Copy contents</button>
-          <button onClick={() => copy('path')}>Copy path <span className="sub mono">{full}</span></button>
-        </div>
-      </>}
-    </div>
-  )
-}
-
 function ShelfMenu({ volume, path, done }: { volume: Volume; path: string; done: () => void }) {
   const projects = useProjects('active')
   const add = useAddToShelf()
@@ -224,7 +197,9 @@ function ShelfMenu({ volume, path, done }: { volume: Volume; path: string; done:
     }}>
       <div className="section-label">Add to a project's shelf</div>
       {projects.data?.length === 0 ? <div className="sub">Create a project first.</div> : (
-        <select className="input" value={project} onChange={(e) => setProject(e.target.value)}>{projects.data?.map((p) => <option key={p.slug} value={p.slug}>{p.name}</option>)}</select>
+        <Select variant="input" value={project} label="Project"
+          options={projects.data?.map((p) => ({ value: p.slug, label: p.name })) ?? []}
+          onChange={setProject} />
       )}
       <div className="seg">
         <button type="button" className={mode === 'live' ? 'on' : ''} onClick={() => setMode('live')}>Live</button>

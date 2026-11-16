@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { problem, useAddApiProvider, useBudget, useClaudeLoginCode, useClaudeLoginStart, useLogin, usePatchBudget, useProviders, useSelftest, useSetupOwner, useSystem } from '../api/queries'
 import { SelfTestList } from './Settings'
+import { Select } from '../components/Select'
 
 // The mockup's wizard. The Hub step appears once /api/meta advertises a hub (later).
 const STEPS: [label: string, title: string, text: string][] = [
@@ -68,9 +69,9 @@ export function Setup({ onDone }: { onDone: () => void }) {
           )}
           {step === 1 && (
             <div className="setup-fields">
-              <select className="input big" value={f.timezone} onChange={(e) => setF({ ...f, timezone: e.target.value })}>
-                {tzList.map((z) => <option key={z} value={z}>{z}</option>)}
-              </select>
+              <Select variant="big" value={f.timezone} label="Timezone"
+                options={tzList.map((z) => ({ value: z, label: z }))}
+                onChange={(v) => setF({ ...f, timezone: v })} />
               <div className="sub">Detected from this browser.</div>
             </div>
           )}

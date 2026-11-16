@@ -40,6 +40,10 @@ class World:
     file_text: dict[str, str] = field(default_factory=dict)
     sessions: dict[str, s.AuthSession] = field(default_factory=dict)
     secrets: dict[str, s.SecretInfo] = field(default_factory=dict)
+    egress_rules: dict[int, s.EgressRule] = field(default_factory=dict)
+    egress_log: list[s.EgressRequest] = field(default_factory=list)
+    integrations: dict[str, s.Integration] = field(default_factory=dict)
+    connected_apps: list[s.ConnectedApp] = field(default_factory=list)
     chats: dict[int, s.Chat] = field(default_factory=dict)
     chat_messages: dict[int, list[s.ChatMessage]] = field(default_factory=dict)
     wakeups: dict[int, s.Wakeup] = field(default_factory=dict)
@@ -58,8 +62,44 @@ def build(now: datetime | None = None) -> World:
     w = World(now=now)
     ago = lambda **kw: now - timedelta(**kw)  # noqa: E731
 
-    for name, desc, reads in (("GITHUB_TOKEN", "Fine-grained, repo: garden-irrigation", 14), ("HOME_ASSISTANT_TOKEN", "Long-lived token, read-only user", 3)):
-        w.secrets[name] = s.SecretInfo(name=name, description=desc, scope="agent", created_at=ago(days=20), updated_at=ago(days=6), reads=reads, last_read_at=ago(hours=9))
+    for name, desc, reads, scope, label in (("GITHUB_TOKEN", "Fine-grained, repo: garden-irrigation", 14, "agent", "All projects"),
+                                            ("HOME_ASSISTANT_TOKEN", "Long-lived token, read-only user", 3, "project:garden-irrigation", "Garden irrigation")):
+        w.secrets[name] = s.SecretInfo(name=name, description=desc, scope=scope, scope_label=label, created_at=ago(days=20), updated_at=ago(days=6), reads=reads, last_read_at=ago(hours=9))
+    # Network: the mockup's rules and request log.
+    for i, (pattern, action, note, hits) in enumerate([("*.github.com", "allow", "", 212), ("pypi.org", "allow_ro", "permission #4", 31),
+                                                       ("api.open-meteo.com", "allow", "", 48), ("garden-broker.local:1883", "allow", "", 96)], 1):
+        w.egress_rules[i] = s.EgressRule(id=i, pattern=pattern, action=action, note=note, created_at=ago(days=10 - i), hits_7d=hits)  # type: ignore[arg-type]
+    def tools(*rows: tuple[str, str, bool, str]) -> list[s.IntegrationTool]:
+        return [s.IntegrationTool(name=n, description=d, read_only=ro, policy=p, present=True) for n, d, ro, p in rows]  # type: ignore[arg-type]
+
+    w.connected_apps = [s.ConnectedApp(id=2, name="Claude", scopes=["read", "wake"], chat_id=None, created_at=ago(days=9), last_used_at=ago(hours=3)),
+                        s.ConnectedApp(id=1, name="Claude Desktop", scopes=["read", "write"], chat_id=None, created_at=ago(days=15), last_used_at=ago(days=1))]
+    w.integrations["fastmail"] = s.Integration(
+        name="fastmail", title="Fastmail", preset=None, url="https://mcp.fastmail.example/mcp", auth_secret="FASTMAIL_APP_PW", secret_saved=True,
+        enabled=True, status="ok", last_error=None, synced_at=ago(hours=3), created_at=ago(days=9),
+        tools=tools(("search_mail", "Search messages by sender, subject or date.", True, "allowed"), ("read_message", "Read one message.", True, "allowed"),
+                    ("send_message", "Send a message from the owner's address.", False, "ask")),
+        recent_calls=[s.IntegrationCall(tool="search_mail", run_id=123, outcome="ok", permission_id=None, detail=None, at=ago(hours=2)),
+                      s.IntegrationCall(tool="send_message", run_id=123, outcome="asked", permission_id=None, detail="Waiting for your approval", at=ago(hours=5))])
+    w.integrations["github"] = s.Integration(
+        name="github", title="GitHub", preset="github", url="https://api.githubcopilot.com/mcp/", auth_secret="GITHUB_TOKEN", secret_saved=True,
+        enabled=True, status="ok", last_error=None, synced_at=ago(days=1), created_at=ago(days=14),
+        tools=tools(("read_repo", "Read files and history in a repository.", True, "allowed"), ("open_pull_request", "Open a pull request.", False, "ask"),
+                    ("delete_branch", "Delete a branch.", False, "blocked")),
+        recent_calls=[s.IntegrationCall(tool="read_repo", run_id=123, outcome="ok", permission_id=None, detail=None, at=ago(hours=9))])
+    w.integrations["home-assistant"] = s.Integration(
+        name="home-assistant", title="Home Assistant", preset=None, url="http://homeassistant.local:8123/mcp_server/sse", auth_secret="HOME_ASSISTANT_TOKEN",
+        secret_saved=True, enabled=True, status="error", last_error="The server refused the token (401). It may have expired.", synced_at=ago(days=2),
+        created_at=ago(days=20),
+        tools=tools(("get_state", "Read an entity's state.", True, "allowed"), ("call_service", "Call a Home Assistant service.", False, "ask")),
+        recent_calls=[])
+    for i, (mins, method, host, port, url, action, status, size) in enumerate([
+            (3, "GET", "api.github.com", 443, "/repos/mk/garden-fw", "allowed", 200, 14_000), (4, "POST", "api.anthropic.com", 443, "/v1/messages", "allowed", 200, 82_000),
+            (5, "GET", "tracker.example-ads.net", 443, "/pixel", "blocked", 403, 0), (6, "GET", "pypi.org", 443, "/simple/pytz/", "allowed", 200, 31_000),
+            (8, "POST", "pypi.org", 443, "/legacy/", "blocked", 403, 0), (11, "GET", "api.open-meteo.com", 443, "/v1/forecast", "allowed", 200, 6_000),
+            (17, "CONNECT", "garden-broker.local", 1883, None, "allowed", None, 200), (80, "GET", "api.github.com", 443, "/user", "allowed", 200, 2_000)]):
+        w.egress_log.append(s.EgressRequest(id=100 - i, at=ago(minutes=mins), method=method, host=host, port=port, url=url, action=action,
+                                            reason="blocked by policy" if action == "blocked" else None, status=status, bytes_down=size))
 
     # ── Projects ───────────────────────────────────────────────────────────
     def project(slug, name, status, summary, last, doc=True):

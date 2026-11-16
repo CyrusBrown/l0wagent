@@ -1,8 +1,10 @@
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { S } from '../api/client'
 import { useProviderCatalog } from '../api/queries'
 import { joinTier, modelChoices, splitTier, type ModelChoice } from './models'
+import { Select } from './Select'
+import { useEscape } from './useEscape'
 
 // Settings controls (owner feedback, 2026-11-17): every value is edited in place and saved when
 // it changes, with a quiet "Saved" note; no chips that open editors, no Save buttons (except
@@ -135,9 +137,9 @@ export function ModelPicker({ providers, provider, tier, onChange, label, fixedP
         groups={groups.map(({ p, models }) => ({ id: p.id, label: p.label, items: models.map((m) => ({ id: m.id, label: m.label, meta: m.price, on: p.id === provider && m.id === model })) }))}
         onPick={(gid, id) => { const g = groups.find((x) => x.p.id === gid)!; pick(gid, g.models.find((m) => m.id === id)!) }} compact={compact} />
       {efforts.length > 0 && (
-        <select className={compact ? 'model-pick' : 'input'} value={effort ?? ''} aria-label={`${label} effort`} onChange={(e) => onChange(provider, joinTier(model, e.target.value || null))} style={compact ? undefined : { width: 'auto' }}>
-          {efforts.map((e) => <option key={e} value={e}>{e}</option>)}
-        </select>
+        <Select variant={compact ? 'pick' : 'input'} value={effort ?? ''} label={`${label} effort`}
+          options={efforts.map((e) => ({ value: e, label: e }))}
+          onChange={(v) => onChange(provider, joinTier(model, v || null))} />
       )}
     </span>
   )
@@ -149,38 +151,63 @@ type ComboItem = { id: string; label: string; meta?: string; on?: boolean }
 function Combo({ label, text, groups, onPick, compact }: { label: string; text: string; groups: { id: string; label: string; items: ComboItem[] }[]; onPick: (group: string, id: string) => void; compact?: boolean }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
-  const [pos, setPos] = useState<{ left: number; top: number; width: number; up: boolean } | null>(null)
+  const [active, setActive] = useState(0)
+  const [pos, setPos] = useState<{ left: number; top: number; width: number; up: boolean; maxHeight: number } | null>(null)
   const btn = useRef<HTMLButtonElement>(null)
+  const list = useRef<HTMLDivElement>(null)
+  const base = useId()
+  const close = (refocus = true) => { setOpen(false); if (refocus) btn.current?.focus() }
+  useEscape(open, close)
   const show = () => {
     const r = btn.current!.getBoundingClientRect()
-    const up = r.bottom + 340 > window.innerHeight && r.top > 340
-    setPos({ left: Math.min(r.left, window.innerWidth - 340), top: up ? r.top - 6 : r.bottom + 6, width: Math.max(r.width, 320), up })
+    const roomBelow = window.innerHeight - r.bottom - 14
+    const roomAbove = r.top - 14
+    const up = roomBelow < 340 && roomAbove > roomBelow
+    const maxHeight = Math.max(120, Math.min(340, up ? roomAbove : roomBelow))
+    const width = Math.min(340, window.innerWidth - 16)
+    setPos({ left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)), top: up ? r.top - 6 : r.bottom + 6, width, up, maxHeight })
     setQ('')
+    setActive(Math.max(0, groups.flatMap((g) => g.items).findIndex((i) => i.on)))
     setOpen(true)
   }
   const ql = q.trim().toLowerCase()
   const shown = groups.map((g) => ({ ...g, items: g.items.filter((i) => !ql || `${i.label} ${i.id} ${g.label}`.toLowerCase().includes(ql)) })).filter((g) => g.items.length)
-  const first = shown[0]?.items[0]
+  const flat = shown.flatMap((g) => g.items.map((i) => ({ g, i })))
+  const act = flat.length ? Math.min(active, flat.length - 1) : -1
+  useEffect(() => { if (open && act >= 0) list.current?.querySelector<HTMLElement>(`[data-i="${act}"]`)?.scrollIntoView({ block: 'nearest' }) }, [act, open])
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (flat.length) setActive(Math.min(act + 1, flat.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (flat.length) setActive(Math.max(act - 1, 0)) }
+    else if (e.key === 'Home') { e.preventDefault(); setActive(0) }
+    else if (e.key === 'End') { e.preventDefault(); if (flat.length) setActive(flat.length - 1) }
+    else if (e.key === 'Tab') { close() }
+    else if (e.key === 'Enter') { e.preventDefault(); const p = flat[act]; if (p) { onPick(p.g.id, p.i.id); close() } }
+  }
   return <>
-    <button ref={btn} type="button" className={compact ? 'model-pick combo-btn' : 'input combo-btn'} aria-label={label} aria-haspopup="listbox" aria-expanded={open} onClick={() => (open ? setOpen(false) : show())}>
+    <button ref={btn} type="button" className={compact ? 'model-pick combo-btn' : 'input combo-btn'} aria-label={label} aria-haspopup="listbox" aria-expanded={open} onClick={() => (open ? close() : show())}>
       <span className="ellipsis">{text}</span>
     </button>
     {open && pos && createPortal(
-      <div className="combo-scrim" onClick={() => setOpen(false)}>
-        <div className="combo-pop" role="listbox" aria-label={label} onClick={(e) => e.stopPropagation()}
-          style={{ left: pos.left, width: pos.width, ...(pos.up ? { bottom: window.innerHeight - pos.top } : { top: pos.top }) }}>
-          <input autoFocus className="combo-search" placeholder="Search models" value={q} onChange={(e) => setQ(e.target.value)} aria-label={`Search ${label}`}
-            onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); if (e.key === 'Enter' && first) { onPick(shown[0].id, first.id); setOpen(false) } }} />
-          <div className="combo-list">
+      <div className="combo-scrim" onClick={() => close(false)}>
+        <div className="combo-pop" role="listbox" aria-label={label} id={`${base}-list`} onClick={(e) => e.stopPropagation()}
+          style={{ left: pos.left, width: pos.width, maxHeight: pos.maxHeight, ...(pos.up ? { bottom: window.innerHeight - pos.top } : { top: pos.top }) }}>
+          <input autoFocus className="combo-search" placeholder="Search models" value={q} onChange={(e) => { setQ(e.target.value); setActive(0) }} aria-label={`Search ${label}`}
+            role="combobox" aria-expanded={open} aria-controls={`${base}-list`} aria-autocomplete="list"
+            aria-activedescendant={act >= 0 ? `${base}-opt-${act}` : undefined} onKeyDown={onKey} />
+          <div className="combo-list" ref={list}>
             {shown.map((g) => (
               <div key={g.id}>
                 {groups.length > 1 && <div className="combo-group">{g.label}</div>}
-                {g.items.map((i) => (
-                  <button key={i.id} type="button" role="option" aria-selected={!!i.on} className={`combo-item ${i.on ? 'on' : ''}`} onClick={() => { onPick(g.id, i.id); setOpen(false) }}>
-                    <span className="stack" style={{ gap: 1, minWidth: 0 }}><span className="ellipsis">{i.label}</span>{i.id !== i.label.toLowerCase() && <span className="sub mono ellipsis">{i.id}</span>}</span>
-                    {i.meta && <span className="sub">{i.meta}</span>}
-                  </button>
-                ))}
+                {g.items.map((i) => {
+                  const n = flat.findIndex((x) => x.g === g && x.i === i)
+                  return (
+                    <button key={i.id} id={`${base}-opt-${n}`} data-i={n} type="button" role="option" aria-selected={!!i.on} className={`combo-item ${i.on ? 'on' : ''}`}
+                      style={n === act && !i.on ? { background: 'var(--rowh)' } : undefined} onMouseEnter={() => setActive(n)} onClick={() => { onPick(g.id, i.id); close() }}>
+                      <span className="stack" style={{ gap: 1, minWidth: 0 }}><span className="ellipsis">{i.label}</span>{i.id !== i.label.toLowerCase() && <span className="sub mono ellipsis">{i.id}</span>}</span>
+                      {i.meta && <span className="sub">{i.meta}</span>}
+                    </button>
+                  )
+                })}
               </div>
             ))}
             {!shown.length && <div className="sub" style={{ padding: 12 }}>No model matches “{q}”.</div>}

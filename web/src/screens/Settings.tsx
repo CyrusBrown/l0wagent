@@ -6,6 +6,7 @@ import {
 } from '../api/queries'
 import { ago, clock, usageText } from '../components/format'
 import { useTheme, type ThemePref } from '../app/theme'
+import { useTimeFormat, type TimeFormat } from '../app/timeFormat'
 import { Budgets, Instructions, Providers, Reviewer, Roles } from './SettingsBudget'
 import { Notifications } from './SettingsNotify'
 
@@ -55,19 +56,35 @@ function Later({ title, text }: { title: string; text: string }) {
 
 function Appearance() {
   const { pref, setPref } = useTheme()
+  const { format, setFormat } = useTimeFormat()
   const opts: [ThemePref, string, string][] = [['light', 'Light', 'Warm off-white'], ['dark', 'Dark', 'Warm charcoal'], ['system', 'Match system', 'Follows your OS setting']]
+  const timeOpts: [TimeFormat, string, string][] = [['24h', '24-hour', '02:00, 14:00'], ['12h', '12-hour', '2:00 AM, 2:00 PM']]
   return (
-    <section className="set-section">
-      <div className="set-title">Theme</div>
-      <div className="theme-opts">
-        {opts.map(([k, label, desc]) => (
-          <button key={k} className={`theme-opt ${pref === k ? 'on' : ''}`} onClick={() => setPref(k)} aria-pressed={pref === k}>
-            <span className="ring" />
-            <span className="stack" style={{ gap: 2 }}><span style={{ font: '500 14px var(--sans)' }}>{label}</span><span className="sub" style={{ fontSize: 12 }}>{desc}</span></span>
-          </button>
-        ))}
-      </div>
-    </section>
+    <>
+      <section className="set-section">
+        <div className="set-title">Theme</div>
+        <div className="theme-opts">
+          {opts.map(([k, label, desc]) => (
+            <button key={k} className={`theme-opt ${pref === k ? 'on' : ''}`} onClick={() => setPref(k)} aria-pressed={pref === k}>
+              <span className="ring" />
+              <span className="stack" style={{ gap: 2 }}><span style={{ font: '500 14px var(--sans)' }}>{label}</span><span className="sub" style={{ fontSize: 12 }}>{desc}</span></span>
+            </button>
+          ))}
+        </div>
+      </section>
+      <section className="set-section">
+        <div className="set-title">Time</div>
+        <div className="sub" style={{ fontSize: 13 }}>How clock times show across the app.</div>
+        <div className="theme-opts">
+          {timeOpts.map(([k, label, desc]) => (
+            <button key={k} className={`theme-opt ${format === k ? 'on' : ''}`} onClick={() => setFormat(k)} aria-pressed={format === k}>
+              <span className="ring" />
+              <span className="stack" style={{ gap: 2 }}><span style={{ font: '500 14px var(--sans)' }}>{label}</span><span className="sub" style={{ fontSize: 12 }}>{desc}</span></span>
+            </button>
+          ))}
+        </div>
+      </section>
+    </>
   )
 }
 
@@ -182,6 +199,7 @@ function Sessions() {
 
 // ── System ───────────────────────────────────────────────────────────────
 function System() {
+  useTimeFormat()
   const sys = useSystem()
   const test = useSelftest()
   const d = sys.data

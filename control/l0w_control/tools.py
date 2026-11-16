@@ -31,8 +31,12 @@ class Ctx:
 
     be: Any                       # the backend
     chat_id: int | None = None
-    client: str | None = None     # e.g. "mcp:Claude Desktop"
+    client: str | None = None     # e.g. "connector:Claude Desktop"
+    base_url: str | None = None   # outside clients get https links; the in-app chat gets l0wagent:// ones
     cards: list[dict] = field(default_factory=list)  # cards proposed during this turn
+
+    def link(self, thread_id: int) -> str:
+        return f"{self.base_url}/t/{thread_id}" if self.base_url else f"l0wagent://thread/{thread_id}"
 
     @property
     def via(self) -> str:
@@ -122,7 +126,7 @@ def read_thread(ctx: Ctx, a: dict) -> str:
             out.append({"type": "message", "id": msg["id"], "sender": msg["sender"], "at": msg["created_at"], "body": msg["body"]})
         else:
             out.append({k: v for k, v in d.items() if k in ("type", "question", "permission", "task", "claim", "suggestion", "promote", "card")})
-    return _j({"thread": {"id": t.id, "title": t.title, "project": t.project, "status": t.status}, "items": out, "link": f"l0wagent://thread/{tid}"})
+    return _j({"thread": {"id": t.id, "title": t.title, "project": t.project, "status": t.status}, "items": out, "link": ctx.link(tid)})
 
 
 def search(ctx: Ctx, a: dict) -> str:
@@ -177,13 +181,13 @@ def create_thread(ctx: Ctx, a: dict) -> str:
     conv = ctx.be.conv
     t = conv.create_thread(title, project, "chat")
     conv.post_owner_message(t.id, body, [], None, via=ctx.via)
-    return _j({"created": {"thread_id": t.id, "title": t.title, "project": t.project}, "link": f"l0wagent://thread/{t.id}"})
+    return _j({"created": {"thread_id": t.id, "title": t.title, "project": t.project}, "link": ctx.link(t.id)})
 
 
 def post_to_thread(ctx: Ctx, a: dict) -> str:
     tid = _int(a, "thread_id")
     m = ctx.be.conv.post_owner_message(tid, _str(a, "message", max_len=50_000), [], None, via=ctx.via)
-    return _j({"posted": {"thread_id": tid, "message_id": m.id}, "link": f"l0wagent://thread/{tid}"})
+    return _j({"posted": {"thread_id": tid, "message_id": m.id}, "link": ctx.link(tid)})
 
 
 def create_project(ctx: Ctx, a: dict) -> str:
@@ -215,6 +219,31 @@ def ask_for_secret(ctx: Ctx, a: dict) -> str:
     if not name.replace("_", "").isalnum():
         raise BadRequest("bad_input", "Secret names are letters, digits and underscores, e.g. GITHUB_TOKEN")
     return _card(ctx, "secret", name=name, description=_str(a, "description", required=False, max_len=500) or "", link=_str(a, "help_url", required=False, max_len=500))
+
+
+def propose_integration(ctx: Ctx, a: dict) -> str:
+    from .integrations import NAME_RE, PRESETS
+
+    preset = (_str(a, "preset", required=False, max_len=32) or "").strip().lower()
+    reason = _str(a, "reason", required=False, max_len=500) or ""
+    if preset:
+        p = PRESETS.get(preset)
+        if not p:
+            raise BadRequest("bad_input", f"Unknown preset {preset}. Presets: {', '.join(PRESETS)}. For anything else give name, title, url and secret_name.")
+        return _card(ctx, "integration", preset=preset, name=preset, title=p["title"], url=p["url"], secret_name=p["auth_secret"],
+                     guidance=p["guidance"], token_url=p["token_url"], reason=reason)
+    name = (_str(a, "name", max_len=32) or "").strip().lower()
+    if not NAME_RE.match(name):
+        raise BadRequest("bad_input", "name looks like home-assistant: lowercase letters, digits and -, 2-32 characters")
+    url = (_str(a, "url", max_len=500) or "").strip()
+    if not url.startswith(("http://", "https://")):
+        raise BadRequest("bad_input", "url is the MCP server's address and starts with http:// or https://")
+    secret = (_str(a, "secret_name", max_len=64) or "").strip().upper()
+    if not secret.replace("_", "").isalnum():
+        raise BadRequest("bad_input", "secret_name is letters, digits and underscores, e.g. HA_TOKEN")
+    return _card(ctx, "integration", preset=None, name=name, title=(_str(a, "title", required=False, max_len=80) or name).strip(), url=url,
+                 secret_name=secret, guidance=_str(a, "guidance", required=False, max_len=1000) or "", token_url=_str(a, "token_url", required=False, max_len=500) or None,
+                 reason=reason)
 
 
 def propose_wakeup(ctx: Ctx, a: dict) -> str:
@@ -303,7 +332,7 @@ def propose_handoff(ctx: Ctx, a: dict) -> str:
 P = {"type": "string"}
 N = {"type": "integer"}
 TOOLS: list[Tool] = [
-    Tool("status", "read", "What the assistant is doing now, its budget this week, what's waiting for the owner.", {}, (), status, "checked the status"),
+    Tool("status", "read", "What the assistant is doing now, its budget this period, what's waiting for the owner.", {}, (), status, "checked the status"),
     Tool("list_projects", "read", "The owner's projects.", {}, (), list_projects, "listed projects"),
     Tool("list_threads", "read", "Threads, optionally in one project (slug), optionally archived ones.",
          {"project": P, "archived": {"type": "boolean"}}, (), list_threads, "listed threads"),
@@ -313,7 +342,7 @@ TOOLS: list[Tool] = [
     Tool("list_runs", "read", "Recent runs (wakeups, replies, routines) with status and spend.", {"project": P, "limit": N}, (), list_runs, "listed runs"),
     Tool("read_run", "read", "One run and its timeline (simple view).", {"run_id": N}, ("run_id",), read_run, "read a run"),
     Tool("shelf", "read", "A project's shelf: the deliverables the assistant put on its Files tab.", {"project": P}, ("project",), shelf, "checked the shelf"),
-    Tool("wakeup_plan", "read", "The assistant's planned wakeups and this week's budget.", {}, (), wakeup_plan, "checked the wakeup plan"),
+    Tool("wakeup_plan", "read", "The assistant's planned wakeups and this period's budget.", {}, (), wakeup_plan, "checked the wakeup plan"),
     Tool("list_files", "read", "List a folder in the assistant's storage (volume workspace = its memory, work = project work). Read-only.",
          {"volume": P, "path": P}, (), list_files, "browsed the workspace"),
     Tool("read_file", "read", "Read a text file from the assistant's storage (read-only).", {"volume": P, "path": P}, ("path",), read_file, "read a file"),
@@ -328,6 +357,11 @@ TOOLS: list[Tool] = [
     Tool("ask_for_secret", "card", "Ask the owner to enter a secret (an API token, a password) on a secure input card. "
          "The value goes from their browser straight to control; you never see it, only that it was saved. Link the provider's token page.",
          {"name": P, "description": P, "help_url": P}, ("name",), ask_for_secret, "asked for a secret"),
+    Tool("propose_integration", "card", "Show a Connect integration card so the owner can connect a service (GitHub or another MCP server). "
+         "First explain the steps in your own words: open the provider's token page (give the link) and create a token with the exact permissions needed, "
+         "then paste it on the card. Never ask for the token in the conversation; the card has a secure input and the value goes straight to control. "
+         "Use preset for a known service (github); otherwise give name, title, url and secret_name.",
+         {"preset": P, "name": P, "title": P, "url": P, "secret_name": P, "guidance": P, "token_url": P, "reason": P}, (), propose_integration, "proposed an integration"),
     Tool("propose_wakeup", "card", "Propose an extra wakeup for the assistant (the owner approves it; it spends the allowance).",
          {"at": {"type": "string", "description": "ISO time; omit for as soon as possible"}, "budget": N, "reason": P}, ("budget", "reason"),
          propose_wakeup, "proposed a wakeup"),

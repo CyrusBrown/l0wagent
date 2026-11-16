@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useProjects, useSearch, useThreads } from '../api/queries'
 import { routeFor } from '../components/format'
+import { useEscape } from '../components/useEscape'
 
 type Hit = { group: string; title: string; sub?: string; to: string }
 
@@ -14,6 +15,9 @@ export function Palette({ onClose }: { onClose: () => void }) {
   const threads = useThreads()
   const projects = useProjects()
   const search = useSearch(debounced)
+  const prevFocus = useRef<HTMLElement | null>(document.activeElement as HTMLElement | null)
+  useEscape(true, onClose)
+  useEffect(() => () => { const el = prevFocus.current; if (el?.isConnected) el.focus() }, [])
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(q), 150)
@@ -52,12 +56,11 @@ export function Palette({ onClose }: { onClose: () => void }) {
   const groups = [...new Set(hits.map((h) => h.group))]
   return (
     <div className="scrim" onClick={onClose}>
-      <div className="palette" role="dialog" aria-label="Search" onClick={(e) => e.stopPropagation()}>
+      <div className="palette" role="dialog" aria-modal="true" aria-label="Search" onClick={(e) => e.stopPropagation()}>
         <input
           autoFocus placeholder="Search threads, messages, projects, files, runs…" value={q}
           onChange={(e) => { setQ(e.target.value); setSel(0) }}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') onClose()
             if (e.key === 'ArrowDown') { e.preventDefault(); setSel((s) => Math.min(s + 1, hits.length - 1)) }
             if (e.key === 'ArrowUp') { e.preventDefault(); setSel((s) => Math.max(s - 1, 0)) }
             if (e.key === 'Enter') go(hits[sel])

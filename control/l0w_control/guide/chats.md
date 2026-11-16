@@ -14,5 +14,6 @@ threads, projects, runs, files (read-only), budget and plan. Each chat is indepe
   each change, before and after. Nothing changes until you approve.
 - **Secrets** are always entered on a secure input card; the chat never sees the value.
 - **Pull in a thread** gives the chat a thread as read-only context.
-- Chats cost your own usage, not the assistant's allowance. On the Claude subscription, chats need
-  the chat sidecar (coming); with an API key or opencode Go they work now.
+- Chats cost your own usage, not the assistant's allowance. They work with an API key or opencode Go,
+  and on the Claude subscription through the chat runtime (a separate, locked-down service that runs
+  Claude Code with only the chat's tools).

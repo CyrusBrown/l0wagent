@@ -586,6 +586,92 @@ def chat_file(file_id: int, be: Be) -> Response:
                              "Content-Security-Policy": "sandbox; default-src 'none'"})
 
 
+# ── Network ────────────────────────────────────────────────────────────────
+@api.get("/network", tags=["network"])
+def network(be: Be, filter: Literal["all", "blocked", "get", "post", "hour"] = "all") -> s.NetworkView:
+    """Egress rules, the request log (newest first, up to 200, filtered) and the last day's busiest hosts."""
+    return be.network(filter)
+
+
+@api.post("/network/rules", tags=["network"])
+def add_egress_rule(req: s.EgressRuleCreate, be: Be) -> s.EgressRule:
+    """Online only. Blocking a model provider the assistant runs on is refused."""
+    return be.add_egress_rule(req)
+
+
+@api.delete("/network/rules/{rule_id}", tags=["network"])
+def delete_egress_rule(rule_id: int, be: Be) -> s.Ok:
+    be.delete_egress_rule(rule_id)
+    return s.Ok()
+
+
+# ── Integrations ───────────────────────────────────────────────────────────
+@api.get("/integrations", tags=["integrations"])
+def list_integrations(be: Be) -> list[s.Integration]:
+    return be.list_integrations()
+
+
+@api.get("/integrations/presets", tags=["integrations"])
+def integration_presets(be: Be) -> list[s.IntegrationPreset]:
+    return be.integration_presets()
+
+
+@api.post("/integrations", tags=["integrations"], status_code=201)
+def create_integration(req: s.IntegrationCreate, be: Be) -> s.Integration:
+    """Online only. Connects to the server and lists its tools when the token (if any) is already saved."""
+    return be.create_integration(req)
+
+
+@api.get("/integrations/{name}", tags=["integrations"])
+def get_integration(name: str, be: Be) -> s.Integration:
+    return be.get_integration(name)
+
+
+@api.patch("/integrations/{name}", tags=["integrations"])
+def update_integration(name: str, req: s.IntegrationPatch, be: Be) -> s.Integration:
+    return be.update_integration(name, req)
+
+
+@api.delete("/integrations/{name}", tags=["integrations"])
+def delete_integration(name: str, be: Be) -> s.Ok:
+    be.delete_integration(name)
+    return s.Ok()
+
+
+@api.post("/integrations/{name}/sync", tags=["integrations"])
+def sync_integration(name: str, be: Be) -> s.Integration:
+    """Ask the server for its tools again. New tools get the default policy; existing policies stay."""
+    return be.sync_integration(name)
+
+
+@api.put("/integrations/{name}/tools/{tool}", tags=["integrations"])
+def set_integration_tool_policy(name: str, tool: str, req: s.ToolPolicySet, be: Be) -> s.Integration:
+    return be.set_integration_tool_policy(name, tool, req.policy)
+
+
+# ── The MCP connector: the consent screen and connected apps ───────────────
+@api.get("/connector/request", tags=["connector"])
+def connect_request(request: Request, be: Be) -> s.ConnectRequest:
+    """Describe an OAuth authorization request (its query parameters, as /oauth/authorize got them)."""
+    return be.connect_request(dict(request.query_params))
+
+
+@api.post("/connector/consent", tags=["connector"])
+def connect_consent(req: s.ConnectConsent, be: Be) -> s.ConnectRedirect:
+    return be.connect_consent(req)
+
+
+@api.get("/connected-apps", tags=["connector"])
+def connected_apps(be: Be) -> list[s.ConnectedApp]:
+    return be.connected_apps()
+
+
+@api.delete("/connected-apps/{app_id}", tags=["connector"])
+def revoke_connected_app(app_id: int, be: Be) -> s.Ok:
+    be.revoke_connected_app(app_id)
+    return s.Ok()
+
+
 # ── Secrets ────────────────────────────────────────────────────────────────
 @api.get("/secrets", tags=["secrets"])
 def list_secrets(be: Be) -> list[s.SecretInfo]:

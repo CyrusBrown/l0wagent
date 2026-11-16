@@ -645,7 +645,7 @@ class Budgets:
         return None
 
     def check_text(self, pid: str) -> str:
-        """What `assistant budget` and `assistant wake plan --check` show."""
+        """What `assistant budget` and `assistant wake plan` show."""
         now = self.now()
         b = self.summary(pid, now)
         eff = self.effective(pid, now)

@@ -23,6 +23,7 @@ control/   FastAPI app (Python 3.12, SQLite, no ORM). api/ = schemas + owner rou
            tools.py (the chat's and the connector's tools, written once); chat_settings.py (settings the chat
            reads and proposes); guide/ (the user guide the chat's `help` tool reads: keep it current);
            catalog.py (opencode model catalogs and prices); notify.py (web push, ntfy);
+           integrations.py (brokered MCP servers); connector.py + api/connector_routes.py (/mcp, OAuth);
            updates.py (update check, draining); hostctl.py (host-side commands for ./l0w);
            db/migrations/ = versioned SQL
 agent/     the agent image: runner/ (runner.py, fake_claude.py, fake_opencode.py, opencode-plugin.js, selftest.py),
@@ -34,8 +35,8 @@ dev/       isolation-test.sh and notes on the fake runtime
 design/mockup/  the mockup bundle as exported, its extracted sources, and REVIEW.md
 cli/       l0w.py, the host CLI (`./l0w`: install, update, ops parity); stdlib only
 deploy/    control.Dockerfile (control + built web app); compose.yaml at the root is the release stack
+chat-runtime/  the stateless sidecar for Claude-subscription chats (Claude Code, no tools of its own, its own network)
 ```
-Created in their milestones: `chat-runtime/` (the stateless sidecar for subscription chats; not built yet).
 
 ## Commands
 ```

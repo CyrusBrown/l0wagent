@@ -8,8 +8,11 @@ tools are plain functions, so there's no shell anywhere:
   stored and replayed unchanged, thinking included.
 - `opencode-go`: Go's OpenAI-compatible endpoint (its models aren't Claude).
 - The Claude subscription's sanctioned client is Claude Code, a CLI with built-in shell tools,
-  so it doesn't run in control: that goes through the stateless chat-runtime sidecar (later
-  in M6). Until then a chat on the subscription says so.
+  so it doesn't run in control: each turn goes to the stateless chat-runtime sidecar
+  (`chat-runtime/`), which runs `claude -p` with its built-in tools off and only this chat's
+  tools, served by control over MCP at /api/chat-runtime/mcp with a token that lives for one
+  turn. The chat so far goes in as a transcript; the subscription's token is passed per turn
+  and never stored there. Tool calls and cards are recorded as the sidecar makes them.
 - `L0W_CHAT_FAKE=1` swaps every provider for a scripted model (tests, the e2e stack).
 
 **Usage** is the owner's own (`who='chat'` in the ledger, with the chat's id): it doesn't
@@ -302,6 +305,10 @@ class FakeClient:
                           "input": {"target": "new_thread", "mode": "transcript", "title": "Set up the drip timer",
                                     "message": "Please set up the drip timer for the tomatoes: 10 minutes at 06:00 daily. Details are in the attached chat."}}]
             return out
+        if not after_tool and "fake:integration" in last_owner:
+            out.text = "Create a fine-grained token on GitHub's token page, then paste it on the card."
+            out.calls = [{"id": f"c{time.time_ns()}", "name": "propose_integration", "input": {"preset": "github", "reason": "Read your repositories"}}]
+            return out
         if not after_tool and "fake:secret" in last_owner:
             out.calls = [{"id": f"c{time.time_ns()}", "name": "ask_for_secret",
                           "input": {"name": "GITHUB_TOKEN", "description": "A fine-grained token with read access to your repos", "help_url": "https://github.com/settings/tokens"}}]
@@ -321,12 +328,89 @@ class FakeClient:
         return out
 
 
+class SidecarClient:
+    """A turn on the Claude subscription, through the chat-runtime sidecar (see the module doc)."""
+
+    transport: httpx.AsyncBaseTransport | None = None  # tests stand in for the sidecar
+
+    def __init__(self, url: str, token: str, oauth_token: str, model: str, effort: str | None, mcp_url: str, issue_token, revoke_token):
+        self.url, self.token, self.oauth_token, self.model, self.effort = url, token, oauth_token, model, effort
+        self.mcp_url, self.issue_token, self.revoke_token = mcp_url, issue_token, revoke_token
+
+    @staticmethod
+    def transcript(rows: list[dict]) -> str:
+        parts: list[str] = []
+        for r in rows:
+            if r["role"] == "owner":
+                names = [f["name"] for f in r.get("blobs", [])]
+                parts.append("Owner: " + (r["body"] or "") + (f"\n(attached: {', '.join(names)}; not readable in this chat)" if names else ""))
+            elif r["role"] == "assistant" and (r["body"] or "").strip():
+                parts.append("You: " + r["body"])
+            elif r["role"] == "tool":
+                d = r["data"]
+                parts.append(f"[tool {d.get('name')} → {str(d.get('result', ''))[:2000]}]")
+            elif r["role"] == "system" and (r["body"] or "").strip():
+                parts.append("[note: " + r["body"] + "]")
+        last = next((i for i in range(len(parts) - 1, -1, -1) if parts[i].startswith("Owner: ")), None)
+        if last is None:
+            return "\n\n".join(parts)
+        earlier = "\n\n".join(parts[:last] + parts[last + 1:])
+        head = f"The conversation so far:\n\n{earlier}\n\n---\n\n" if earlier else ""
+        return head + "Reply to the owner's latest message:\n\n" + parts[last][len("Owner: "):]
+
+    async def turn(self, system: str, rows: list[dict], on_text) -> Turn:
+        mcp_token = self.issue_token()
+        out = Turn(model=self.model)
+        stderr, code, got_result = "", None, False
+        body = {"prompt": self.transcript(rows), "system": system, "model": self.model, "effort": self.effort,
+                "oauth_token": self.oauth_token, "mcp_url": self.mcp_url, "mcp_token": mcp_token}
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(660.0, connect=10.0), transport=self.transport) as http:
+                async with http.stream("POST", f"{self.url}/turn", json=body, headers={"Authorization": f"Bearer {self.token}"}) as r:
+                    if r.status_code != 200:
+                        raise ChatError(f"The chat runtime refused the turn (HTTP {r.status_code}): {(await r.aread()).decode(errors='replace')[:300]}")
+                    async for line in r.aiter_lines():
+                        try:
+                            ev = json.loads(line)
+                        except ValueError:
+                            continue
+                        t = ev.get("type")
+                        if t == "stream_event":
+                            delta = (ev.get("event") or {}).get("delta") or {}
+                            if delta.get("type") == "text_delta":
+                                out.text += delta.get("text", "")
+                                on_text(out.text)
+                        elif t == "assistant":
+                            texts = [b.get("text", "") for b in (ev.get("message") or {}).get("content", []) if b.get("type") == "text"]
+                            if texts and not out.text:
+                                out.text = "".join(texts)
+                        elif t == "result":
+                            got_result = True
+                            out.usage = ev.get("usage") or {}
+                            out.cost_usd = float(ev.get("total_cost_usd") or 0)
+                            out.stop = ev.get("subtype")
+                            if ev.get("result"):
+                                out.text = ev["result"]
+                            if ev.get("is_error"):
+                                raise ChatError(f"Claude stopped: {str(ev.get('result') or ev.get('subtype'))[:300]}")
+                        elif t == "runtime" and ev.get("event") == "exit":
+                            code, stderr = ev.get("returncode"), ev.get("stderr") or ""
+        except httpx.HTTPError as e:
+            raise ChatError(f"Couldn't reach the chat runtime: {type(e).__name__}.") from None
+        finally:
+            self.revoke_token(mcp_token)
+        if not got_result:
+            raise ChatError(f"The chat runtime's Claude Code exited ({code}) without a reply: {stderr[-300:].strip() or 'no output'}")
+        return out
+
+
 # ── the chats ─────────────────────────────────────────────────────────────
 class Chats:
     def __init__(self, db: Database, be, live, budgets, vault):
         self.db, self.be, self.live, self.budgets, self.vault = db, be, live, budgets, vault
         self.tasks: dict[int, asyncio.Task] = {}
         self.fake = os.environ.get("L0W_CHAT_FAKE") == "1"
+        self.turn_tokens: dict[str, tuple[int, float]] = {}  # sidecar MCP token → (chat id, expiry)
 
     def startup(self) -> None:
         self.db.ex("UPDATE chats SET busy=0 WHERE busy=1")  # a reply cut off by a restart
@@ -369,8 +453,11 @@ class Chats:
             return "That provider is off or removed."
         kind = self.budgets.kind(provider)
         if kind == SUBSCRIPTION:
-            return ("Chats on the Claude subscription need the chat sidecar, which isn't installed yet. "
-                    "Add an Anthropic API key or opencode Go (Settings → Providers) and pick it for the chat role.")
+            env = self.be.env
+            if not (env.chat_runtime_url and env.chat_runtime_token):
+                return ("Chats on the Claude subscription need the chat runtime (the chat-runtime service), which isn't set up here. "
+                        "Add an Anthropic API key or opencode Go (Settings → Providers) and pick it for the chat role.")
+            return None
         if not self.budgets.credential(provider):
             return "No key is saved for that provider."
         return None
@@ -465,6 +552,8 @@ class Chats:
             old = self.db.q1("SELECT * FROM chat_messages WHERE idempotency_key=?", (req.idempotency_key,))
             if old:
                 return self._msg(old)
+        if self.db.q1("SELECT 1 FROM oauth_grants WHERE chat_id=?", (chat_id,)):
+            raise Conflict("connector_chat", "This chat logs a connected app's tool calls and cards; start a new chat to talk.")
         if row["busy"]:
             raise Conflict("busy", "The chat is still replying.")
         why = self.available(row["provider"])
@@ -506,7 +595,63 @@ class Chats:
             return AnthropicClient(key, fam or "sonnet", effort or None), provider
         if kind == OPENCODE_GO:
             return OpenAICompatClient(key, spec["model"], spec["effort"], self._go_prices(spec["model"]), self._session_id(row["id"])), provider
+        if kind == SUBSCRIPTION and not self.available(provider):
+            oauth, err, expired = self.be.usage._credentials()
+            if not oauth or expired:
+                raise ChatError(f"Can't use the Claude subscription: {err}. It renews when the assistant next runs; or log in again in Settings → Providers.")
+            env, chat_id = self.be.env, row["id"]
+            return SidecarClient(env.chat_runtime_url, env.chat_runtime_token, oauth, spec["model"], spec["effort"],
+                                 f"{env.chat_control_url}/api/chat-runtime/mcp", lambda: self.issue_turn_token(chat_id), self.revoke_turn_token), provider
         raise ChatError(self.available(provider) or "This provider can't run chats.")
+
+    # the sidecar's per-turn MCP endpoint
+    def issue_turn_token(self, chat_id: int) -> str:
+        import secrets
+
+        now = time.monotonic()
+        self.turn_tokens = {k: v for k, v in self.turn_tokens.items() if v[1] > now}
+        token = secrets.token_urlsafe(32)
+        self.turn_tokens[token] = (chat_id, now + 900)
+        return token
+
+    def revoke_turn_token(self, token: str) -> None:
+        self.turn_tokens.pop(token, None)
+
+    def turn_chat(self, authorization: str | None) -> int | None:
+        import secrets
+
+        scheme, _, token = (authorization or "").partition(" ")
+        if scheme.lower() != "bearer":
+            return None
+        for k, (chat_id, until) in list(self.turn_tokens.items()):
+            if secrets.compare_digest(k, token.strip()) and until > time.monotonic():
+                return chat_id
+        return None
+
+    def mcp(self, chat_id: int, msg: Any) -> dict | None:
+        """One JSON-RPC message from the sidecar's Claude Code: this chat's tools, as in the in-control loop."""
+        if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0" or not isinstance(msg.get("method"), str):
+            return {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "Invalid request"}}
+        rid, method, params = msg.get("id"), msg["method"], msg.get("params") or {}
+        if rid is None:
+            return None
+        if method == "initialize":
+            return {"jsonrpc": "2.0", "id": rid, "result": {"protocolVersion": params.get("protocolVersion") or "2025-06-18",
+                                                            "capabilities": {"tools": {}}, "serverInfo": {"name": "l0w", "version": __version__}}}
+        if method == "ping":
+            return {"jsonrpc": "2.0", "id": rid, "result": {}}
+        if method == "tools/list":
+            return {"jsonrpc": "2.0", "id": rid, "result": {"tools": [{"name": t.name, "description": t.description, "inputSchema": t.schema()} for t in T.TOOLS]}}
+        if method == "tools/call":
+            name, args = params.get("name"), params.get("arguments") or {}
+            ctx = T.Ctx(be=self.be, chat_id=chat_id)
+            result, is_error = T.run(ctx, str(name), args if isinstance(args, dict) else {})
+            self._add(chat_id, "tool", "", {"call_id": f"rt-{time.time_ns()}", "name": name, "input": args, "result": result, "is_error": is_error})
+            for card in ctx.cards:
+                self._add(chat_id, "card", "", card)
+            self._touch(chat_id)
+            return {"jsonrpc": "2.0", "id": rid, "result": {"content": [{"type": "text", "text": result}], "isError": is_error}}
+        return {"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": f"Method not found: {method}"}}
 
     def _session_id(self, chat_id: int) -> str:
         """A stable, opaque id per chat (no instance or owner details)."""
@@ -632,6 +777,8 @@ class Chats:
             self.be.set_secret(card["name"], s.SecretSet(value=req.value, description=card.get("description") or None))
             card["state"] = "done"
             note = f"The owner saved the secret {card['name']} (the value is stored write-only; you can't see it)."
+        elif kind == "integration":
+            note = self._connect(card, req.value)
         elif kind == "wakeup":
             at = datetime.fromisoformat(card["at"]) if card.get("at") else utcnow() + timedelta(minutes=2)
             w = self.be.create_wakeup(s.WakeupCreate(at=at, budget=card["budget"], reason=card.get("reason") or "From a chat"))
@@ -666,6 +813,30 @@ class Chats:
         self.db.ex("UPDATE chat_messages SET data_json=? WHERE id=?", (json.dumps(card), message_id))
         self._add(chat_id, "system", note)
         return self._msg(self.db.q1("SELECT * FROM chat_messages WHERE id=?", (message_id,)))  # type: ignore[arg-type]
+
+    def _connect(self, card: dict, value: str | None) -> str:
+        secret = card["secret_name"]
+        saved = any(x.name == secret for x in self.be.secrets())
+        if not saved and not value:
+            raise BadRequest("no_value", "Paste the token to connect.")
+        if value:
+            self.be.set_secret(secret, s.SecretSet(value=value, scope="integrations"))
+        name = card["name"]
+        try:
+            self.be.get_integration(name)
+            try:
+                integ = self.be.sync_integration(name)
+            except Conflict:
+                integ = self.be.get_integration(name)
+        except NotFound:
+            integ = self.be.create_integration(s.IntegrationCreate(name=name, title=card["title"], preset=card.get("preset"), url=card["url"],
+                                                                    auth_secret=secret, idempotency_key=None))
+        tools = [t for t in integ.tools if t.present]
+        ro = sum(1 for t in tools if t.read_only)
+        card.update(state="done", integration=integ.name, status=integ.status, tool_count=len(tools), last_error=integ.last_error)
+        if integ.status == "ok":
+            return f"Connected {card['title']}: {len(tools)} tools ({ro} read-only)."
+        return f"Saved the token, but {card['title']} answered: {integ.last_error or 'no answer'}"
 
     # hand-off
     def _transcript(self, chat_id: int) -> str:

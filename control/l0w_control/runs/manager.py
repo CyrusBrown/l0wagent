@@ -345,6 +345,12 @@ class RunManager:
             self.db.ex(f"UPDATE harness_news SET shown_in_run_id=? WHERE id IN ({','.join('?' * len(news))})", (run_id, *[n["id"] for n in news]))
         return brief, system
 
+    def _mcp_servers(self) -> list[dict]:
+        rows = self.db.q(
+            "SELECT i.name, i.title FROM integrations i WHERE i.enabled=1 AND EXISTS "
+            "(SELECT 1 FROM integration_tools t WHERE t.integration_id=i.id AND t.present=1 AND t.policy!='blocked') ORDER BY i.name")
+        return [{"name": r["name"], "title": r["title"]} for r in rows]
+
     async def _start_session(self, run_id: int, resume: str | None = None, reason: str | None = None, prompt: str | None = None) -> Session:
         run = self.db.q1("SELECT * FROM runs WHERE id=?", (run_id,))
         pid = run["provider"] or SUBSCRIPTION  # type: ignore[index]
@@ -356,9 +362,9 @@ class RunManager:
             prompt, system = adapter.interrupted_prompt(reason or "restart"), _strip_comment((PROMPTS / "core.md").read_text())
         else:
             prompt, system = self._prompt(run_id)
-        env = {**self.vault.env(), **self.budgets.provider_env(pid)}
+        env = {**self.vault.env(run_id), **self.budgets.provider_env(pid)}
         payload = adapter.session_request(run_id=run_id, prompt=prompt, system=system, tier=run["tier"], resume_session=resume, env=env,  # type: ignore[index]
-                                          model=spec["model"], effort=spec["effort"])
+                                          model=spec["model"], effort=spec["effort"], mcp=self._mcp_servers())
         sid = await self.runner.start(payload)
         row_id = self.db.ex(
             "INSERT INTO run_sessions(run_id, runtime, session_id, model, effort, log_path, runner_session, started_at) VALUES(?,?,?,?,?,?,?,?)",

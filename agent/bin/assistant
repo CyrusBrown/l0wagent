@@ -38,8 +38,8 @@ The shelf (deliverables in front of the owner, on the project's Files tab):
   assistant shelf list --project P  ·  assistant shelf remove ID
 
 Budget and your wakeup plan (you plan, control enforces the owner's limits):
-  assistant budget                       what's left this week, your limits, a suggested pace, your plan
-  assistant wake plan [--check]          your planned wakeups (same as `budget`)
+  assistant budget                       what's left this period, your limits, a suggested pace, your plan
+  assistant wake plan                    your planned wakeups (same as `budget`)
   assistant wake at TIME --budget N --reason "…" [--tier sonnet/medium]
                                          TIME is the owner's local time, e.g. 2026-11-20T02:00
   assistant wake plan --replace FILE|-   replace your planned wakeups; one per line: TIME BUDGET TIER REASON…
@@ -266,11 +266,10 @@ def main() -> None:
     shr = shs.add_parser("remove")
     shr.add_argument("id", type=int)
 
-    sub.add_parser("budget", help="what's left this week and your plan")
-    wk = sub.add_parser("wake", help="plan [--check] [--replace FILE] | at TIME … | cancel ID")
+    sub.add_parser("budget", help="what's left this period and your plan")
+    wk = sub.add_parser("wake", help="plan [--replace FILE] | at TIME … | cancel ID")
     wks = wk.add_subparsers(dest="wcmd", required=True)
     wkp = wks.add_parser("plan")
-    wkp.add_argument("--check", action="store_true")
     wkp.add_argument("--replace", metavar="FILE", help="'-' reads stdin")
     wka = wks.add_parser("at")
     wka.add_argument("time")

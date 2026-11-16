@@ -78,7 +78,7 @@ def test_totp_and_device_token():
     assert c.post("/api/auth/totp", json={"challenge": r["challenge"], "code": "000000"}).status_code == 401
     token = c.post("/api/auth/totp", json={"challenge": r["challenge"], "code": "123456"}).json()["device_token"]
     assert c.get("/api/auth/me").status_code == 401
-    assert c.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"}).json()["username"] == "mara"
+    assert c.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"}).json()["username"] == "l0w"
 
 
 # ── conversations ──────────────────────────────────────────────────────────

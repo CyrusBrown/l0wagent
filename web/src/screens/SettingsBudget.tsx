@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { S } from '../api/client'
+import { useTimeFormat } from '../app/timeFormat'
+import { stamp } from '../components/format'
 import { modelChoices, tierLabel } from '../components/models'
 import { ClaudeLogin } from './Setup'
 import { Chips, ModelPicker, NumberField, Row, Saved, Switch, TextField } from '../components/settings'
 import { usePresence } from '../components/motion'
+import { Select } from '../components/Select'
+import { useEscape } from '../components/useEscape'
 import {
   problem, useAddApiProvider, useBoost, useBudget, useClearBoost, useDeleteProvider, useInstructions, usePatchBudget, usePatchProvider, usePatchReserve,
   useProviderCatalog, useProviders, useReviewer, useSystem, useRoles, useSetInstructions, useSetReviewer, useSetRoles,
@@ -41,6 +45,7 @@ function parseHours(text: string): S['AllowedWindow'][] | null {
 }
 
 export function Budgets() {
+  useTimeFormat()
   const budget = useBudget()
   const patch = usePatchBudget()
   const reserve = usePatchReserve()
@@ -177,9 +182,9 @@ export function Budgets() {
           </> : <>
             <Row label="Budget period" hint="when the allowance resets">
               {b.period === 'month' && <NumberField label="Reset day" value={b.reset_day ?? 1} min={1} max={28} suffix="day" width={56} onCommit={(v) => patch.mutate({ provider: b.provider, reset_day: v }, done)} />}
-              <select className="input" value={b.period} aria-label="Budget period" onChange={(e) => patch.mutate({ provider: b.provider, period: e.target.value as 'week' | 'month' }, done)}>
-                <option value="week">Weekly</option><option value="month">Monthly</option>
-              </select>
+              <Select variant="input" value={b.period ?? 'week'} label="Budget period"
+                options={[{ value: 'week' as const, label: 'Weekly' }, { value: 'month' as const, label: 'Monthly' }]}
+                onChange={(v) => patch.mutate({ provider: b.provider, period: v }, done)} />
             </Row>
             <Row label="Cap · any 5 hours" hint={`at most this share of the ${per}'s allowance (0 = off)`}>
               <NumberField label="5-hour cap" value={Math.round((b.caps?.five_hour ?? 0) * 100)} max={100} suffix="%" onCommit={(v) => patch.mutate({ provider: b.provider, caps: { five_hour: v / 100 || null, week: b.caps?.week ?? null } }, done)} />
@@ -195,7 +200,7 @@ export function Budgets() {
         {b.boost ? (
           <>
             <div className="stack" style={{ gap: 2 }}><span style={{ font: '500 14px var(--sans)' }}>Boost: {cap(b.boost.level)}</span>
-              <span className="sub" style={{ fontSize: 12.5 }}>Until {new Date(b.boost.until).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}; then back to {L}{b.custom.length ? ' (with your changes)' : ''}.</span></div>
+              <span className="sub" style={{ fontSize: 12.5 }}>Until {stamp(b.boost.until)}; then back to {L}{b.custom.length ? ' (with your changes)' : ''}.</span></div>
             <button className="btn" onClick={() => endBoost.mutate(b.provider, done)}>End boost</button>
           </>
         ) : (
@@ -228,6 +233,7 @@ export function Providers() {
   const patch = usePatchProvider()
   const del = useDeleteProvider()
   const [adding, setAdding] = useState(false)
+  const addBtn = useRef<HTMLButtonElement>(null)
   const loggedIn = !!sys.data?.runner.logged_in
   const connected = (providers.data ?? []).filter((p) => p.kind !== 'claude-subscription' || loggedIn)
   const available = ADDABLE.filter(([k]) => !connected.some((p) => p.kind === k))
@@ -235,9 +241,9 @@ export function Providers() {
     <div className="stack" style={{ gap: 16 }}>
       <div className="row-between">
         <div className="set-title">Providers</div>
-        {available.length > 0 && <button className="btn primary" onClick={() => setAdding(true)}>+ Add provider</button>}
+        {available.length > 0 && <button ref={addBtn} className="btn primary" onClick={() => setAdding(true)}>+ Add provider</button>}
       </div>
-      <AddProvider open={adding} available={available} reachable={!!sys.data?.runner.reachable} close={() => setAdding(false)} />
+      <AddProvider open={adding} available={available} reachable={!!sys.data?.runner.reachable} close={() => { setAdding(false); addBtn.current?.focus() }} />
       {providers.isSuccess && !connected.length && <div className="empty">No provider connected yet. Add one so the assistant can run.</div>}
       {connected.map((p) => (
         <div key={p.id} className="provider-card">
@@ -267,20 +273,15 @@ function AddProvider({ open, available, reachable, close }: { open: boolean; ava
   const [dir, setDir] = useState<'fwd' | 'back'>('fwd')
   const setPick = (k: AddKind | null) => { setDir(k ? 'fwd' : 'back'); setPickRaw(k) }
   const { mounted, closing } = usePresence(open)
+  useEscape(open, () => (pick ? setPick(null) : close()))
   useEffect(() => { if (open) { setPickRaw(null); setQ('') } }, [open])
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') (pick ? setPick(null) : close()) }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, pick, close])  // eslint-disable-line react-hooks/exhaustive-deps
   if (!mounted) return null
   const shown = available.filter(([, label, text]) => !q.trim() || `${label} ${text}`.toLowerCase().includes(q.trim().toLowerCase()))
   const chosen = available.find(([k]) => k === pick)
   // A portal: the page's entrance animation would otherwise contain this fixed popup.
   return createPortal(
     <div className={`scrim ${closing ? 'closing' : ''}`} onClick={close}>
-      <div className="palette add-provider" role="dialog" aria-label="Add a provider" onClick={(e) => e.stopPropagation()}>
+      <div className="palette add-provider" role="dialog" aria-modal="true" aria-label="Add a provider" onClick={(e) => e.stopPropagation()}>
         {!chosen ? <div key="list" className={`stack ${dir === 'back' ? 'view-back' : ''}`} style={{ gap: 0, minHeight: 0 }}>
           <input className="palette-input" autoFocus placeholder="Search providers" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search providers"
             onKeyDown={(e) => { if (e.key === 'Enter' && shown[0]) setPick(shown[0][0]) }} />
@@ -493,9 +494,9 @@ export function Reviewer() {
             <NumberField label="Budget share" value={Math.round(c.budget_share * 100)} min={1} max={100} suffix="%" onCommit={(v) => save({ budget_share: v / 100 })} />
           </Row>
           <Row label="One conversation per" hint="it remembers what it said within one" wide>
-            <select className="input" value={c.continuity} aria-label="Reviewer continuity" onChange={(e) => save({ continuity: e.target.value as RC['continuity'] })}>
-              <option value="day">day</option><option value="wakeup">wakeup</option>
-            </select>
+            <Select variant="input" value={c.continuity} label="Reviewer continuity"
+              options={[{ value: 'day' as const, label: 'day' }, { value: 'wakeup' as const, label: 'wakeup' }]}
+              onChange={(v) => save({ continuity: v })} />
           </Row>
         </div>
       </section>
@@ -525,6 +526,7 @@ export function Reviewer() {
 
 // ── Standing instructions ────────────────────────────────────────────────
 export function Instructions() {
+  useTimeFormat()
   const ins = useInstructions()
   const set = useSetInstructions()
   const [t, setT] = useState<string | null>(null)
@@ -537,7 +539,7 @@ export function Instructions() {
       <div className="set-head"><div className="set-title">Standing instructions</div><Saved token={savedAt} error={set.error ? problem(set.error) : null} /></div>
       <div className="sub" style={{ fontSize: 13 }}>What the assistant should always keep in mind. They open every brief; it hears when you change them. Saved when you leave the box.</div>
       <textarea className="textarea" rows={10} value={t} onChange={(e) => setT(e.target.value)} onBlur={commit} aria-label="Standing instructions" maxLength={8000} />
-      <span className="sub" style={{ fontSize: 12 }}>{ins.data?.updated_at ? `Last changed ${new Date(ins.data.updated_at).toLocaleString()}` : 'Not set yet'}</span>
+      <span className="sub" style={{ fontSize: 12 }}>{ins.data?.updated_at ? `Last changed ${stamp(ins.data.updated_at)}` : 'Not set yet'}</span>
     </section>
   )
 }

@@ -124,6 +124,8 @@ class EgressClient:
         try:
             async with httpx.AsyncClient(timeout=10) as c:
                 r = await c.request(method, f"{self.url}{path}", headers=self.headers, **kw)
+                if r.status_code == 400:  # egress's own validation message, for the owner
+                    raise RunnerError(f"egress: {(r.json() or {}).get('detail') or r.text}")
                 r.raise_for_status()
                 return r.json()
         except httpx.HTTPError as e:
@@ -153,3 +155,12 @@ class EgressClient:
 
     async def delete_rule(self, rule_id: int) -> None:
         await self._call("DELETE", f"/rules/{rule_id}")
+
+    async def rules(self) -> list[dict]:
+        return await self._call("GET", "/rules")  # type: ignore[return-value]
+
+    async def requests(self, **params: str | int) -> dict:
+        return await self._call("GET", "/requests", params=params)
+
+    async def host_stats(self, days: float) -> list[dict]:
+        return await self._call("GET", "/stats/hosts", params={"days": days})  # type: ignore[return-value]

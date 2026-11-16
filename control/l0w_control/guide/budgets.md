@@ -7,8 +7,8 @@ on an Anthropic API key or opencode Go, 1 pt is $0.10.
   Steady (150), Busy (400), Max (850). Each level also sets allowed hours, wakeups per day, the
   gap between them, the most points per wakeup, which models the assistant may use, and whether
   the fallback and sweep are on.
-- **Customize {level}**: change any of the level's limits; each changed field shows the level's
-  own value and a Reset, and **Back to {level}'s settings** clears all changes. Picking a level
+- **Customize the level**: change any of the level's limits; each changed field shows the level's
+  own value and a Reset, and **Back to the level's settings** clears all changes. Picking a level
   again also clears them.
 - **Always, whatever the level**: the **reply budget** (for Reply now, separate from the
   allowance), the **reserve** (Claude subscription: no wakeup starts above 80% of the week or 70%

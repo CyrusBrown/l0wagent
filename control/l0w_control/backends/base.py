@@ -151,6 +151,27 @@ class Backend:
     def upload_chat_file(self, name: str, data: bytes, mime: str | None) -> s.ChatFile: raise NotImplementedError
     def chat_file(self, file_id: int) -> tuple[bytes, str, str]: raise NotImplementedError
 
+    # network (egress rules and log; online only)
+    def network(self, filter: str = "all") -> s.NetworkView: raise NotImplementedError
+    def add_egress_rule(self, req: s.EgressRuleCreate) -> s.EgressRule: raise NotImplementedError
+    def delete_egress_rule(self, rule_id: int) -> None: raise NotImplementedError
+
+    # integrations (brokered MCP servers; online only)
+    def list_integrations(self) -> list[s.Integration]: raise NotImplementedError
+    def integration_presets(self) -> list[s.IntegrationPreset]: raise NotImplementedError
+    def create_integration(self, req: s.IntegrationCreate) -> s.Integration: raise NotImplementedError
+    def get_integration(self, name: str) -> s.Integration: raise NotImplementedError
+    def update_integration(self, name: str, req: s.IntegrationPatch) -> s.Integration: raise NotImplementedError
+    def delete_integration(self, name: str) -> None: raise NotImplementedError
+    def sync_integration(self, name: str) -> s.Integration: raise NotImplementedError
+    def set_integration_tool_policy(self, name: str, tool: str, policy: str) -> s.Integration: raise NotImplementedError
+
+    # the MCP connector (consent and connected apps; online only)
+    def connect_request(self, params: dict[str, str]) -> s.ConnectRequest: raise NotImplementedError
+    def connect_consent(self, req: s.ConnectConsent) -> s.ConnectRedirect: raise NotImplementedError
+    def connected_apps(self) -> list[s.ConnectedApp]: raise NotImplementedError
+    def revoke_connected_app(self, app_id: int) -> None: raise NotImplementedError
+
     # secrets (write-only)
     def secrets(self) -> list[s.SecretInfo]: raise NotImplementedError
     def set_secret(self, name: str, req: s.SecretSet) -> s.SecretInfo: raise NotImplementedError

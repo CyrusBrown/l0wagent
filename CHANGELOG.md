@@ -16,6 +16,22 @@ Each release's section becomes its GitHub release notes, which the app shows in 
 - The UI matches the mockup more closely (layouts, type, spacing, colors, motion); General threads
   overflow to their own screen; settings save as you change them; the reviewer's mode is a slider;
   providers are added from a searchable popup; a copy button for files.
+- The app's own dropdowns replace the browser's native selects, and Escape closes popups and menus.
+- Custom date and time pickers replace the system ones in the Calendar and notification quiet hours.
+- Settings → Appearance has a 24-hour or 12-hour time setting (kept in this browser).
+- Threads: an empty thread says so, the header stays put while you scroll, the project files sidebar
+  no longer overflows and can be resized, and a file's copy menu is on the shelf too. The security
+  card no longer offers "+ Add comment". The Files copy popup no longer overflows the window.
+- A Network page (egress rules and the request log), also a "Network rules" tab in Tools & Secrets.
+- Secrets have scopes: all projects, one project, one routine, or "Integrations only" (never in the
+  assistant's environment). The reviewer, chat and connector never get values.
+- Brokered MCP integrations: connect a remote MCP server (control holds its token), with a per-tool
+  policy (Allowed, Ask or Blocked; Ask tools make a permission each time) and a GitHub preset.
+- Guided GitHub setup from the chat: a secure card takes the token and connects it, and the chat
+  only hears the outcome.
+- The MCP connector at `/mcp`: OAuth 2.1 with a consent screen, connected apps (each with its own
+  chat, revocable) and a downloadable skill for the outside model.
+- 1:1 chats on the Claude subscription, through a chat-runtime sidecar that control calls per turn.
 
 ## 0.5.0
 

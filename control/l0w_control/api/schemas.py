@@ -82,7 +82,7 @@ class Status(Model):
     run_used: float | None = None
     run_budget: float | None = None
     next_wakeup_at: datetime | None = None
-    budget: BudgetSummary | None = Field(None, description="Absent until budgets exist (M4).")
+    budget: BudgetSummary | None = Field(None, description="The worker provider's budget.")
     usage: UsageReading | None = None
     inbox_waiting: int
     reply_budget_left: float | None = None
@@ -317,7 +317,7 @@ class QuestionAnswer(Model):
 
 
 class PermissionAction(Model):
-    kind: Literal["egress_rule", "secret", "setting", "routine"]
+    kind: Literal["egress_rule", "secret", "setting", "routine", "mcp_call"]
     summary: str
     payload: dict[str, Any]
 
@@ -621,7 +621,7 @@ class AllowedWindow(Model):
 
 
 class BudgetLimits(Model):
-    allowance: float = Field(description="Points a week the assistant may plan with.")
+    allowance: float = Field(description="Points in the provider's period the assistant may plan with.")
     allowed_hours: list[AllowedWindow]
     max_per_day: int
     min_gap_minutes: int
@@ -668,18 +668,18 @@ class ProviderBudget(Model):
     limits: BudgetLimits = Field(description="Effective limits: the level's, with the owner's overrides.")
     custom: list[str] = Field(description="Limits the owner overrode.")
     allowance: float
-    left: float = Field(description="Allowance left this week, capped by the room below the owner's weekly reserve.")
+    left: float = Field(description="Allowance left this period, capped by the room below the owner's reserve.")
     used_by_assistant: float
     used_by_owner: float = Field(description="The owner's own use outside l0wagent (subscription: the weekly meter minus the rest).")
     used_by_chat: float
     room_below_reserve: float | None = Field(description="Subscription: points left before the weekly reserve.")
     reply_allowance: float
     reply_left: float
-    scheduled: float = Field(description="Points in planned wakeups for the rest of this week.")
+    scheduled: float = Field(description="Points in planned wakeups for the rest of this period.")
     week_start: datetime
     resets_at: datetime
     pace: str
-    native: str = Field(description="The provider's own unit, e.g. '46% of the week used' or '$3.10 this week'.")
+    native: str = Field(description="The provider's own unit, e.g. '46% of the week used' or '$3.10 this period'.")
     pts_per_usd: float = Field(description="Subscription: the learned calibration from API-priced tokens to points.")
     fallback_pts: float
     period: Literal["week", "month"] = Field("week", description="The budget period: week, or month from reset_day. Fields named week_* mean the period.")
@@ -993,13 +993,176 @@ class Upload(Model):
     created_at: datetime
 
 
+# ── Network (egress rules and the request log) ────────────────────────────
+class EgressRule(Model):
+    id: int
+    pattern: str = Field(description="A host, *.domain, host:port or CIDR.")
+    action: Literal["allow", "allow_ro", "block"] = Field(description="allow_ro: read-only (GET over plain HTTP).")
+    note: str
+    created_at: datetime | None
+    hits_7d: int = Field(description="Requests in the last 7 days to hosts this rule matches.")
+
+
+class EgressRuleCreate(Model):
+    """Online only."""
+
+    pattern: str = Field(min_length=1, max_length=255)
+    action: Literal["allow", "allow_ro", "block"]
+    note: str = Field("", max_length=200)
+    idempotency_key: str | None = None
+
+
+class EgressRequest(Model):
+    id: int
+    at: datetime
+    method: str | None
+    host: str | None
+    port: int | None
+    url: str | None
+    action: str = Field(description="allowed, blocked or error.")
+    reason: str | None
+    status: int | None
+    bytes_down: int
+
+
+class HostStat(Model):
+    host: str
+    requests: int
+    blocked: int
+
+
+class NetworkView(Model):
+    """Egress's rules, the recent request log and the busiest hosts. `reachable` false: egress
+    didn't answer, and the lists are empty."""
+
+    reachable: bool
+    default_policy: Literal["allow", "deny"]
+    rules: list[EgressRule]
+    requests: list[EgressRequest]
+    requests_24h: int
+    blocked_24h: int
+    top_hosts: list[HostStat]
+
+
+# ── Integrations (brokered MCP servers) ───────────────────────────────────
+ToolPolicy = Literal["allowed", "ask", "blocked"]
+
+
+class IntegrationTool(Model):
+    name: str
+    description: str | None
+    read_only: bool = Field(description="The server says this tool only reads.")
+    policy: ToolPolicy = Field(description="allowed runs at once, ask needs your approval, blocked never runs.")
+    present: bool = Field(description="False when the server no longer lists the tool.")
+
+
+class IntegrationCall(Model):
+    tool: str
+    run_id: int | None
+    outcome: Literal["ok", "error", "asked", "blocked"]
+    permission_id: int | None
+    detail: str | None
+    at: datetime | None
+
+
+class Integration(Model):
+    name: str = Field(description="Short lowercase id, like github.")
+    title: str
+    preset: str | None
+    url: str
+    auth_secret: str | None = Field(description="Name of the saved secret sent as the bearer token.")
+    secret_saved: bool = Field(description="The named secret has a value.")
+    enabled: bool
+    status: Literal["new", "ok", "error"]
+    last_error: str | None
+    synced_at: datetime | None
+    created_at: datetime | None
+    tools: list[IntegrationTool]
+    recent_calls: list[IntegrationCall]
+
+
+class IntegrationPreset(Model):
+    id: str
+    title: str
+    url: str
+    auth_secret: str | None
+    token_url: str | None = Field(description="Where to create the token.")
+    guidance: str
+    egress: list[str] = Field(description="Hosts the agent's sandbox needs to reach, if any.")
+
+
+class IntegrationCreate(Model):
+    """Online only. Name defaults to the preset's id."""
+
+    name: str | None = Field(None, max_length=32)
+    title: str | None = Field(None, max_length=80)
+    preset: str | None = None
+    url: str | None = Field(None, max_length=500)
+    auth_secret: str | None = Field(None, max_length=64)
+    idempotency_key: str | None = None
+
+
+class IntegrationPatch(Model):
+    title: str | None = Field(None, max_length=80)
+    url: str | None = Field(None, max_length=500)
+    auth_secret: str | None = Field(None, max_length=64, description="Empty clears it.")
+    enabled: bool | None = None
+
+
+class ToolPolicySet(Model):
+    policy: ToolPolicy
+
+
+# ── The MCP connector (outside chat services) ──────────────────────────────
+ConnectorScope = Literal["read", "write", "wake"]
+
+
+class ConnectorScopeInfo(Model):
+    scope: ConnectorScope
+    description: str
+
+
+class ConnectRequest(Model):
+    """What the consent screen shows for an authorization request."""
+
+    client_name: str = Field(description="The name the client registered with (self-declared, so shown as such).")
+    redirect_host: str = Field(description="Where the browser goes back to after the answer.")
+    scopes: list[ConnectorScopeInfo]
+
+
+class ConnectConsent(Model):
+    """The owner's answer on the consent screen. Online only."""
+
+    params: dict[str, str] = Field(description="The authorization request's query parameters, unchanged.")
+    approve: bool
+    scopes: list[ConnectorScope] | None = Field(None, description="A subset of the requested scopes to grant; omit for all.")
+
+
+class ConnectRedirect(Model):
+    redirect: str = Field(description="Send the browser here (the client's redirect URI, with a code or an error).")
+
+
+class ConnectedApp(Model):
+    """An outside client the owner connected. Revoking it ends every token it holds."""
+
+    id: int
+    name: str
+    scopes: list[ConnectorScope]
+    chat_id: int | None = Field(description="The chat where its tool calls and cards appear.")
+    created_at: datetime
+    last_used_at: datetime | None
+
+
 # ── Secrets (write-only) ───────────────────────────────────────────────────
 class SecretInfo(Model):
     """A secret's name and metadata. Values are never returned."""
 
     name: str
     description: str
-    scope: str = Field(description="'agent' (the agent's environment) until scopes arrive in M6.")
+    scope: str = Field(description="Who gets the value: 'agent' (every worker session), 'project:<slug>' (runs on that project's threads), "
+                                   "'routine:<id>' (that routine's runs) or 'integrations' (never the sandbox; only brokered tools). "
+                                   "The reviewer, the 1:1 chat and the connector never get values.")
+    scope_label: str = Field(description="The scope for people: 'All projects', a project's or routine's name, or 'Integrations only'.")
     created_at: datetime
     updated_at: datetime
     reads: int = Field(description="Times the agent fetched it with `assistant secret get`.")
@@ -1009,8 +1172,9 @@ class SecretInfo(Model):
 class SecretSet(Model):
     """Online only. Setting a value also scrubs it from everything already stored."""
 
-    value: str = Field(min_length=1, max_length=20_000)
+    value: str | None = Field(None, min_length=1, max_length=20_000, description="Omit to change only the description or scope of an existing secret.")
     description: str | None = Field(None, max_length=200)
+    scope: str | None = Field(None, description="See SecretInfo.scope. Omit to keep the current one ('agent' for a new secret).")
 
 
 # ── System ─────────────────────────────────────────────────────────────────

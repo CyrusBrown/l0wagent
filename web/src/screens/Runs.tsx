@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import type { S } from '../api/client'
 import { problem, useJobs, useProjects, useRun, useRuns, useStartRun, useStopRun, useTimeline } from '../api/queries'
-import { ago, clock, duration, pts, stamp, until } from '../components/format'
+import { useTimeFormat } from '../app/timeFormat'
+import { ago, clock, clockSeconds, duration, pts, stamp, until } from '../components/format'
+import { Select } from '../components/Select'
 
 // Runs and one run, ported from the mockup's RUNS LIST and RUN screens. A run opens as its
 // summary; the status timeline card opens the full (detailed) timeline, with "← Back to summary".
@@ -21,6 +23,7 @@ const FILTERS: [string, (r: S['Run']) => boolean][] = [
 const cap = (x: string) => x[0].toUpperCase() + x.slice(1)
 
 export function Runs() {
+  useTimeFormat()
   const [params, setParams] = useSearchParams()
   const tab = params.get('tab') === 'jobs' ? 'jobs' : 'runs'
   const [filter, setFilter] = useState(0)
@@ -48,10 +51,9 @@ export function Runs() {
       {tab === 'runs' ? <>
         <div className="pills">
           {FILTERS.map(([l], i) => <button key={l} className={`filter ${filter === i ? 'on' : ''}`} onClick={() => setFilter(i)}>{l}</button>)}
-          <select className={`filter ${project ? 'on' : ''}`} value={project} onChange={(e) => setProject(e.target.value)} aria-label="Project">
-            <option value="">All projects ▾</option>
-            {projects.data?.map((p) => <option key={p.slug} value={p.slug}>{p.name}</option>)}
-          </select>
+          <Select variant="filter" className={project ? 'on' : ''} value={project} label="Project"
+            options={[{ value: '', label: 'All projects' }, ...(projects.data?.map((p) => ({ value: p.slug, label: p.name })) ?? [])]}
+            onChange={setProject} />
         </div>
         {runs.isSuccess && shown.length === 0
           ? <div className="empty">{runs.data.length ? 'No runs match.' : "No runs yet. The assistant's first wakeup will show up here."}</div>
@@ -110,6 +112,7 @@ function Jobs({ jobs }: { jobs: S['Job'][] }) {
 }
 
 export function Run() {
+  useTimeFormat()
   const id = Number(useParams().id)
   const [params, setParams] = useSearchParams()
   const detailed = params.get('view') === 'detailed'
@@ -244,7 +247,7 @@ function Detailed({ id, back }: { id: number; back: () => void }) {
           const code = typeof i.data.patch === 'string' ? i.data.patch : i.kind === 'tool' && typeof i.data.result === 'string' && i.data.result ? i.data.result : null
           return (
             <div key={i.id} id={`t${i.id}`} className={`detail-row ${i.kind === 'reviewer' ? 'reviewer' : ''}`}>
-              <span className="t">{new Date(i.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
+              <span className="t">{clockSeconds(i.at)}</span>
               <span className="k" style={{ color: KIND_INK[i.kind] ?? 'var(--muted)' }}>{KIND_LABEL[i.kind] ?? cap(i.kind)}</span>
               <div className="stack" style={{ gap: 6, minWidth: 0 }}>
                 <span className="x" style={{ fontStyle: i.kind === 'thinking' ? 'italic' : undefined, fontFamily: i.kind === 'tool' ? 'var(--mono)' : undefined, fontSize: i.kind === 'tool' ? 12.5 : undefined }}>{i.text}</span>

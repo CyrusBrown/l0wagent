@@ -28,6 +28,8 @@ Scenarios (with FAKE_CALL_ASSISTANT=1), picked from the prompt:
 After every tool call it runs `assistant-hook` like Claude Code's PostToolUse hook does.
 With ASSISTANT_RUN_MODE=reviewer (the runner's /consult) it plays the reviewer instead: QUIET on
 watch updates, AGREE to ending, an answer to questions, and `LEVEL: opus/high` for "fake:level".
+With `--strict-mcp-config --mcp-config FILE` (the chat sidecar) it plays a chat turn: a short reply, or the result of the
+tool named by [fake:tool NAME {json-args}] in the prompt, called on the "l0w" MCP server over HTTP.
 Every model message carries token usage, and the result reports the session's total cost.
 """
 
@@ -342,6 +344,50 @@ def fake_login() -> int:
     return 0
 
 
+def mcp_call(config: str, name: str, args: dict) -> str:
+    """Call one tool on the "l0w" MCP server named in a --mcp-config file, the way the CLI would."""
+    import urllib.request
+
+    server = json.loads(Path(config).read_text())["mcpServers"]["l0w"]
+    headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream", **server.get("headers", {})}
+
+    def rpc(body: dict) -> dict:
+        req = urllib.request.Request(server["url"], json.dumps(body).encode(), headers, method="POST")
+        with urllib.request.urlopen(req, timeout=30) as r:
+            raw = r.read().decode()
+        raw = next((ln[5:].strip() for ln in raw.splitlines() if ln.startswith("data:")), raw)
+        return json.loads(raw) if raw.strip() else {}
+
+    rpc({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "fake-claude", "version": "0"}}})
+    res = rpc({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": name, "arguments": args}})
+    if "error" in res:
+        return f"tool error: {res['error']}"
+    parts = (res.get("result") or {}).get("content") or []
+    return "\n".join(p.get("text", "") for p in parts if isinstance(p, dict))
+
+
+def chat_turn(prompt: str, config: str) -> int:
+    """A 1:1 chat turn (`--mcp-config` given): reply, calling a tool when the prompt has [fake:tool NAME {json}]."""
+    sid = str(uuid.uuid4())
+    emit({"type": "system", "subtype": "init", "session_id": sid, "model": MODEL["name"], "tools": [], "mcp_servers": [{"name": "l0w", "status": "connected"}]})
+    marker = re.search(r"\[fake:tool (\w+)(?: (\{.*?\}))?\]", prompt, re.S)
+    text = "Hello from the fake chat."
+    if marker:
+        try:
+            out = mcp_call(config, marker.group(1), json.loads(marker.group(2) or "{}"))
+        except (OSError, ValueError, KeyError) as e:
+            out = f"tool failed: {e}"
+        text = f"Tool {marker.group(1)} returned: {out}"
+    mid = f"msg_{uuid.uuid4().hex[:12]}"
+    emit({"type": "stream_event", "event": {"type": "message_start", "message": {"id": mid, "model": MODEL["name"]}}, "session_id": sid})
+    for i in range(0, len(text), 40):
+        emit({"type": "stream_event", "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": text[i:i + 40]}}, "session_id": sid})
+    emit({"type": "assistant", "message": message([{"type": "text", "text": text}]), "session_id": sid})
+    emit({"type": "result", "subtype": "success", "is_error": False, "result": text, "session_id": sid, "num_turns": 1,
+          "total_cost_usd": round(COST["usd"], 6), "usage": {"input_tokens": 3000, "output_tokens": 400, "cache_read_input_tokens": 20000}})
+    return 0
+
+
 def main() -> int:
     if sys.argv[1:3] == ["auth", "login"]:
         return fake_login()
@@ -354,6 +400,8 @@ def main() -> int:
     MODEL["name"] = f"claude-{model}-fake"
     if os.environ.get("ASSISTANT_RUN_MODE") == "reviewer":
         return reviewer_turn(prompt)
+    if arg("--mcp-config") and "--strict-mcp-config" in sys.argv:
+        return chat_turn(prompt, arg("--mcp-config"))
     resume = arg("--resume")
     if resume:
         path = STATE / f"{resume}.json"

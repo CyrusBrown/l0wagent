@@ -11,7 +11,11 @@ renewing the egress lease (a few minutes).
   GET  /sessions/{id}/log?offset  the log from a byte offset; follows until the session ends
   POST /sessions/{id}/stop        SIGINT (end the turn cleanly); {"force": true} kills it
   POST /commit                    git-commit /workspace (the safety net after each run)
-  POST /auth/refresh              one tiny call so Claude Code refreshes its login
+  POST /auth/refresh              a short Claude turn so its login refreshes
+  POST /auth/login                start `claude auth login`; returns the sign-in link
+  POST /auth/login/code           finish it with the code the owner pasted back
+  POST /consult                   one reviewer turn (read-only; no agent token or secrets)
+  GET  /procs                     which of these pids are still running
   POST /selftest                  the isolation probes, run from inside the container
   GET  /health
 
@@ -32,6 +36,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import secrets
 import shutil
 import signal
@@ -148,6 +153,33 @@ class SessionRequest(BaseModel):
     resume_session: str | None = None
     env: dict[str, str] = {}
     pre_run: bool = True
+    mcp: list[dict] = []
+
+
+MCP_NAME = re.compile(r"^[a-z][a-z0-9-]{1,31}$")
+
+
+def mcp_servers(req_mcp: list[dict], control_url: str | None = None, token: str | None = None) -> dict[str, dict]:
+    """The brokered integrations as remote MCP servers on control's agent API."""
+    base = (control_url if control_url is not None else os.environ.get("CONTROL_URL", "http://control:8000")).rstrip("/")
+    token = token if token is not None else os.environ.get("AGENT_API_TOKEN", "")
+    out = {}
+    for m in req_mcp:
+        name = str(m.get("name", ""))
+        if MCP_NAME.match(name):
+            out[name] = {"url": f"{base}/api/agent/mcp/{name}", "headers": {"X-Agent-Token": token}}
+    return out
+
+
+def write_private(path: Path, text: str) -> None:
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
+    os.chmod(path, 0o600)
+
+
+def claude_mcp_config(servers: dict[str, dict]) -> dict:
+    return {"mcpServers": {n: {"type": "http", **v} for n, v in servers.items()}}
 
 
 def claude_argv(req: SessionRequest, system_file: Path) -> list[str]:
@@ -161,10 +193,15 @@ def claude_argv(req: SessionRequest, system_file: Path) -> list[str]:
         argv += ["--fallback-model", req.fallback_model]
     if req.resume_session:
         argv += ["--resume", req.resume_session]
+    servers = mcp_servers(req.mcp)
+    if servers:
+        mcp_file = system_file.with_name("mcp.json")
+        write_private(mcp_file, json.dumps(claude_mcp_config(servers)))
+        argv += ["--mcp-config", str(mcp_file)]
     return argv
 
 
-def opencode_config(system_file: Path, reviewer: bool = False) -> dict:
+def opencode_config(system_file: Path, reviewer: bool = False, mcp: dict[str, dict] | None = None) -> dict:
     """opencode's config for one session: our system prompt as the `l0w` agent, the delivery
     plugin (not for the reviewer), no prompts for permissions, no sharing or self-updates."""
     permission = {"*": "allow", "external_directory": "allow"}
@@ -174,6 +211,8 @@ def opencode_config(system_file: Path, reviewer: bool = False) -> dict:
                  "agent": {"l0w": {"mode": "primary", "prompt": "{file:" + str(system_file) + "}"}}}
     if not reviewer and OPENCODE_PLUGIN.is_file():
         cfg["plugin"] = [f"file://{OPENCODE_PLUGIN}"]
+    if mcp and not reviewer:
+        cfg["mcp"] = {n: {"type": "remote", **v, "enabled": True} for n, v in mcp.items()}
     return cfg
 
 
@@ -276,7 +315,7 @@ async def _run_session(sid: str, req: SessionRequest) -> None:
             opencode = req.runtime == "opencode"
             if opencode:
                 cfg_file = Path(tmp.name) / "opencode.json"
-                cfg_file.write_text(json.dumps(opencode_config(system_file)))
+                write_private(cfg_file, json.dumps(opencode_config(system_file, mcp=mcp_servers(req.mcp))))
                 env["OPENCODE_CONFIG"] = str(cfg_file)
                 argv = opencode_argv(req.model, req.effort, req.resume_session)
             else:

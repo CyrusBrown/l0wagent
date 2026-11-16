@@ -136,7 +136,7 @@ def test_permission_actions(c, be):
 def test_secrets_are_write_only_and_redacted(c, be):
     t = ok(c.post("/api/threads", json={"title": "Oops", "first_message": "my token is ghp_ABCDEFGHIJKLMNOP"}), 201)
     info = ok(c.put("/api/secrets/GITHUB_TOKEN", json={"value": "ghp_ABCDEFGHIJKLMNOP", "description": "repo access"}))
-    assert set(info) == {"name", "description", "scope", "created_at", "updated_at", "reads", "last_read_at"}
+    assert set(info) == {"name", "description", "scope", "scope_label", "created_at", "updated_at", "reads", "last_read_at"}
     assert "ghp_" not in c.get("/api/secrets").text
     # Already-stored text is scrubbed; new text is redacted.
     items = ok(c.get(f"/api/threads/{t['id']}/items"))["items"]
@@ -146,10 +146,34 @@ def test_secrets_are_write_only_and_redacted(c, be):
     # The agent can read it (logged); people can't.
     assert ok(agent(c, "GET", "/secrets/github_token"))["value"] == "ghp_ABCDEFGHIJKLMNOP"
     assert ok(c.get("/api/secrets"))[0]["reads"] == 1
-    assert be.vault.env() == {"GITHUB_TOKEN": "ghp_ABCDEFGHIJKLMNOP"}
+    assert be.vault.env(None) == {"GITHUB_TOKEN": "ghp_ABCDEFGHIJKLMNOP"}
     assert c.put("/api/secrets/bad name", json={"value": "x"}).status_code == 400
     ok(c.delete("/api/secrets/GITHUB_TOKEN"))
     assert ok(c.get("/api/secrets")) == []
+
+
+def test_secret_scopes(c, be):
+    proj = ok(agent(c, "POST", "/projects", json={"name": "Scoped lab", "summary": "x"}))
+    slug = proj["slug"]
+    ok(c.put("/api/secrets/ALL_KEY", json={"value": "all-0123456789"}))
+    info = ok(c.put("/api/secrets/LAB_KEY", json={"value": "lab-0123456789", "scope": f"project:{slug}"}))
+    assert info["scope"] == f"project:{slug}" and info["scope_label"] == "Scoped lab"
+    ok(c.put("/api/secrets/GH_BROKER", json={"value": "gh-0123456789", "scope": "integrations"}))
+    assert c.put("/api/secrets/BAD_KEY", json={"value": "bad-0123456789", "scope": "project:nope"}).status_code == 400
+    assert c.put("/api/secrets/NEW_KEY", json={"scope": "agent"}).status_code == 404
+    # Outside a run only 'agent' secrets are visible; 'integrations' never are.
+    assert set(be.vault.env(None)) == {"ALL_KEY"}
+    assert [s["name"] for s in ok(agent(c, "GET", "/secrets"))] == ["ALL_KEY"]
+    assert agent(c, "GET", "/secrets/LAB_KEY").status_code == 404
+    assert agent(c, "GET", "/secrets/GH_BROKER").status_code == 404
+    # A run on the project's thread gets the project's secret too.
+    thread = ok(agent(c, "POST", "/threads", json={"title": "Lab work", "project": slug, "body": "hi"}))
+    run_id = be.db.ex("INSERT INTO runs(kind, why, status, started_at, thread_id) VALUES('wakeup','manual','done',?,?)", (be.db.now(), thread["id"]))
+    assert set(be.vault.env(run_id)) == {"ALL_KEY", "LAB_KEY"}
+    # Changing only the scope keeps the value.
+    info = ok(c.put("/api/secrets/LAB_KEY", json={"scope": "agent"}))
+    assert info["scope_label"] == "All projects" and be.vault.env(None)["LAB_KEY"] == "lab-0123456789"
+    assert be.vault.value_for_control("GH_BROKER") == "gh-0123456789"
 
 
 def test_suggestions_are_carried_out(c):
@@ -209,6 +233,9 @@ def test_uploads_are_contained(c, be, tmp_path):
 def test_harness_news_announces_the_new_commands(c):
     news = ok(agent(c, "GET", "/news"))
     titles = [n["title"] for n in news]  # newest first
+    assert titles[0] == "Brokered integrations" and "permission #N" in news[0]["body"]
+    assert titles[1] == "Secrets can be scoped" and "assistant secret list" in news[1]["body"]
+    news, titles = news[2:], titles[2:]
     assert titles[:6] == ["Monthly budgets and spending caps", "You may run on opencode", "Updates wait for you", "Budgets, your wakeup plan, routines, the reviewer and long jobs",
                           "The shelf and the owner's uploads", "Threads, asks, claims and suggestions"]
     assert "per month" in news[0]["body"] and "opencode" in news[1]["body"] and "--dont-interrupt" in news[2]["body"]

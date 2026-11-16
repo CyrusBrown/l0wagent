@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import type { S } from '../api/client'
 import { useAcceptAll, useInbox, useInboxCounts } from '../api/queries'
+import { useTimeFormat } from '../app/timeFormat'
 import { CardPlace, InboxCard } from '../components/Cards'
-import { ago } from '../components/format'
+import { ago, clock } from '../components/format'
 import { useOnline } from '../components/online'
 
 // The Inbox, ported from the mockup's INBOX screen: Waiting (grouped by kind, each card with
@@ -41,7 +42,7 @@ function note(e: S['InboxEntry']): string | null | undefined {
 function when(iso: string): string {
   const d = new Date(iso)
   const days = (Date.now() - d.getTime()) / 86400_000
-  if (days < 1) return d.toDateString() === new Date().toDateString() ? `Today ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}` : ago(iso)
+  if (days < 1) return d.toDateString() === new Date().toDateString() ? `Today ${clock(iso)}` : ago(iso)
   if (days < 7) return d.toLocaleDateString(undefined, { weekday: 'short' })
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
@@ -49,6 +50,7 @@ function when(iso: string): string {
 const where = (e: S['InboxEntry']) => (e.thread_id ? <Link to={`/t/${e.thread_id}`}>#{e.thread_title}</Link> : <span>{e.kind === 'security' ? 'Account' : 'Settings'}</span>)
 
 export function Inbox() {
+  useTimeFormat()
   const [tab, setTab] = useState<'waiting' | 'history'>('waiting')
   const [filter, setFilter] = useState(0)
   const [q, setQ] = useState('')

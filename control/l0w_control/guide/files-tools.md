@@ -4,12 +4,27 @@
   `/work/_inbox/<project>/` for the assistant.
 - **The shelf**: a project's Files tab lists deliverables; **Add to shelf** on any file (live,
   always current; or a snapshot, a copy as it is now).
-- **Secrets** (Tools & Secrets): write-only values the assistant gets in its environment (agent
-  only), redacted from everything shown or stored. It asks for one with a secure input card.
-- **Network**: the assistant reaches the internet only through the egress proxy; model providers
-  only during runs. Network rules allow or block hosts; the Network page lists requests.
+- **Secrets** (Tools & Secrets): write-only values, redacted from everything shown or stored. Each
+  has a scope: **All projects** (in the assistant's environment), one project, one routine, or
+  **Integrations only** (never in the assistant's environment; only brokered integrations read
+  it). The reviewer, the 1:1 chat and the connector never get values. The assistant asks for one
+  with a secure input card.
+- **Integrations** (Tools & Secrets): connect a remote MCP server such as GitHub. Control holds
+  the token and makes the calls, so the assistant gets the tools without the token. Each tool is
+  **Allowed**, **Ask** or **Blocked**; read-only tools start Allowed, the rest start on Ask. An Ask
+  tool creates a permission each time: **Allow once** lets that exact call through once, and
+  **Allow always** makes the tool Allowed.
+- **Connected apps** (Tools & Secrets): outside chat apps, such as Claude or ChatGPT, connect
+  through `<your address>/mcp`. Each connected app has its own chat, where its tool calls and cards
+  appear. **Revoke** ends its access. The skill download teaches the outside model how to use the
+  tools.
+- **Network** (More → Network, or the Network rules tab in Tools & Secrets): the assistant reaches
+  the internet only through the egress proxy; model providers only during runs. Rules allow or
+  block hosts (or allow read-only), and the request log lists what it asked for.
 - **Notifications** (Settings → Notifications): web push on this device (needs HTTPS, e.g.
   Tailscale HTTPS) or an ntfy topic; approvals and new sign-ins notify by default; quiet hours.
 - **Updates**: a banner shows a new release; apply it on the server with `./l0w update`, which waits
   until the assistant is idle. `./l0w` also has status, logs, inbox, secrets and more for the host.
 - **Self-test** (Settings → System) checks the assistant's isolation.
+
+The 1:1 chat can walk you through connecting an integration such as GitHub. It explains the steps, links the provider's token page with the permissions to choose, and shows a Connect card with a secure input. The token goes straight from your browser to control, is saved for integrations only, and the chat never sees it.

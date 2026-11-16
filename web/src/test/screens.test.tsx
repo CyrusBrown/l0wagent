@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { routes } from '../app/routes'
@@ -24,6 +24,7 @@ function respond(url: URL): Response {
 }
 
 beforeEach(() => {
+  localStorage.clear()
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const raw = input instanceof Request ? input.url : String(input)
     return respond(new URL(raw, 'http://localhost'))
@@ -86,6 +87,19 @@ describe('screens render with mock data', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Run self-test' }))
     expect(await screen.findByText("Can't reach the LAN or the host")).toBeInTheDocument()
   })
+  it('Settings: Appearance switches between 24-hour and 12-hour time', async () => {
+    renderAt('/settings/appearance')
+    const twelve = await screen.findByRole('button', { name: /12-hour/ })
+    const twentyFour = screen.getByRole('button', { name: /24-hour/ })
+    expect(twentyFour).toHaveAttribute('aria-pressed', 'true')
+    expect(twelve).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(twelve)
+    expect(twelve).toHaveAttribute('aria-pressed', 'true')
+    await waitFor(() => expect(localStorage.getItem('l0w.timeFormat')).toBe('12h'))
+    fireEvent.click(twentyFour)
+    expect(twentyFour).toHaveAttribute('aria-pressed', 'true')
+    await waitFor(() => expect(localStorage.getItem('l0w.timeFormat')).toBe('24h'))
+  })
   it('Settings: a later tab says when it arrives', async () => {
     renderAt('/settings/extensions')
     expect(await screen.findByText(/arrive with M8/)).toBeInTheDocument()
@@ -105,6 +119,67 @@ describe('screens render with mock data', () => {
     expect(screen.getByText('Budget left this week')).toBeInTheDocument()
     expect((await screen.findAllByText('Inbox triage')).length).toBeGreaterThan(0)
   })
+  it('Calendar: Escape closes the wakeup editor, a nested picker first', async () => {
+    renderAt('/calendar')
+    const add = await screen.findByRole('button', { name: '+ Add wakeup' })
+    add.focus()
+    fireEvent.click(add)
+    const dialog = screen.getByRole('dialog', { name: 'Add wakeup' })
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    const tier = screen.getByRole('button', { name: /^Tier: / })
+    fireEvent.click(tier)
+    expect(screen.getByRole('listbox', { name: 'Tier' })).toBeInTheDocument()
+    fireEvent.keyDown(tier, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('listbox', { name: 'Tier' })).not.toBeInTheDocument())
+    expect(screen.getByRole('dialog', { name: 'Add wakeup' })).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Add wakeup' })).not.toBeInTheDocument())
+    expect(add).toHaveFocus()
+  })
+  it('Calendar: focus moves into the wakeup editor and Tab wraps inside it', async () => {
+    renderAt('/calendar')
+    const add = await screen.findByRole('button', { name: '+ Add wakeup' })
+    add.focus()
+    fireEvent.click(add)
+    const dialog = screen.getByRole('dialog', { name: 'Add wakeup' })
+    await waitFor(() => expect(dialog).toContainElement(document.activeElement as HTMLElement))
+    const items = Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled])'))
+    const last = items[items.length - 1]
+    last.focus()
+    fireEvent.keyDown(document.activeElement!, { key: 'Tab' })
+    expect(items[0]).toHaveFocus()
+    fireEvent.keyDown(document.activeElement!, { key: 'Tab', shiftKey: true })
+    expect(last).toHaveFocus()
+  })
+  it('Calendar: the hour axis follows the 12-hour setting', async () => {
+    localStorage.setItem('l0w.timeFormat', '12h')
+    renderAt('/calendar')
+    expect(await screen.findByText('3 AM')).toBeInTheDocument()
+    expect(screen.getByText('12 AM')).toBeInTheDocument()
+    expect(screen.getByText('9 PM')).toBeInTheDocument()
+  })
+  it('Shell: the status chip repaints when the time format changes', async () => {
+    const at = new Date(Date.now() + 3 * 86400_000).toISOString()
+    overrides['/api/status'] = { ...(table['/api/status'] as object), state: 'asleep', next_wakeup_at: at }
+    renderAt('/settings/appearance')
+    const chip = await screen.findByTitle('Open runs')
+    await waitFor(() => expect(chip).toHaveTextContent('next wakeup'))
+    expect(chip.textContent).not.toMatch(/[AP]M/)
+    fireEvent.click(await screen.findByRole('button', { name: /12-hour/ }))
+    await waitFor(() => expect(chip.textContent).toMatch(/[AP]M/))
+  })
+  it('Calendar: the routine switch renders and toggles', async () => {
+    renderAt('/calendar')
+    const sw = await screen.findByRole('switch', { name: 'Inbox triage on' })
+    expect(sw).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(sw)
+    await waitFor(async () => {
+      const call = vi.mocked(fetch).mock.calls.find(([input]) =>
+        input instanceof Request && input.method === 'PATCH' && new URL(input.url).pathname === '/api/routines/2')
+      expect(call).toBeTruthy()
+      expect(await (call![0] as Request).clone().json()).toEqual({ enabled: false })
+    })
+  })
   it('Login when signed out', async () => {
     overrides = { '/api/auth/me': new Response('{"error":"unauthorized"}', { status: 401 }) }
     renderAt('/')
@@ -121,6 +196,22 @@ describe('screens render with mock data', () => {
     renderAt('/tools')
     expect(await screen.findByText('GITHUB_TOKEN')).toBeInTheDocument()
     expect(screen.getByText(/Values are write-only/)).toBeInTheDocument()
+  })
+  it('Network: the log, top hosts and rules', async () => {
+    renderAt('/network')
+    expect(await screen.findByRole('heading', { name: 'Network' })).toBeInTheDocument()
+    expect(await screen.findByText(/361 requests · 3 blocked/)).toBeInTheDocument()
+    expect(screen.getByText('tracker.example-ads.net/pixel').closest('.net-row')).toHaveClass('blocked')
+    expect(screen.getByText('Allow read-only')).toBeInTheDocument()
+    expect(screen.getByText(/Added by approving permission #4/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '+ Add rule' }))
+    expect(screen.getByLabelText('Host or pattern')).toBeInTheDocument()
+  })
+  it('Tools & Secrets: the Network rules tab', async () => {
+    renderAt('/tools?tab=network')
+    expect(await screen.findByText('*.github.com')).toBeInTheDocument()
+    expect(screen.getByText('212 requests · 7 d')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /full request log/ })).toHaveAttribute('href', '/network')
   })
   it('New', async () => {
     renderAt('/new')

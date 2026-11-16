@@ -124,6 +124,18 @@ def when(iso: str | None) -> str:
     return datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone().strftime("%a %d %b %H:%M")
 
 
+def period_word(payload: dict | None) -> str:
+    period = (payload or {}).get("period")
+    return period if period in ("week", "month") else "period"
+
+
+def worker_provider(a) -> str:
+    if getattr(a, "provider", None):
+        return a.provider
+    providers = call("GET", "/budget").get("providers") or []
+    return providers[0]["provider"] if providers else "claude-subscription"
+
+
 # ── host helpers ───────────────────────────────────────────────────────────
 def compose(*args: str, check: bool = True, capture: bool = False) -> subprocess.CompletedProcess:
     cmd = ["docker", "compose", *args]
@@ -173,14 +185,24 @@ def used_subnets() -> list[ipaddress.IPv4Network]:
     return nets
 
 
-def pick_subnet() -> str:
-    used = used_subnets()
+def pick_subnet(name: str = "SANDBOX_SUBNET", taken: tuple[str, ...] = ()) -> str:
+    used = used_subnets() + [ipaddress.ip_network(t) for t in taken if t]
     for cand in SUBNETS:
         net = ipaddress.ip_network(cand)
         if not any(net.overlaps(u) for u in used if u.version == 4):
             return cand
-    die("No free subnet for the sandbox network; set SANDBOX_SUBNET in .env by hand.")
+    die(f"No free subnet for the {name.split('_')[0].lower()} network; set {name} in .env by hand.")
     return ""
+
+
+def add_chat_settings(env: dict[str, str]) -> bool:
+    """The chat runtime's token and network, for .env files that predate it. True if anything was added."""
+    before = dict(env)
+    if not env.get("L0W_CHAT_RUNTIME_TOKEN"):
+        env["L0W_CHAT_RUNTIME_TOKEN"] = secrets.token_urlsafe(32)
+    if not env.get("CHAT_SUBNET"):
+        env["CHAT_SUBNET"] = pick_subnet("CHAT_SUBNET", (env.get("SANDBOX_SUBNET", ""),))
+    return env != before
 
 
 def lan_ip() -> str:
@@ -232,6 +254,7 @@ def cmd_install(a) -> None:
             "L0W_AGENT_TOKEN": secrets.token_urlsafe(32), "L0W_RUNNER_TOKEN": secrets.token_urlsafe(32), "L0W_EGRESS_TOKEN": secrets.token_urlsafe(32),
             "SANDBOX_SUBNET": pick_subnet(),
         })
+    add_chat_settings(env)
     env.setdefault("L0W_CHANNEL", a.channel)
     env.setdefault("L0W_VERSION", a.channel)
     env.setdefault("L0W_PORT", str(a.port))
@@ -275,6 +298,9 @@ def cmd_update(a) -> None:
     need_docker()
     env = env_file()
     port = env.get("L0W_PORT", "8000")
+    if add_chat_settings(env):
+        write_env(env)
+        print("Added the chat runtime's token and network to .env.")
     if a.version:
         env["L0W_VERSION"] = a.version.lstrip("v")
         write_env(env)
@@ -323,7 +349,8 @@ def cmd_update(a) -> None:
 
 def cmd_compose(a) -> None:
     need_docker()
-    args = {"up": ["up", "-d"], "down": ["down"], "restart": ["restart"], "ps": ["ps"], "logs": ["logs", "--tail", "200", "-f", *([a.service] if a.service else [])]}[a.cmd]
+    svc = getattr(a, "service", None)
+    args = {"up": ["up", "-d"], "down": ["down"], "restart": ["restart"], "ps": ["ps"], "logs": ["logs", "--tail", "200", "-f", *([svc] if svc else [])]}[a.cmd]
     compose(*args, check=False)
 
 
@@ -366,7 +393,7 @@ def cmd_status(a) -> None:
         print("Dormant: no wakeups planned.")
     b = st.get("budget")
     if b:
-        print(f"Budget: {b['left']:.0f} of {b['allowance']:.0f} pts left this week (you {b['used_by_owner']:.0f}, the assistant {b['used_by_assistant']:.0f}); "
+        print(f"Budget: {b['left']:.0f} of {b['allowance']:.0f} pts left this {period_word(b)} (you {b['used_by_owner']:.0f}, the assistant {b['used_by_assistant']:.0f}); "
               f"reply budget {st.get('reply_budget_left') or 0:.0f} pts.")
     print(f"Waiting on you: {st['inbox_waiting']}.")
     up = call("GET", "/system/update")
@@ -515,13 +542,13 @@ def cmd_budget(a) -> None:
 
 
 def cmd_level(a) -> None:
-    p = call("PATCH", "/budget/claude-subscription", {"level": a.level})
-    print(f"Level set to {p['level']} ({p['allowance']:.0f} pts a week).")
+    p = call("PATCH", f"/budget/{urllib.parse.quote(worker_provider(a))}", {"level": a.level})
+    print(f"Level set to {p['level']} ({p['allowance']:.0f} pts a {period_word(p)}).")
 
 
 def cmd_boost(a) -> None:
     body = {"level": a.level, "until_reset": a.until_reset} | ({} if a.until_reset else {"hours": a.hours})
-    p = call("POST", "/budget/claude-subscription/boost", body)
+    p = call("POST", f"/budget/{urllib.parse.quote(worker_provider(a))}/boost", body)
     print(f"Boost: {p['effective_level']} until {when(p['boost']['until'])}.")
 
 
@@ -638,10 +665,12 @@ def main() -> None:
     sub.add_parser("budget")
     lv = sub.add_parser("level")
     lv.add_argument("level", choices=["dormant", "frugal", "steady", "busy", "max"])
+    lv.add_argument("--provider", help="provider id (default: the worker provider)")
     bo = sub.add_parser("boost")
     bo.add_argument("level", choices=["frugal", "steady", "busy", "max"])
     bo.add_argument("--hours", type=float, default=24)
     bo.add_argument("--until-reset", action="store_true")
+    bo.add_argument("--provider", help="provider id (default: the worker provider)")
     sub.add_parser("calendar")
     sub.add_parser("secrets")
     sc = sub.add_parser("secret")

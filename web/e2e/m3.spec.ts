@@ -32,7 +32,8 @@ test('upload, shelve live, rerun, and browse', async ({ page, request }) => {
   await page.goto('/p/garden?tab=files')
   await expect(page.locator('.shelf-row', { hasText: 'Readings summary' })).toContainText('live')
   await expect(page.locator('.shelf-preview').getByText('second pass: 2 readings, total 72')).toBeVisible({ timeout: 30_000 })
-  await page.locator('.version-pick').selectOption({ index: 2 }) // Current, v2, v1
+  await page.locator('.version-pick').click()
+  await page.getByRole('option', { name: /^v1/ }).click() // Current, v2, v1
   await expect(page.locator('.shelf-preview').getByText('first pass: 2 readings, total 72')).toBeVisible()
 
   // The file browser: the upload as a table, and agent HTML only in a sandboxed frame on the files origin.
