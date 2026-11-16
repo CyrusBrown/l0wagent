@@ -35,6 +35,9 @@ services:
       L0W_CHAT_RUNTIME_TOKEN: ${L0W_CHAT_RUNTIME_TOKEN:?run ./l0w install}
       L0W_CHAT_SUBNET: ${CHAT_SUBNET:?run ./l0w install}
       L0W_FILES_PORT: "8001"
+      # The ports the browser uses (published), for links to the files origin and the agent's page.
+      L0W_FILES_PUBLIC_PORT: ${L0W_FILES_PUBLISHED_PORT:-8001}
+      L0W_AGENT_WEB_PORT: ${L0W_AGENT_WEB_PORT:-8787}
       L0W_INSTANCE_NAME: ${L0W_INSTANCE_NAME:-l0wagent}
       L0W_CHANNEL: ${L0W_CHANNEL:-stable}
       L0W_SECRET_KEY: ${L0W_SECRET_KEY:-}

@@ -86,3 +86,19 @@ On the server (or any machine that can reach it):
 
 `./l0w --help` lists everything; a coding agent working with you can use it too. Day-to-day
 operations are in [operations.md](operations.md).
+
+## Moving from the old assistant
+
+With the new stack installed and healthy, on the same host:
+
+```sh
+./l0w migrate --from ~/assistant --stop-old
+```
+
+It stops the old stack (its volumes are kept, never deleted), copies the old workspace and home
+(without venvs and caches) into `/work/_legacy/` (read-only for the assistant), writes the old
+threads, runs and reviewer notes there as Markdown and JSON, imports them into the web UI as
+archived threads, imports the egress rules, moves the secrets straight into the vault (never
+written to disk), and copies the Claude login. Options: `--old-project NAME` (default `assistant`),
+`--force` (replace an earlier import), `--no-claude-login`. Then start the re-setup thread from
+the web UI.

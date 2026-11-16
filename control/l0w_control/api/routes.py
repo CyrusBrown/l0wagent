@@ -777,7 +777,8 @@ def _origin(request: Request, env_name: str, port_env: str, default_port: int) -
     if ":" in host:
         host = f"[{host}]"
     scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
-    return f"{scheme}://{host}:{os.environ.get(port_env, str(default_port))}"
+    port = os.environ.get(port_env) or (os.environ.get("L0W_FILES_PORT") if port_env == "L0W_FILES_PUBLIC_PORT" else None) or str(default_port)
+    return f"{scheme}://{host}:{port}"
 
 
 @api.get("/files/raw", tags=["files"], response_class=Response, responses={200: {"content": {"application/octet-stream": {}}}})
@@ -800,7 +801,7 @@ def zip_dir(be: Be, volume: s.Volume, path: str = "") -> Response:
 def file_preview_url(request: Request, be: Be, volume: s.Volume, path: str) -> s.PreviewUrl:
     """A link on the files origin for showing this file in a frame or media element. HTML
     gets a link scoped to its folder, so its relative assets load."""
-    return be.preview_url(volume, path, _origin(request, "L0W_FILES_ORIGIN", "L0W_FILES_PORT", 8001))
+    return be.preview_url(volume, path, _origin(request, "L0W_FILES_ORIGIN", "L0W_FILES_PUBLIC_PORT", 8001))
 
 
 @api.get("/files/diff", tags=["files"])
@@ -843,7 +844,7 @@ def shelf_raw(item_id: int, be: Be, version: int | None = None, download: bool =
 
 @api.get("/shelf/{item_id}/preview-url", tags=["files"])
 def shelf_preview_url(item_id: int, request: Request, be: Be, version: int | None = None) -> s.PreviewUrl:
-    return be.shelf_preview_url(item_id, version, _origin(request, "L0W_FILES_ORIGIN", "L0W_FILES_PORT", 8001))
+    return be.shelf_preview_url(item_id, version, _origin(request, "L0W_FILES_ORIGIN", "L0W_FILES_PUBLIC_PORT", 8001))
 
 
 @api.get("/web", tags=["files"])

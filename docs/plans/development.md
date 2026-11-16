@@ -209,6 +209,8 @@ The opencode Go part: Phase 0 ran against opencode 1.18.31 on opencode Go's free
 ## M7: Migrate your instance (timing is yours)
 Once M5 (and ideally M6) work, move the current assistant over as planned in [migration.md](migration.md): export, fresh instance, legacy folder, archived threads, the re-setup run.
 
+**Status (2026-11-18): built.** `./l0w migrate --from <old dir> --stop-old` (cli/l0w.py) stops the old stack (keeping its volumes), runs `cli/migrate_export.py` in a throwaway container to write `/work/_legacy/` (the workspace with its git history, the old home without caches and venvs, and the control export as JSON and Markdown; read-only for the agent), copies the Claude login, pipes the secrets (plaintext in the old database) straight into the vault, and runs `hostctl import-legacy` (`legacy.py`): one archived thread per old project plus General, with questions, permissions and tasks as notes; the old egress rules; and a pinned "Set yourself back up after the move" thread carrying the re-setup brief (`prompts/resetup.md`). Each import step runs once. Tests: `control/tests/test_migrate_export.py`, `test_legacy.py`.
+
 ## M8: Extensions and the second runtime
 - **Extension SDK v1 with UI support**: everything in [server-platform.md](server-platform.md#extensions), including what hub-service extensions will need (gateway calls, background jobs, managed folders, Inbox and thread types). Plus `extensions/AGENTS.md` and `docs/EXTENDING.md`, and one example extension.
 - **More opencode providers** (Zen and other API providers); the opencode Go adapter itself moved to M6.

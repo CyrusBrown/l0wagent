@@ -10,6 +10,8 @@ Install and update (run in the folder with compose.yaml):
                          jobs; no new runs start meanwhile), recreate, check it's healthy
   l0w up | down | restart | ps | logs [SERVICE]
   l0w claude-login       log the assistant's computer in to your Claude subscription (interactive)
+  l0w migrate --from OLD_DIR [--old-project assistant] [--stop-old] [--force] [--no-claude-login]
+                         move the old assistant into this instance (old volumes are never deleted)
   l0w version
 
 Talk to it (log in once; the device token is kept in ~/.config/l0w/config.json, mode 600):
@@ -360,6 +362,89 @@ def cmd_claude_login(a) -> None:
     subprocess.run(["docker", "compose", "exec", "-u", "agent", "agent", "claude", "auth", "login"])
 
 
+def project_name(env: dict[str, str]) -> str:
+    r = compose("config", "--format", "json", capture=True, check=False)
+    if r.returncode == 0:
+        try:
+            return json.loads(r.stdout)["name"]
+        except (ValueError, KeyError):
+            pass
+    return os.environ.get("COMPOSE_PROJECT_NAME") or env.get("COMPOSE_PROJECT_NAME") or Path.cwd().name.lower()
+
+
+def cmd_migrate(a) -> None:
+    need_docker()
+    env = env_file()
+    if not env.get("L0W_AGENT_TOKEN"):
+        die("This instance isn't installed yet (no .env with L0W_AGENT_TOKEN). Run `./l0w install` first.")
+    if not wait_healthy(env.get("L0W_PORT", "8000"), timeout=5):
+        die("Control isn't running or healthy. Start it with `./l0w up`, then try again.")
+    new = project_name(env)
+    old_dir = Path(a.old_dir).expanduser().resolve()
+    if not any((old_dir / n).is_file() for n in ("compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml")):
+        die(f"No compose file in {old_dir}. Point --from at the old assistant's folder.")
+    old = a.old_project
+    if old == new:
+        die("The old and new compose projects have the same name; pass --old-project.")
+    here = Path.cwd()
+    running = subprocess.run(["docker", "compose", "-p", old, "ps", "-q"], capture_output=True, text=True, cwd=old_dir).stdout.split()
+    if running:
+        if not a.stop_old:
+            die("The old assistant is still running. Let its runs finish, then re-run with --stop-old (stops it; keeps its volumes).")
+        print("Stopping the old assistant (its volumes are kept)…")
+        subprocess.run(["docker", "compose", "-p", old, "down"], cwd=old_dir, check=False)
+        still = subprocess.run(["docker", "compose", "-p", old, "ps", "-q"], capture_output=True, text=True, cwd=old_dir).stdout.split()
+        if still:
+            die("The old containers are still running; stop them and try again.")
+    for v in ("control-data", "egress-data", "agent-workspace", "agent-home"):
+        if subprocess.run(["docker", "volume", "inspect", f"{old}_{v}"], capture_output=True).returncode != 0:
+            die(f"Volume {old}_{v} not found. If the old project has another name, use --old-project.")
+    script = Path(__file__).resolve().parent / "migrate_export.py"
+    image = "python:3.12-slim"
+    base = ["docker", "run", "--rm", "-v", f"{script}:/migrate_export.py:ro"]
+    old_mounts = ["-v", f"{old}_control-data:/old/control:ro", "-v", f"{old}_egress-data:/old/egress:ro",
+                  "-v", f"{old}_agent-workspace:/old/workspace:ro", "-v", f"{old}_agent-home:/old/home:ro"]
+    print("Copying the old workspace, home and records into /work/_legacy (this can take a while)…")
+    cmd = base + old_mounts + ["-v", f"{new}_agent-work:/work", image, "python", "/migrate_export.py", "export"]
+    if a.force:
+        cmd.append("--force")
+    if subprocess.run(cmd).returncode != 0:
+        die("The export failed (see above). Nothing was imported.")
+    if not a.no_claude_login:
+        cmd = base + ["-v", f"{old}_agent-home:/old/home:ro", "-v", f"{new}_agent-home:/new-home",
+                                       image, "python", "/migrate_export.py", "claude-login"]
+        if a.force:
+            cmd.append("--force")
+        if subprocess.run(cmd).returncode != 0:
+            print("Couldn't copy the Claude login; run `./l0w claude-login` later.")
+    print("Moving the secrets straight into the vault (never written to disk)…")
+    src = subprocess.Popen(base + ["-v", f"{old}_control-data:/old/control:ro", image, "python", "/migrate_export.py", "secrets"],
+                           stdout=subprocess.PIPE)
+    dst = subprocess.run(["docker", "compose", "exec", "-T", "control", "python", "-m", "l0w_control.hostctl", "import-secrets"],
+                         stdin=src.stdout, capture_output=True, text=True, cwd=here)
+    src.stdout.close()
+    if src.wait() != 0 or dst.returncode != 0:
+        print("Importing the secrets failed: " + (dst.stderr.strip() or "see above") + "\nRe-enter them in Settings.")
+    else:
+        print(dst.stdout.strip())
+    r = compose("exec", "-T", "control", "python", "-m", "l0w_control.hostctl", "import-legacy", capture=True, check=False)
+    if r.returncode != 0:
+        die("Importing the old threads failed: " + (r.stderr.strip() or r.stdout.strip()))
+    print(r.stdout.strip())
+    print("Restarting control so the new secrets reach the next session and redaction…")
+    compose("restart", "control", check=False)
+    if not wait_healthy(env.get("L0W_PORT", "8000")):
+        die("Control didn't come back within 2 minutes: `./l0w logs control`.")
+    print(f"""
+Done. The old assistant's files are in /work/_legacy/ (read-only for the assistant).
+The old stack is stopped, not deleted: its volumes ({old}_*) are untouched.
+Next:
+  1. Open the web UI: the old threads are there as archived threads named "… (old assistant)".
+  2. The pinned thread "Set yourself back up after the move" holds the re-setup brief; the assistant's
+     next run picks it up. Wake it from that thread when you're ready, with a generous budget.
+  3. Once you're happy, remove the old stack yourself (`docker compose -p {old} down -v` in {old_dir}).""")
+
+
 # ── commands: API ──────────────────────────────────────────────────────────
 def cmd_login(a) -> None:
     url = (a.url or server()[0]).rstrip("/")
@@ -617,6 +702,12 @@ def main() -> None:
     lg.add_argument("service", nargs="?")
     sub.add_parser("claude-login")
     sub.add_parser("version")
+    mg = sub.add_parser("migrate", help="move the old assistant into this instance")
+    mg.add_argument("--from", dest="old_dir", required=True, metavar="OLD_DIR", help="the old assistant's folder")
+    mg.add_argument("--old-project", default="assistant", help="the old compose project name")
+    mg.add_argument("--stop-old", action="store_true", help="stop the old stack first (volumes are kept)")
+    mg.add_argument("--force", action="store_true", help="replace an earlier /work/_legacy and Claude login")
+    mg.add_argument("--no-claude-login", action="store_true")
     li = sub.add_parser("login")
     li.add_argument("url", nargs="?")
     sub.add_parser("logout")
@@ -683,7 +774,7 @@ def main() -> None:
     a = p.parse_args()
     {
         "install": cmd_install, "update": cmd_update, "up": cmd_compose, "down": cmd_compose, "restart": cmd_compose, "ps": cmd_compose, "logs": cmd_compose,
-        "claude-login": cmd_claude_login, "version": cmd_version, "login": cmd_login, "logout": cmd_logout, "status": cmd_status, "inbox": cmd_inbox,
+        "claude-login": cmd_claude_login, "migrate": cmd_migrate, "version": cmd_version, "login": cmd_login, "logout": cmd_logout, "status": cmd_status, "inbox": cmd_inbox,
         "answer": cmd_answer, "approve": cmd_decide, "deny": cmd_decide, "done": cmd_task, "decline": cmd_task, "promote": cmd_promote,
         "threads": cmd_threads, "read": cmd_read, "send": cmd_send, "runs": cmd_runs, "run": cmd_run, "wake": cmd_wake, "stop": cmd_stop,
         "jobs": cmd_jobs, "budget": cmd_budget, "level": cmd_level, "boost": cmd_boost, "calendar": cmd_calendar, "secrets": cmd_secrets,
