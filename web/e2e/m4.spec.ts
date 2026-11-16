@@ -17,6 +17,11 @@ test('levels, a wakeup that plans the next one, the calendar and both run views'
   await page.getByRole('button', { name: 'Save' }).click()
   await expect(page.getByText(/^Saved /)).toBeVisible()
 
+  // The tests share one server: wait for an earlier test's run (e.g. M3's reply) to finish.
+  await expect.poll(async () => {
+    const runs: { status: string }[] = await (await page.request.get('/api/runs')).json()
+    return runs.some((r) => r.status === 'starting' || r.status === 'running')
+  }, { timeout: 60_000 }).toBe(false)
   await page.goto('/runs')
   await page.getByRole('button', { name: 'Wake now' }).click()
   await expect(page).toHaveURL(/\/runs\/\d+/)
