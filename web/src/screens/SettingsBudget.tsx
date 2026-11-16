@@ -74,10 +74,10 @@ export function Budgets() {
   const o = budget.data
   if (budget.isError) return <div className="error">Couldn't load budgets.</div>
   if (!o) return null
-  const b = o.providers.find((p) => p.provider === 'claude-subscription') ?? o.providers[0]
+  const b = o.providers[0]  // the worker's provider
   const lim = b.limits
   const done = { onError: (x: unknown) => setErr(problem(x)), onSuccess: () => setErr(null) }
-  const override = (ov: S['BudgetLimitsPatch']) => patch.mutate({ overrides: ov }, done)
+  const override = (ov: S['BudgetLimitsPatch']) => patch.mutate({ provider: b.provider, overrides: ov }, done)
   const isCustom = (k: string) => b.custom.includes(k)
   const next = LEVEL_ORDER[Math.min(LEVEL_ORDER.length - 1, LEVEL_ORDER.indexOf(b.level) + 1)]
   const levelText = o.levels.find((l) => l.name === b.effective_level)?.text ?? ''
@@ -88,7 +88,7 @@ export function Budgets() {
         <div className="set-title">Level</div>
         <div className="level-grid">
           {o.levels.map((l) => (
-            <button key={l.name} className={`level-opt ${b.level === l.name ? 'on' : ''}`} aria-pressed={b.level === l.name} onClick={() => patch.mutate({ level: l.name }, done)}>
+            <button key={l.name} className={`level-opt ${b.level === l.name ? 'on' : ''}`} aria-pressed={b.level === l.name} onClick={() => patch.mutate({ provider: b.provider, level: l.name }, done)}>
               <span style={{ font: '500 14px var(--sans)' }}>{cap(l.name)}</span>
               <span className="sub" style={{ fontSize: 12 }}>{l.limits.allowance ? `${l.limits.allowance} pts/wk` : 'Reply now only'}</span>
             </button>
@@ -135,13 +135,13 @@ export function Budgets() {
           {(close) => <LimitsEdit lim={lim} onSave={(v) => override(v)} close={close} />}
         </Field>
         <Field k="Reply budget" hint="for “Reply now”" value={`${b.reply_allowance} pts / wk`}>
-          {(close) => <NumberEdit value={b.reply_allowance} suffix="pts" onSave={(v) => patch.mutate({ reply_pts: v }, done)} close={close} />}
+          {(close) => <NumberEdit value={b.reply_allowance} suffix="pts" onSave={(v) => patch.mutate({ provider: b.provider, reply_pts: v }, done)} close={close} />}
         </Field>
         <Field k="Fallback" hint="if nothing is planned for 2 nights" value={lim.fallback ? `on · ${b.fallback_pts} pts` : 'off'} custom={isCustom('fallback')} onReset={() => override({ fallback: null })}>
           {(close) => (
             <div className="inline-edit">
               <button className="btn small" onClick={() => { override({ fallback: !lim.fallback }); close() }}>{lim.fallback ? 'Turn off' : 'Turn on'}</button>
-              <NumberEdit value={b.fallback_pts} suffix="pts" onSave={(v) => patch.mutate({ fallback_pts: v }, done)} close={close} />
+              <NumberEdit value={b.fallback_pts} suffix="pts" onSave={(v) => patch.mutate({ provider: b.provider, fallback_pts: v }, done)} close={close} />
             </div>
           )}
         </Field>
@@ -171,15 +171,15 @@ export function Budgets() {
           <>
             <div className="stack" style={{ gap: 2 }}><span style={{ font: '500 14px var(--sans)' }}>Boost: {cap(b.boost.level)}</span>
               <span className="sub" style={{ fontSize: 12.5 }}>Until {new Date(b.boost.until).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}; then back to {cap(b.level)}.</span></div>
-            <button className="btn" onClick={() => endBoost.mutate(undefined, done)}>End boost</button>
+            <button className="btn" onClick={() => endBoost.mutate(b.provider, done)}>End boost</button>
           </>
         ) : (
           <>
             <div className="stack" style={{ gap: 2 }}><span style={{ font: '500 14px var(--sans)' }}>Boost</span>
               <span className="sub" style={{ fontSize: 12.5 }}>Raise the level to {cap(next)} for a while ({o.levels.find((l) => l.name === next)?.limits.allowance} pts/wk). Your reserve still protects your own use.</span></div>
             <div className="btns">
-              <button className="btn" disabled={next === b.level} onClick={() => boost.mutate({ level: next, until_reset: true }, done)}>Until the reset</button>
-              <button className="btn primary" disabled={next === b.level} onClick={() => boost.mutate({ level: next, hours: 24 }, done)}>Boost for 24 h</button>
+              <button className="btn" disabled={next === b.level} onClick={() => boost.mutate({ provider: b.provider, level: next, until_reset: true }, done)}>Until the reset</button>
+              <button className="btn primary" disabled={next === b.level} onClick={() => boost.mutate({ provider: b.provider, level: next, hours: 24 }, done)}>Boost for 24 h</button>
             </div>
           </>
         )}
@@ -230,6 +230,8 @@ export function Providers() {
   const patch = usePatchProvider()
   const del = useDeleteProvider()
   const [key, setKey] = useState('')
+  const [goKey, setGoKey] = useState('')
+  const hasGo = providers.data?.some((p) => p.kind === 'opencode-go')
   return (
     <div className="stack" style={{ gap: 24 }}>
       <section className="set-section">
@@ -245,6 +247,7 @@ export function Providers() {
                 <button className="btn small" onClick={() => patch.mutate({ id: p.id, enabled: !p.enabled })}>{p.enabled ? 'Turn off' : 'Turn on'}</button>
                 {p.kind !== 'claude-subscription' && <button className="btn small danger" onClick={() => del.mutate(p.id)}>Remove</button>}
               </div>
+              {p.models && <TierModels provider={p} />}
             </div>
           ))}
         </div>
@@ -263,6 +266,41 @@ export function Providers() {
           <div><button className="btn primary" disabled={key.length < 20 || add.isPending}>Save key</button></div>
         </form>
       </section>
+      <section className="set-section">
+        <div className="set-title">opencode Go</div>
+        <div className="sub" style={{ fontSize: 13 }}>
+          A subscription to open models, run with opencode instead of Claude Code. Paste the key from opencode.ai (your workspace → API keys).
+          Write-only, like the API key. Each step's cost is reported by opencode at catalog prices, 1 pt per $0.10; Go's own limits apply too.
+        </div>
+        <form className="set-form" onSubmit={(e) => { e.preventDefault(); add.mutate({ key: goKey, label: null, kind: 'opencode-go', use_for_all_roles: false }, { onSuccess: () => setGoKey('') }) }}>
+          <input className="input" type="password" autoComplete="off" placeholder={hasGo ? 'Replace the saved key' : 'opencode API key'} value={goKey} onChange={(e) => setGoKey(e.target.value)} aria-label="opencode Go key" />
+          <div><button className="btn primary" disabled={goKey.length < 20 || add.isPending}>Save key</button></div>
+        </form>
+        {hasGo && <div className="sub" style={{ fontSize: 12.5 }}>Choose which roles run on it under Roles.</div>}
+      </section>
+    </div>
+  )
+}
+
+const TIER_NAMES: [string, string][] = [['haiku', 'Small (haiku)'], ['sonnet', 'Medium (sonnet)'], ['opus', 'Large (opus)']]
+
+function TierModels({ provider }: { provider: S['ProviderInfo'] }) {
+  const patch = usePatchProvider()
+  const saved = Object.fromEntries(Object.entries(provider.models ?? {}).map(([k, v]) => [k, v.model]))
+  const [m, setM] = useState<Record<string, string>>(saved)
+  useEffect(() => setM(saved), [JSON.stringify(saved)])  // eslint-disable-line react-hooks/exhaustive-deps
+  const dirty = JSON.stringify(m) !== JSON.stringify(saved)
+  return (
+    <div className="stack" style={{ gap: 6, gridColumn: '1 / -1', marginTop: 8 }}>
+      <span className="sub" style={{ fontSize: 12.5 }}>The model behind each tier name (as <code>opencode models opencode-go</code> lists them):</span>
+      {TIER_NAMES.map(([k, label]) => (
+        <label key={k} className="row" style={{ gap: 8, alignItems: 'center' }}>
+          <span style={{ width: 120, fontSize: 13 }}>{label}</span>
+          <input className="input mono" style={{ flex: 1 }} value={m[k] ?? ''} onChange={(e) => setM({ ...m, [k]: e.target.value })} aria-label={`${label} model`} />
+        </label>
+      ))}
+      {patch.error && <div className="error" role="alert">{problem(patch.error)}</div>}
+      {dirty && <div><button className="btn small primary" disabled={patch.isPending} onClick={() => patch.mutate({ id: provider.id, models: m })}>Save models</button></div>}
     </div>
   )
 }
@@ -292,7 +330,10 @@ export function Roles() {
                 {providers.data?.filter((p) => p.enabled).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
               </select>
               <select className="input mono" value={model} onChange={(e) => change(i, { tier: `${e.target.value}/${effort ?? 'medium'}` })} aria-label={`${r.role} model`}>
-                {['haiku', 'sonnet', 'opus'].map((m) => <option key={m}>{m}</option>)}
+                {['haiku', 'sonnet', 'opus'].map((m) => {
+                  const mapped = providers.data?.find((p) => p.id === r.provider)?.models?.[m]?.model
+                  return <option key={m} value={m}>{mapped ? `${m} · ${mapped.replace(/^opencode-go\//, '')}` : m}</option>
+                })}
               </select>
               <select className="input" value={effort ?? 'medium'} onChange={(e) => change(i, { tier: `${model}/${e.target.value}` })} aria-label={`${r.role} effort`}>
                 {['low', 'medium', 'high'].map((m) => <option key={m}>{m}</option>)}

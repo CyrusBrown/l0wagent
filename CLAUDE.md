@@ -2,7 +2,7 @@
 
 A long-running personal AI assistant on the owner's own server. **Start with [docs/plans/development.md](docs/plans/development.md)**: it says which milestone is current and what "done" means. Don't build ahead of the current milestone; ideas for later go in that file's "Later" list.
 
-Current milestone: **M4 (budgets, wakeups and runs)**, built on top of M1–M3; all four are waiting on the owner's review. M5 (installable and shareable) is next.
+Current milestone: **M6 (chat, tools and the connector, plus the opencode adapter for opencode Go)**, on top of M1–M5, which are waiting on the owner's review.
 
 ## Sources of truth
 - **UI and styling: the mockup** (`design/mockup/`; readable sources in `design/mockup/src/`). It outranks `docs/plans/ui.md`. Port screens from its markup and tokens; where ui.md disagrees, update ui.md. [design/mockup/REVIEW.md](design/mockup/REVIEW.md) lists every known difference and how it was settled.
@@ -19,15 +19,19 @@ control/   FastAPI app (Python 3.12, SQLite, no ORM). api/ = schemas + owner rou
            (due wakeups, fallback, sweep, routine occurrences); routines.py; reviewer.py; jobs.py;
            vault.py (write-only secrets, redaction); runs/ = run manager, runtime adapters,
            runner/egress clients, usage reader + gate; prompts/ = control-owned prompts and
-           harness news (news.py); db/migrations/ = versioned SQL
-agent/     the agent image: runner/ (runner.py, fake_claude.py, selftest.py), bin/ (assistant CLI, hook), seed/
+           harness news (news.py); notify.py (web push, ntfy); updates.py (update check, draining);
+           hostctl.py (host-side commands for ./l0w); db/migrations/ = versioned SQL
+agent/     the agent image: runner/ (runner.py, fake_claude.py, fake_opencode.py, opencode-plugin.js, selftest.py),
+           bin/ (assistant CLI, hook), seed/. Two runtimes: Claude Code and opencode (for opencode Go)
 egress/    the egress proxy (from the old assistant)      agent-web/  the LAN forwarder for port 8787
 web/       React + TypeScript + Vite. api/ = generated types, client, queries, live stream; app/ = shell;
            screens/; components/; styles/tokens.css = the mockup's theme tokens; e2e/ = Playwright
 dev/       isolation-test.sh and notes on the fake runtime
 design/mockup/  the mockup bundle as exported, its extracted sources, and REVIEW.md
+cli/       l0w.py, the host CLI (`./l0w`: install, update, ops parity); stdlib only
+deploy/    control.Dockerfile (control + built web app); compose.yaml at the root is the release stack
 ```
-Created in their milestones: `chat-runtime/`, `cli/`.
+Created in their milestones: `chat-runtime/`.
 
 ## Commands
 ```
@@ -36,6 +40,7 @@ cd control && uv run python scripts/dev_stack.py --port 8000   # control + runne
 cd control && L0W_BACKEND=mock uv run uvicorn l0w_control.app:app --reload --port 8000   # the in-memory mock API
 cd web && pnpm install && pnpm dev                     # UI on :5173, proxies /api to :8000
 docker compose -f compose.dev.yaml up --build          # the whole stack in containers (fake claude by default)
+./l0w --help                                           # the host CLI (install/update use compose.yaml + prebuilt images)
 
 cd control && uv run pytest && uv run ruff check .     # includes the restart integration tests (no Docker)
 cd web && pnpm typecheck && pnpm test && pnpm e2e      # e2e starts its own stack on :8100/:5174
@@ -64,7 +69,10 @@ dev/isolation-test.sh                                  # isolation probes agains
   edit existing threads. Approved permission actions are applied by control (`conv._apply`).
 - Everything stored from the agent or the owner goes through `vault.redact`.
 - The fake runtime's scenarios (`agent/runner/fake_claude.py`) are how the agent's side is tested
-  without a login: extend them when you add agent-facing behavior.
+  without a login: extend them when you add agent-facing behavior. `fake_opencode.py` wraps them in
+  opencode's event format, so they cover both runtimes.
+- Runtimes: a run's provider picks it (`budgets.RUNTIME`, `Budgets.runtime_spec`). Pin the CLIs'
+  versions in `agent/Dockerfile`; the adapters read their headless event streams.
 
 ## Security invariants (from docs/plans/server-platform.md; binding)
 - The agent container is on the sandbox network only: no Docker socket, no host mounts beyond explicit read-only grants, no NET_ADMIN/NET_RAW. Port 8787 reaches the LAN only through `agent-web`.

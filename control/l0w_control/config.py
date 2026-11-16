@@ -51,6 +51,7 @@ SPECS: dict[str, tuple[str, Any, str]] = {
     "SWEEP_WINDOW_HOURS": ("float", 5.0, "Sweep: how many hours before the weekly reset sweep wakeups may run."),
     "SWEEP_CEILING_PCT": ("float", 95.0, "Sweep: the weekly usage (%) sweep wakeups won't go past."),
     "WAKEUP_LATE_MINUTES": ("int", 30, "A planned wakeup that can't start within this many minutes of its time (another run is busy) is marked missed."),
+    "UPDATE_CHECK": ("bool", True, "Check GitHub for new stable releases every few hours (shows the Update available banner)."),
     "PROMOTE_WAIT_MINUTES": ("float", 10.0, "How long a reply run's promote request stays open before it expires."),
     "DEFAULT_TIER": ("str", "sonnet", "Model (optionally model/effort) for runs that don't name one."),
     "REPLY_TIER": ("str", "sonnet", "Model (optionally model/effort) for Reply-now runs."),

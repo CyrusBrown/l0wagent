@@ -1,0 +1,3 @@
+#!/bin/sh
+# l0w: install, update and talk to l0wagent. See cli/l0w.py (or ./l0w --help).
+exec python3 "$(dirname "$0")/cli/l0w.py" "$@"

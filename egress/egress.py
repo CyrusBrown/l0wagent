@@ -33,7 +33,7 @@ log = logging.getLogger("egress")
 
 TOKEN = os.environ.get("EGRESS_TOKEN", "")
 SANDBOX_NET = ipaddress.ip_network(os.environ.get("SANDBOX_SUBNET", "172.31.240.0/24"), strict=False)
-GATED_HOSTS = [h.strip().lower() for h in os.environ.get("GATED_HOSTS", "api.anthropic.com").split(",") if h.strip()]
+GATED_HOSTS = [h.strip().lower() for h in os.environ.get("GATED_HOSTS", "api.anthropic.com,opencode.ai").split(",") if h.strip()]
 DEFAULT_POLICY = os.environ.get("DEFAULT_POLICY", "allow").lower()  # allow | deny (allowlist mode)
 RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "90"))
 DATA_DIR = os.environ.get("DATA_DIR", "/data")

@@ -490,6 +490,42 @@ class MockBackend(Backend):
     def jobs(self, include_done: bool) -> list[s.Job]:
         return [j for j in self.w.jobs.values() if include_done or j.status == "running"]
 
+    def update_info(self) -> s.UpdateInfo:
+        return s.UpdateInfo(current="0.4.0", channel="stable", latest="0.5.0", available=True, url="https://github.com/CyrusBrown/l0wagent/releases/tag/v0.5.0",
+                            notes="First friends release: install with ./l0w, an installable web app with push notifications, and the l0w CLI.",
+                            checked_at=_now() - timedelta(hours=1), error=None, draining_until=None, waiting_for=[])
+
+    def check_update(self) -> s.UpdateInfo:
+        return self.update_info()
+
+    def claude_login_start(self) -> s.ClaudeLoginStart:
+        return s.ClaudeLoginStart(url="https://claude.ai/oauth/authorize?code=true&client_id=mock")
+
+    def claude_login_code(self, req: s.ClaudeLoginCode) -> s.ClaudeLoginResult:
+        return s.ClaudeLoginResult(ok=req.code == "good-code", message="The assistant is logged in to Claude." if req.code == "good-code" else "The code didn't work.")
+
+    def push_key(self) -> s.PushKey:
+        return s.PushKey(public_key="BMock-public-key-for-the-ui")
+
+    def push_subscribe(self, req: s.PushSubscribe) -> s.NotificationSettings:
+        return self.notification_settings()
+
+    def push_unsubscribe(self, sub_id: int) -> None:
+        pass
+
+    def notification_settings(self) -> s.NotificationSettings:
+        from ..notify import EVENTS
+        return s.NotificationSettings(events={k: d for k, (_, _, d) in EVENTS.items()}, ntfy_url=None, quiet_start="23:00", quiet_end="07:00",
+                                      event_labels={k: f"{label}: {desc}" for k, (label, desc, _) in EVENTS.items()},
+                                      subscriptions=[s.PushSubscriptionInfo(id=1, label="Phone (installed app)", created_at=_now() - timedelta(days=3),
+                                                                            last_ok_at=_now() - timedelta(hours=2), failures=0)])
+
+    def set_notification_settings(self, req: s.NotificationSettings) -> s.NotificationSettings:
+        return req
+
+    def push_test(self) -> s.PushTestResult:
+        return s.PushTestResult(sent=1)
+
     # ── budgets, providers, roles, the reviewer (M4) ───────────────────────
     def _limits(self) -> tuple[str, s.BudgetLimits, list[str]]:
         from dataclasses import asdict
@@ -562,24 +598,41 @@ class MockBackend(Backend):
         return self.budget_overview()
 
     def providers(self) -> list[s.ProviderInfo]:
+        from ..budgets import GO_MODELS
         out = [s.ProviderInfo(id="claude-subscription", kind="claude-subscription", label="Claude subscription", enabled=True, status="Weekly usage 37% (read oauth)",
                               usage_source="oauth", has_credential=True)]
         if self.w.api_key:
             out.append(s.ProviderInfo(id="anthropic-api", kind="anthropic-api", label="Anthropic API", enabled=True, status="API key saved (write-only)",
                                       usage_source="ledger", has_credential=True))
+        if getattr(self.w, "go_key", False):
+            models = {**{k: v["model"] for k, v in GO_MODELS.items()}, **getattr(self.w, "go_models", {})}
+            out.append(s.ProviderInfo(id="opencode-go", kind="opencode-go", label="opencode Go", enabled=True, runtime="opencode",
+                                      status="Key saved (write-only); runs on opencode, each step's cost reported by opencode. Go's own limits apply too.",
+                                      usage_source="ledger", has_credential=True,
+                                      models={k: s.TierModel(model=m, variants=next((v["variants"] for v in GO_MODELS.values() if v["model"] == m), [])) for k, m in models.items()}))
         return out
 
     def add_api_provider(self, req: s.ApiProviderCreate) -> s.ProviderInfo:
+        if req.kind == "opencode-go":
+            self.w.go_key = True
+            if req.use_for_all_roles:
+                self.w.roles = {name: ("opencode-go", t) for name, (_, t) in self.w.roles.items()}
+            return next(p for p in self.providers() if p.id == "opencode-go")
         if not req.key.startswith("sk-ant-"):
             raise BadRequest("bad_key", "That doesn't look like an Anthropic API key (they start with sk-ant-).")
         self.w.api_key = True
-        return self.providers()[-1]
+        return next(p for p in self.providers() if p.id == "anthropic-api")
 
     def patch_provider(self, provider: str, req: s.ProviderPatch) -> s.ProviderInfo:
+        if req.models and provider == "opencode-go":
+            self.w.go_models = {**getattr(self.w, "go_models", {}), **req.models}
         return next(p for p in self.providers() if p.id == provider)
 
     def delete_provider(self, provider: str) -> None:
-        self.w.api_key = False
+        if provider == "opencode-go":
+            self.w.go_key = False
+        else:
+            self.w.api_key = False
 
     def roles(self) -> s.Roles:
         from ..budgets import TIERS, Budgets

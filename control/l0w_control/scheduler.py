@@ -224,6 +224,9 @@ class Scheduler:
 
     # ── starting due wakeups ───────────────────────────────────────────────
     async def start_due(self, now: datetime) -> None:
+        from .updates import draining
+        if draining(self.db):
+            return  # an update is waiting for idle: wakeups wait (and may be missed)
         due = self.db.q("SELECT * FROM wakeups WHERE status='planned' AND at<=? ORDER BY at, id", (iso(now),))
         late = timedelta(minutes=self.settings.get("WAKEUP_LATE_MINUTES"))
         busy = self.runs.active_run_id() is not None

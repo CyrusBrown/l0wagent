@@ -22,7 +22,7 @@ from typing import Any, TypeVar
 from .. import __version__
 from ..api import schemas as s
 from ..auth import Auth, iso, parse, utcnow
-from ..budgets import LEVELS, SUBSCRIPTION, TIERS, Budgets
+from ..budgets import LEVELS, OPENCODE_GO, RUNTIME, SUBSCRIPTION, TIERS, Budgets
 from ..config import Env, Settings
 from ..conv import Conversations
 from ..db import Database
@@ -31,6 +31,7 @@ from ..files_origin import Signer
 from ..files_origin import make_app as files_app
 from ..jobs import Jobs
 from ..live import Live
+from ..notify import Notifier
 from ..reviewer import Reviewer
 from ..routines import Routines
 from ..runs.clients import EgressClient, RunnerClient, RunnerError
@@ -38,6 +39,7 @@ from ..runs.manager import RunManager, run_model
 from ..runs.usage import Usage
 from ..scheduler import Scheduler, wakeup_model
 from ..shelf import Shelf
+from ..updates import Updates
 from ..vault import Vault
 from .base import Backend, BadRequest, Conflict, NotFound
 
@@ -78,11 +80,16 @@ class SqliteBackend(Backend):
         self.reviewer.runs = self.runs_mgr
         self.runs_mgr.reviewer = self.reviewer
         self.runs_mgr.brief_extra = self._brief_extra
+        self.runs_mgr.on_finish.append(lambda r: r["status"] == "failed" and self.notifier.notify(
+            "run_failed", f"Run #{r['id']} failed", r.get("result") or "", f"/runs/{r['id']}", "run", str(r["id"])))
         self._last_jobs_check = 0.0
         self.inbox_dir = os.environ.get("L0W_INBOX_DIR", "/work/_inbox")
         self.storage = Storage({"workspace": Path(os.environ.get("L0W_WORKSPACE_DIR", "/workspace")), "work": Path(os.environ.get("L0W_WORK_DIR", "/work"))})
         self.shelf_ = Shelf(self.db, self.live, self.storage, self.env.data_dir / "shelf")
         self.jobs_ = Jobs(self.db, self.live, self.storage, self.vault.redact)
+        self.updates = Updates(self.db)
+        self.notifier = Notifier(self.db, self.env.data_dir)
+        self.conv.notify = self.notifier.notify
         self.signer = Signer(self.vault.key)
         self.files_app = files_app(self.storage, self.signer, self.shelf_.raw)
         self._files_server = None
@@ -100,6 +107,7 @@ class SqliteBackend(Backend):
     # ── lifecycle and bridging ─────────────────────────────────────────────
     async def startup(self) -> None:
         self.loop = asyncio.get_running_loop()
+        self.notifier.loop = self.loop
         self.live.bind(self.loop)
         await self.runs_mgr.startup()
         self._watcher = asyncio.create_task(self.shelf_.watch(self.runs_mgr.active_run_id))
@@ -209,7 +217,7 @@ class SqliteBackend(Backend):
         now = self.db.now()
         text = f"New sign-in: {label}" + (f" from {ip}" if ip else "")
         aid = self.db.ex("INSERT INTO security_alerts(session_id, text, created_at) VALUES(?,?,?)", (session_id, text, now))
-        self.db.ex("INSERT INTO notifications(kind, ref_kind, ref_id, title, created_at) VALUES('new_device','security_alert',?,?,?)", (str(aid), text, now))
+        self.notifier.notify("new_device", text, "If this wasn't you, revoke it from your Inbox.", "/inbox", "security_alert", str(aid))
         self.live.changed("security_alert", aid)
         self.live.emit("inbox_counts")
 
@@ -600,6 +608,11 @@ class SqliteBackend(Backend):
 
     async def _housekeeping(self, now) -> None:
         from datetime import timedelta
+        if self.settings.get("UPDATE_CHECK"):
+            before = self.updates.info().available
+            await self.updates.check()
+            if self.updates.info().available and not before:
+                self.live.emit("status")
         self.conv.expire_promotes(older_than=iso(now - timedelta(minutes=self.settings.get("PROMOTE_WAIT_MINUTES"))))
         pids = self.jobs_.running_pids()
         if pids and now.timestamp() - self._last_jobs_check >= 60:
@@ -610,10 +623,75 @@ class SqliteBackend(Backend):
                 return
             self.jobs_.mark_lost(alive)
 
+    # ── logging the agent in to Claude ─────────────────────────────────────
+    def claude_login_start(self) -> s.ClaudeLoginStart:
+        if self.runs_mgr.active_run_id() is not None:
+            raise Conflict("busy", "A run is in progress; log in once it's done.")
+
+        async def start() -> dict:
+            await self.egress.acquire("claude-login", 900, "logging the agent in to Claude")
+            try:
+                return await self.runner.login_start()
+            except RunnerError:
+                await self.egress.release("claude-login", "login failed to start")
+                raise
+
+        try:
+            r = self._await(start())
+        except RunnerError as e:
+            raise Conflict("login_failed", f"The assistant's computer couldn't start the login: {e}") from e
+        return s.ClaudeLoginStart(url=r["url"])
+
+    def claude_login_code(self, req: s.ClaudeLoginCode) -> s.ClaudeLoginResult:
+        async def finish() -> dict:
+            try:
+                return await self.runner.login_code(req.code)
+            finally:
+                await self.egress.release("claude-login", "login finished")
+
+        try:
+            r = self._await(finish(), timeout=150)
+        except RunnerError as e:
+            return s.ClaudeLoginResult(ok=False, message=f"The login didn't finish: {e}")
+        self.usage._cache = None
+        if r.get("ok"):
+            self._await(self.usage.read(max_age=0))
+            self.live.emit("status")
+            return s.ClaudeLoginResult(ok=True, message="The assistant is logged in to Claude.")
+        return s.ClaudeLoginResult(ok=False, message="The code didn't work. Start again and paste the newest code. " + (r.get("output") or "")[-300:])
+
+    # ── notifications ──────────────────────────────────────────────────────
+    def push_key(self) -> s.PushKey:
+        return s.PushKey(public_key=self.notifier.public_key())
+
+    def push_subscribe(self, req: s.PushSubscribe) -> s.NotificationSettings:
+        self.notifier.subscribe(req)
+        return self.notifier.settings()
+
+    def push_unsubscribe(self, sub_id: int) -> None:
+        self.notifier.unsubscribe(sub_id=sub_id)
+
+    def notification_settings(self) -> s.NotificationSettings:
+        return self.notifier.settings()
+
+    def set_notification_settings(self, req: s.NotificationSettings) -> s.NotificationSettings:
+        return self.notifier.save_settings(req)
+
+    def push_test(self) -> s.PushTestResult:
+        return s.PushTestResult(sent=self._await(self.notifier.test()))
+
+    # ── updates ────────────────────────────────────────────────────────────
+    def update_info(self) -> s.UpdateInfo:
+        return self.updates.info()
+
+    def check_update(self) -> s.UpdateInfo:
+        self._await(self.updates.check(force=True))
+        return self.updates.info()
+
     # ── budgets and providers ──────────────────────────────────────────────
     def budget_overview(self) -> s.BudgetOverview:
         return s.BudgetOverview(
-            providers=[self.budgets.summary(p) for p in self.budgets.provider_ids()],
+            providers=[self.budgets.summary(p) for p in sorted(self.budgets.provider_ids(), key=lambda p: p != self.budgets.role("worker").provider)],  # the worker's first
             levels=[s.LevelPreset(name=n, text=t, limits=s.BudgetLimits(**vars(lim))) for n, (t, lim) in LEVELS.items()],  # type: ignore[arg-type]
             tiers=list(TIERS), reserve_weekly_pct=self.settings.get("RESERVE_WEEKLY_PCT"), reserve_five_hour_pct=self.settings.get("RESERVE_FIVE_HOUR_PCT"),
             sweep_window_hours=self.settings.get("SWEEP_WINDOW_HOURS"), sweep_ceiling_pct=self.settings.get("SWEEP_CEILING_PCT"),
@@ -658,19 +736,27 @@ class SqliteBackend(Backend):
             source = u.source if u else "none"
             status = (f"Weekly usage {u.seven_day_pct:.0f}% (read {u.source})" if u and u.seven_day_pct is not None
                       else f"Usage unknown: {(u and u.error) or 'not read yet'}. The agent logs in to Claude on its own computer (see System).")
+        elif r["kind"] == OPENCODE_GO:
+            source = "ledger"
+            status = ("Key saved (write-only); runs on opencode, each step's cost reported by opencode. Go's own limits apply too."
+                      if r["credential_enc"] else "No key saved")
         else:
             source = "ledger"
             status = "API key saved (write-only); usage priced from the runtime's reported cost" if r["credential_enc"] else "No API key saved"
+        models = self.budgets.models(pid)
         return s.ProviderInfo(id=r["id"], kind=r["kind"], label=r["label"], enabled=bool(r["enabled"]), status=status, usage_source=source,
-                              has_credential=bool(r["credential_enc"]) or r["kind"] == SUBSCRIPTION)
+                              has_credential=bool(r["credential_enc"]) or r["kind"] == SUBSCRIPTION, runtime=RUNTIME.get(r["kind"], "claude-code"),
+                              models={k: s.TierModel(model=v["model"], variants=v.get("variants") or []) for k, v in models.items()} if models else None)
 
     def providers(self) -> list[s.ProviderInfo]:
         return [self._provider_info(p) for p in self.budgets.provider_ids(enabled_only=False)]
 
     def add_api_provider(self, req: s.ApiProviderCreate) -> s.ProviderInfo:
-        self.budgets.add_api_provider(req.key, req.label)
+        self.budgets.add_api_provider(req.key, req.label, req.kind)
+        if req.use_for_all_roles:
+            self.budgets.set_roles([r.model_copy(update={"provider": req.kind}) for r in self.budgets.roles()])
         self._budget_changed()
-        return self._provider_info("anthropic-api")
+        return self._provider_info(req.kind)
 
     def patch_provider(self, provider: str, req: s.ProviderPatch) -> s.ProviderInfo:
         self._provider_info(provider)
@@ -680,6 +766,8 @@ class SqliteBackend(Backend):
             self.db.ex("UPDATE providers SET enabled=?, updated_at=? WHERE id=?", (int(req.enabled), self.db.now(), provider))
         if req.label:
             self.db.ex("UPDATE providers SET label=?, updated_at=? WHERE id=?", (req.label.strip()[:60], self.db.now(), provider))
+        if req.models:
+            self.budgets.set_models(provider, req.models)
         self._budget_changed()
         return self._provider_info(provider)
 

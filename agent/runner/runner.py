@@ -18,6 +18,11 @@ renewing the egress lease (a few minutes).
 Log lines are JSON objects. Runner events look like {"type": "runner", "event": ...}:
 started, pre_run, exited (with returncode), lost (the container restarted mid-session).
 
+Two runtimes, chosen per session: Claude Code (`claude -p --output-format stream-json`) and
+opencode (`opencode run --format json`, for opencode Go). opencode's stream has no final
+result line, so the runner appends one in Claude Code's shape ({"type": "result", ...}, with
+the last reply, the step count and the summed cost) when an opencode session ends.
+
 Only control can reach this (sandbox network + RUNNER_TOKEN). Everything in this container
 is untrusted: control enforces limits itself and treats what it reads here as data.
 """
@@ -48,6 +53,8 @@ STATE_DIR = Path(os.environ.get("RUNNER_STATE_DIR", str(Path.home() / ".runner")
 SEED = Path(os.environ.get("RUNNER_SEED", "/opt/seed"))
 RUNTIME = os.environ.get("RUNNER_RUNTIME", "claude-code")
 CLAUDE = os.environ.get("CLAUDE_BIN", "claude")
+OPENCODE = os.environ.get("OPENCODE_BIN", "opencode")
+OPENCODE_PLUGIN = Path(os.environ.get("OPENCODE_PLUGIN", str(Path(__file__).parent / "opencode-plugin.js")))
 SETTINGS = os.environ.get("CLAUDE_SETTINGS", "/opt/runner/claude-settings.json")
 PRE_RUN = WORKSPACE / "system" / "pre-run.sh"
 PRE_RUN_TIMEOUT = 120
@@ -130,7 +137,8 @@ class SessionRequest(BaseModel):
     run_id: int
     prompt: str
     system_append: str = ""
-    model: str = "sonnet"
+    runtime: str = "claude-code"   # claude-code | opencode
+    model: str = "sonnet"          # opencode: provider/model, e.g. opencode-go/glm-5.3
     effort: str | None = None
     fallback_model: str | None = None
     resume_session: str | None = None
@@ -150,6 +158,65 @@ def claude_argv(req: SessionRequest, system_file: Path) -> list[str]:
     if req.resume_session:
         argv += ["--resume", req.resume_session]
     return argv
+
+
+def opencode_config(system_file: Path, reviewer: bool = False) -> dict:
+    """opencode's config for one session: our system prompt as the `l0w` agent, the delivery
+    plugin (not for the reviewer), no prompts for permissions, no sharing or self-updates."""
+    permission = {"*": "allow", "external_directory": "allow"}
+    if reviewer:
+        permission.update(edit="deny")
+    cfg: dict = {"$schema": "https://opencode.ai/config.json", "autoupdate": False, "share": "disabled", "permission": permission,
+                 "agent": {"l0w": {"mode": "primary", "prompt": "{file:" + str(system_file) + "}"}}}
+    if not reviewer and OPENCODE_PLUGIN.is_file():
+        cfg["plugin"] = [f"file://{OPENCODE_PLUGIN}"]
+    return cfg
+
+
+def opencode_argv(model: str, effort: str | None, resume: str | None) -> list[str]:
+    argv = [OPENCODE, "run", "--format", "json", "--auto", "-m", model, "--agent", "l0w"]
+    if effort:
+        argv += ["--variant", effort]
+    if resume:
+        argv += ["--session", resume]
+    return argv
+
+
+class OpencodeResult:
+    """Builds the result line opencode doesn't write: its last reply, steps, cost and tokens."""
+
+    def __init__(self, resume: str | None):
+        self.session_id, self.steps, self.cost = resume, 0, 0.0
+        self.usage = {"input_tokens": 0, "output_tokens": 0, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}
+        self.step_text: list[str] = []
+        self.last_text, self.error = "", None
+
+    def see(self, ev: dict) -> None:
+        self.session_id = ev.get("sessionID") or self.session_id
+        t, part = ev.get("type"), ev.get("part") or {}
+        if t == "step_start":
+            self.step_text = []
+        elif t == "text" and (part.get("text") or "").strip():
+            self.step_text.append(part["text"].strip())
+            self.last_text = "\n\n".join(self.step_text)
+        elif t == "step_finish":
+            self.steps += 1
+            self.cost += float(part.get("cost") or 0)
+            tok = part.get("tokens") or {}
+            cache = tok.get("cache") or {}
+            for k, v in (("input_tokens", tok.get("input")), ("output_tokens", (tok.get("output") or 0) + (tok.get("reasoning") or 0)),
+                         ("cache_read_input_tokens", cache.get("read")), ("cache_creation_input_tokens", cache.get("write"))):
+                self.usage[k] += int(v or 0)
+        elif t == "error":
+            err = ev.get("error") or {}
+            self.error = (err.get("data") or {}).get("message") or err.get("name") or "error"
+
+    def line(self, rc: int | None) -> dict:
+        interrupted = rc in (130, -2) and not self.error
+        is_error = bool(self.error) or interrupted or rc not in (0, None)
+        text = self.error or ("Interrupted" if interrupted else self.last_text) or ("" if not is_error else f"opencode exited with code {rc}")
+        return {"type": "result", "runtime": "opencode", "subtype": "error_during_execution" if is_error else "success", "is_error": is_error,
+                "result": text, "session_id": self.session_id, "num_turns": self.steps, "total_cost_usd": round(self.cost, 6), "usage": self.usage}
 
 
 async def _terminate(proc: asyncio.subprocess.Process, grace: float = 20) -> None:
@@ -202,7 +269,15 @@ async def _run_session(sid: str, req: SessionRequest) -> None:
                 report, rc = await _pre_run(env)
                 _append(f, {"type": "runner", "event": "pre_run", "returncode": rc, "output": report})
                 prompt += f"\n\n## Pre-run report (output of your system/pre-run.sh, exit {rc})\n\n~~~\n{report}\n~~~\n"
-            argv = claude_argv(req, system_file)
+            opencode = req.runtime == "opencode"
+            if opencode:
+                cfg_file = Path(tmp.name) / "opencode.json"
+                cfg_file.write_text(json.dumps(opencode_config(system_file)))
+                env["OPENCODE_CONFIG"] = str(cfg_file)
+                argv = opencode_argv(req.model, req.effort, req.resume_session)
+            else:
+                argv = claude_argv(req, system_file)
+            oc = OpencodeResult(req.resume_session) if opencode else None
             proc = await asyncio.create_subprocess_exec(
                 *argv, cwd=WORKSPACE, env=env, start_new_session=True, limit=32 * 1024 * 1024,
                 stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
@@ -210,7 +285,7 @@ async def _run_session(sid: str, req: SessionRequest) -> None:
             assert _current is not None
             _current["proc"] = proc
             head = (await asyncio.to_thread(_git, "rev-parse", "HEAD")).stdout.strip() or None
-            _append(f, {"type": "runner", "event": "started", "pid": proc.pid, "head": head, "runtime": RUNTIME,
+            _append(f, {"type": "runner", "event": "started", "pid": proc.pid, "head": head, "runtime": req.runtime, "model": req.model,
                         "argv_summary": [a for a in argv[1:] if not a.startswith(tmp.name)]})
             stderr_tail: list[str] = []
 
@@ -230,12 +305,16 @@ async def _run_session(sid: str, req: SessionRequest) -> None:
                 if not line:
                     continue
                 try:
-                    json.loads(line)
+                    ev = json.loads(line)
                     f.write(line + b"\n")
                     f.flush()
+                    if oc is not None and isinstance(ev, dict):
+                        oc.see(ev)
                 except json.JSONDecodeError:
                     _append(f, {"type": "raw", "text": line.decode(errors="replace")[:4000]})
             rc = await proc.wait()
+            if oc is not None:
+                _append(f, oc.line(rc))
             try:
                 await asyncio.wait_for(err_task, 5)
             except TimeoutError:
@@ -370,6 +449,79 @@ async def auth_refresh(x_runner_token: str | None = Header(None)):
     return {"returncode": proc.returncode, "stdout": out.decode(errors="replace")[-1500:], "stderr": err.decode(errors="replace")[-1500:]}
 
 
+# ── logging in to Claude through the server (the setup wizard) ──────────
+# `claude auth login` prints a sign-in link and waits for the code the owner pastes back. The
+# runner runs it in a pseudo-terminal, hands the link to control (which shows it in the UI),
+# and writes the code in. Control holds an egress lease meanwhile.
+_login: dict = {}
+URL_RE = __import__("re").compile(r"https://[^\s\x1b\x07]+")
+
+
+async def _login_read(timeout: float) -> str:
+    """Read what the login process printed (until it goes quiet or exits)."""
+    import select
+
+    fd, out, deadline = _login["fd"], b"", time.time() + timeout
+    while time.time() < deadline:
+        r, _, _ = await asyncio.to_thread(select.select, [fd], [], [], 0.5)
+        if r:
+            try:
+                chunk = os.read(fd, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            out += chunk
+        elif out and (URL_RE.search(out.decode(errors="replace")) or _login["proc"].returncode is not None):
+            break
+    return out.decode(errors="replace")
+
+
+@app.post("/auth/login")
+async def auth_login(x_runner_token: str | None = Header(None)):
+    import pty
+
+    _auth(x_runner_token)
+    if _current is not None:
+        raise HTTPException(409, "a session is running")
+    if _login.get("proc") and _login["proc"].returncode is None:
+        _login["proc"].kill()
+    master, slave = pty.openpty()
+    proc = await asyncio.create_subprocess_exec(CLAUDE, "auth", "login", stdin=slave, stdout=slave, stderr=slave, cwd="/tmp", start_new_session=True,
+                                                env={**os.environ, "BROWSER": "/bin/false", "TERM": "dumb"})
+    os.close(slave)
+    _login.update(proc=proc, fd=master, output="")
+    text = await _login_read(30)
+    _login["output"] = text
+    m = URL_RE.search(text)
+    if not m:
+        proc.kill()
+        raise HTTPException(502, f"no sign-in link from `claude auth login`: {text[-500:]}")
+    return {"url": m.group(0).rstrip(".)"), "output": text[-1000:]}
+
+
+class LoginCode(BaseModel):
+    code: str
+
+
+@app.post("/auth/login/code")
+async def auth_login_code(req: LoginCode, x_runner_token: str | None = Header(None)):
+    _auth(x_runner_token)
+    proc = _login.get("proc")
+    if not proc or proc.returncode is not None:
+        raise HTTPException(409, "no login in progress: start again")
+    os.write(_login["fd"], req.code.strip().encode() + b"\r")
+    text = await _login_read(60)
+    try:
+        await asyncio.wait_for(proc.wait(), 30)
+    except TimeoutError:
+        proc.kill()
+    os.close(_login["fd"])
+    _login.clear()
+    creds = Path.home() / ".claude" / ".credentials.json"
+    return {"ok": proc.returncode == 0 and creds.exists(), "returncode": proc.returncode, "output": text[-1500:]}
+
+
 class SelfTestRequest(BaseModel):
     targets: dict = {}
 
@@ -394,9 +546,11 @@ class ConsultRequest(BaseModel):
     run_id: int
     prompt: str
     system_append: str = ""
+    runtime: str = "claude-code"
     model: str = "opus"
     effort: str | None = None
     resume_session: str | None = None
+    env: dict[str, str] = {}   # the reviewer's provider key (opencode); never the agent's secrets
 
 
 @app.post("/consult")
@@ -412,14 +566,22 @@ async def consult(req: ConsultRequest, x_runner_token: str | None = Header(None)
         tmp = tempfile.TemporaryDirectory(prefix="consult-")
         sys_file = Path(tmp.name) / "system.md"
         sys_file.write_text(req.system_append)
-        argv = [CLAUDE, "-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions", "--model", req.model,
-                "--append-system-prompt-file", str(sys_file), "--add-dir", str(WORKSPACE), "--disallowedTools", REVIEWER_DENY]
-        if req.effort:
-            argv += ["--effort", req.effort]
-        if req.resume_session:
-            argv += ["--resume", req.resume_session]
         env = {k: v for k, v in os.environ.items() if k not in ("RUNNER_TOKEN", "AGENT_API_TOKEN", "CONTROL_URL")}
+        env.update({k: v for k, v in req.env.items() if k in ("OPENCODE_API_KEY", "ANTHROPIC_API_KEY")})
         env.update(ASSISTANT_RUN_ID=str(req.run_id), ASSISTANT_RUN_MODE="reviewer")
+        oc = OpencodeResult(req.resume_session) if req.runtime == "opencode" else None
+        if oc is not None:
+            cfg_file = Path(tmp.name) / "opencode.json"
+            cfg_file.write_text(json.dumps(opencode_config(sys_file, reviewer=True)))
+            env["OPENCODE_CONFIG"] = str(cfg_file)
+            argv = opencode_argv(req.model, req.effort, req.resume_session)
+        else:
+            argv = [CLAUDE, "-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions", "--model", req.model,
+                    "--append-system-prompt-file", str(sys_file), "--add-dir", str(WORKSPACE), "--disallowedTools", REVIEWER_DENY]
+            if req.effort:
+                argv += ["--effort", req.effort]
+            if req.resume_session:
+                argv += ["--resume", req.resume_session]
         proc = await asyncio.create_subprocess_exec(*argv, cwd=REVIEWER_HOME, env=env, start_new_session=True, limit=32 * 1024 * 1024,
                                                     stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         out = {"ok": False, "text": "", "session_id": req.resume_session, "cost_usd": None, "usage": None, "model": None, "messages": []}
@@ -435,6 +597,14 @@ async def consult(req: ConsultRequest, x_runner_token: str | None = Header(None)
                         ev = json.loads(raw)
                     except json.JSONDecodeError:
                         continue
+                    if not isinstance(ev, dict):
+                        continue
+                    if oc is not None:
+                        oc.see(ev)
+                        part = ev.get("part") or {}
+                        if ev.get("type") == "step_finish":
+                            out["messages"].append({"id": part.get("id"), "model": req.model, "usage": {"cost_usd": float(part.get("cost") or 0)}})
+                        continue
                     if ev.get("session_id"):
                         out["session_id"] = ev["session_id"]
                     if ev.get("type") == "assistant":
@@ -444,7 +614,11 @@ async def consult(req: ConsultRequest, x_runner_token: str | None = Header(None)
                             out["messages"].append({"id": msg.get("id"), "model": msg.get("model"), "usage": msg["usage"]})
                     elif ev.get("type") == "result":
                         out.update(ok=not ev.get("is_error"), text=ev.get("result") or "", cost_usd=ev.get("total_cost_usd"), usage=ev.get("usage"))
-                await proc.wait()
+                rc = await proc.wait()
+                if oc is not None:
+                    r = oc.line(rc)
+                    out.update(ok=not r["is_error"], text=r["result"] or "", cost_usd=r["total_cost_usd"], usage=r["usage"],
+                               session_id=r["session_id"], model=req.model)
 
             await asyncio.wait_for(read(), CONSULT_TIMEOUT)
         except TimeoutError:
@@ -481,8 +655,12 @@ async def health(x_runner_token: str | None = Header(None)):
         version = subprocess.run([CLAUDE, "--version"], capture_output=True, text=True, timeout=30).stdout.strip()
     except (OSError, subprocess.TimeoutExpired) as e:
         version = f"unavailable: {e}"
+    try:
+        oc_version = subprocess.run([OPENCODE, "--version"], capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL).stdout.strip() or None
+    except (OSError, subprocess.TimeoutExpired):
+        oc_version = None
     return {"ok": True, "busy": _current is not None, "session": _current["id"] if _current else None, "runtime": RUNTIME,
-            "runtime_version": version, "logged_in": creds.exists() or bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"))}
+            "runtime_version": version, "opencode_version": oc_version, "logged_in": creds.exists() or bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"))}
 
 
 if __name__ == "__main__":

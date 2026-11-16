@@ -8,6 +8,7 @@ import { useLinkPicker } from '../components/LinkPicker'
 import { Markdown } from '../components/Markdown'
 import { ShelfView } from '../components/ShelfView'
 import { useOnline } from '../components/online'
+import { useOutbox } from '../api/offline'
 import { api } from '../api/client'
 
 export function Thread() {
@@ -35,6 +36,7 @@ export function Thread() {
         <div className="thread-items">
           {t && <ThreadHead t={t} messages={(items.data?.items ?? []).filter((i) => i.type === 'message').length} filesOpen={filesOpen} toggleFiles={() => setFilesOpen(!filesOpen)} />}
           {items.data?.items.map((it) => <Item key={`${it.type}-${itemId(it)}`} it={it} />)}
+          <Pending threadId={id} />
         </div>
       </div>
       {t && <Composer threadId={id} project={t.project} append={append} appended={() => setAppend(null)} />}
@@ -130,6 +132,17 @@ function Item({ it }: { it: S['ThreadItems']['items'][number] }) {
     case 'suggestion': return <SuggestionCard s={it.suggestion} />
     case 'promote': return <PromoteCard p={it.promote} />
   }
+}
+
+/** Messages written offline, waiting in this device's outbox. */
+function Pending({ threadId }: { threadId: number }) {
+  const outbox = useOutbox()
+  return <>{outbox.filter((i) => i.kind === 'message' && i.thread === threadId).map((i) => i.kind === 'message' && (
+    <div key={i.id} className="mine pending">
+      <div className="bubble"><Markdown>{i.body.body}</Markdown></div>
+      <div className="via">Waiting for connection (on this device)</div>
+    </div>
+  ))}</>
 }
 
 function MessageView({ m }: { m: S['Message'] }) {

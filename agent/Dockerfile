@@ -1,9 +1,12 @@
-# The agent's computer: Debian with sudo, dev tools and Claude Code. Its only network is
+# The agent's computer: Debian with sudo, dev tools, Claude Code and opencode. Its only network is
 # the internal sandbox network; the egress proxy is its only way out.
 FROM python:3.12-slim-bookworm
+LABEL org.opencontainers.image.source=https://github.com/CyrusBrown/l0wagent
 
 # Pin with --build-arg CLAUDE_CODE_VERSION=x.y.z (the adapter tracks the CLI's headless interface).
 ARG CLAUDE_CODE_VERSION=stable
+# opencode (for opencode Go) is pinned: its `run --format json` events are what the adapter reads.
+ARG OPENCODE_VERSION=1.18.31
 ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 PYTHONUNBUFFERED=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,6 +20,10 @@ RUN curl -fsSL https://claude.ai/install.sh | bash -s -- ${CLAUDE_CODE_VERSION} 
  && cp -L /root/.local/bin/claude /usr/local/bin/claude \
  && rm -rf /root/.local/share/claude /root/.local/bin/claude \
  && /usr/local/bin/claude --version
+
+# opencode, installed system-wide from npm (the package ships a native binary per platform).
+RUN npm install -g --prefix /usr/local "opencode-ai@${OPENCODE_VERSION}" \
+ && /usr/local/bin/opencode --version
 
 RUN pip install --no-cache-dir uv \
  && python -m venv /opt/runner/venv \
@@ -33,7 +40,7 @@ COPY runner/ /opt/runner/
 COPY bin/ /usr/local/bin/
 COPY seed/ /opt/seed/
 COPY entrypoint.sh /usr/local/sbin/entrypoint.sh
-RUN chmod 0755 /usr/local/bin/assistant /usr/local/bin/assistant-hook /usr/local/sbin/entrypoint.sh /opt/runner/fake_claude.py
+RUN chmod 0755 /usr/local/bin/assistant /usr/local/bin/assistant-hook /usr/local/sbin/entrypoint.sh /opt/runner/fake_claude.py /opt/runner/fake_opencode.py
 
 ENV PATH=/home/agent/.local/bin:$PATH \
     NPM_CONFIG_PREFIX=/home/agent/.local \

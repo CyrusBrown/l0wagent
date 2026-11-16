@@ -1,7 +1,12 @@
 """Budgets: providers, points, levels, the usage ledger and wakeup validation.
 
 **Points** (owner, 2026-11-15): one budget unit. On a Claude subscription 1 pt = 0.1% of the
-week (1,000 pts a week); on an API key 1 pt = $0.10.
+week (1,000 pts a week); on an API key or opencode Go 1 pt = $0.10.
+
+**Providers**: the Claude subscription and an Anthropic API key run on Claude Code; opencode Go
+(a subscription with its own limits, M6) runs on opencode. Tiers keep Claude's names
+(haiku/sonnet/opus + effort); on opencode Go each name maps to a model the owner picks, and the
+effort to the closest variant that model has.
 
 **Where the numbers come from**
 - A Claude subscription's meter gives the week's total (weekly % × 10). What the assistant
@@ -9,7 +14,8 @@ week (1,000 pts a week); on an API key 1 pt = $0.10.
   `total_cost_usd` once it reports it), converted to points with a calibration learned from
   how far the weekly meter moved during runs (`pts_per_usd`). The owner's own use is the
   rest: total − assistant − chat.
-- An API key: cost × 10.
+- An API key or opencode Go: cost × 10 (opencode reports each step's cost at the catalog's
+  prices; free models cost nothing).
 
 **The allowance** is what the assistant may plan with this week: the level's (or the owner's
 override, or a Boost's), minus what it already used, and never more than the room left below
@@ -36,6 +42,17 @@ from .db import Database
 
 SUBSCRIPTION = "claude-subscription"
 API = "anthropic-api"
+OPENCODE_GO = "opencode-go"
+KEY_PROVIDERS = {API: "Anthropic API", OPENCODE_GO: "opencode Go"}
+RUNTIME = {SUBSCRIPTION: "claude-code", API: "claude-code", OPENCODE_GO: "opencode"}
+# opencode Go: the model behind each tier name, and the variants (reasoning efforts) it has.
+# Defaults picked from Go's catalog (2026-11); the owner changes them on Settings → Providers.
+GO_MODELS = {
+    "haiku": {"model": "opencode-go/deepseek-v4.1-flash", "variants": ["low", "high", "max"]},
+    "sonnet": {"model": "opencode-go/deepseek-v4-pro", "variants": ["high", "max"]},
+    "opus": {"model": "opencode-go/glm-5.3", "variants": ["low", "high", "max"]},
+}
+EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
 UNIT = "pts"
 DEFAULT_PTS_PER_USD = 2.0       # Claude subscription, until calibrated
 PLAN_HORIZON_DAYS = 8
@@ -91,8 +108,24 @@ class Effective:
 
 
 def default_config(kind: str) -> dict:
-    return {"level": "steady", "overrides": {}, "boost": None, "reply_pts": 30.0 if kind == SUBSCRIPTION else 10.0,
-            "fallback_pts": None, "chat_cap": None}
+    cfg = {"level": "steady", "overrides": {}, "boost": None, "reply_pts": 30.0 if kind == SUBSCRIPTION else 10.0,
+           "fallback_pts": None, "chat_cap": None}
+    if kind == OPENCODE_GO:
+        cfg["models"] = json.loads(json.dumps(GO_MODELS))
+    return cfg
+
+
+def pick_variant(effort: str | None, variants: list[str]) -> str | None:
+    """The model's variant closest to the asked effort (ties go up); None if it has none."""
+    if not effort or not variants:
+        return None
+    if effort in variants:
+        return effort
+    want = EFFORTS.index(effort) if effort in EFFORTS else EFFORTS.index("medium")
+    known = [v for v in variants if v in EFFORTS]
+    if not known:
+        return None
+    return min(known, key=lambda v: (abs(EFFORTS.index(v) - want), -EFFORTS.index(v)))
 
 
 def _hm(v: str) -> time:
@@ -145,6 +178,8 @@ def hours_text(windows: list[dict]) -> str:
 
 
 def price(model: str | None, usage: dict) -> float:
+    if "cost_usd" in usage:  # opencode reports each step's cost itself
+        return float(usage["cost_usd"] or 0)
     fam = next((f for f in PRICES if f in (model or "").lower()), "sonnet")
     pin, pout = PRICES[fam]
     return (usage.get("input_tokens", 0) * pin + usage.get("output_tokens", 0) * pout
@@ -184,24 +219,64 @@ class Budgets:
         row = self._row(pid)
         return self.fernet.decrypt(row["credential_enc"]).decode() if row["credential_enc"] else None
 
-    def add_api_provider(self, key: str, label: str | None) -> None:
+    def add_api_provider(self, key: str, label: str | None, kind: str = API) -> None:
         key = key.strip()
-        if not key.startswith("sk-ant-") or len(key) < 20:
+        if kind not in KEY_PROVIDERS:
+            raise BadRequest("bad_kind", f"Unknown provider kind {kind}.")
+        if kind == API and (not key.startswith("sk-ant-") or len(key) < 20):
             raise BadRequest("bad_key", "That doesn't look like an Anthropic API key (they start with sk-ant-).")
+        if kind == OPENCODE_GO and (len(key) < 20 or any(c.isspace() for c in key)):
+            raise BadRequest("bad_key", "That doesn't look like an opencode API key (copy it from opencode.ai → your workspace → API keys).")
         now = self.db.now()
         enc = self.fernet.encrypt(key.encode())
-        if self.db.q1("SELECT 1 FROM providers WHERE id=?", (API,)):
-            self.db.ex("UPDATE providers SET credential_enc=?, label=COALESCE(?, label), enabled=1, updated_at=? WHERE id=?", (enc, label, now, API))
+        if self.db.q1("SELECT 1 FROM providers WHERE id=?", (kind,)):
+            self.db.ex("UPDATE providers SET credential_enc=?, label=COALESCE(?, label), enabled=1, updated_at=? WHERE id=?", (enc, label, now, kind))
         else:
             self.db.ex("INSERT INTO providers(id, kind, label, enabled, credential_enc, config_json, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?)",
-                       (API, API, label or "Anthropic API", 1, enc, json.dumps(default_config(API)), now, now))
+                       (kind, kind, label or KEY_PROVIDERS[kind], 1, enc, json.dumps(default_config(kind)), now, now))
 
     def provider_env(self, pid: str) -> dict[str, str]:
-        """Extra environment for a session on this provider (an API key goes only to sessions that use it)."""
-        if pid == API:
-            key = self.credential(pid)
-            return {"ANTHROPIC_API_KEY": key} if key else {}
-        return {}
+        """Extra environment for a session on this provider (a key goes only to sessions that use it)."""
+        key = self.credential(pid) if pid in KEY_PROVIDERS else None
+        if not key:
+            return {}
+        return {"ANTHROPIC_API_KEY": key} if pid == API else {"OPENCODE_API_KEY": key}
+
+    def kind(self, pid: str) -> str:
+        return self._row(pid)["kind"]
+
+    def models(self, pid: str) -> dict[str, dict] | None:
+        """opencode Go: tier name → {"model", "variants"}; None for Claude providers."""
+        if self.kind(pid) != OPENCODE_GO:
+            return None
+        return {**GO_MODELS, **(self.config(pid).get("models") or {})}
+
+    def set_models(self, pid: str, models: dict[str, str]) -> None:
+        if self.kind(pid) != OPENCODE_GO:
+            raise BadRequest("no_models", "Only opencode providers have a model for each tier.")
+        cfg = self.config(pid)
+        cur = self.models(pid) or {}
+        for fam, model in models.items():
+            if fam not in GO_MODELS:
+                raise BadRequest("bad_tier", f"Tiers are {', '.join(GO_MODELS)}.")
+            model = model.strip()
+            if not model.startswith(OPENCODE_GO + "/") or len(model) > 120 or any(c.isspace() for c in model):
+                raise BadRequest("bad_model", f"Models look like {OPENCODE_GO}/<model>, as `opencode models {OPENCODE_GO}` lists them.")
+            # Variants are only known for the defaults; for another model, effort is left to it.
+            known = next((v["variants"] for v in GO_MODELS.values() if v["model"] == model), [])
+            cur[fam] = {"model": model, "variants": known}
+        cfg["models"] = cur
+        self.save_config(pid, cfg)
+
+    def runtime_spec(self, pid: str, tier: str) -> dict:
+        """What a session on this provider and tier runs: {"runtime", "model", "effort"}."""
+        fam, _, effort = tier.partition("/")
+        fam, eff = fam.strip() or "sonnet", effort.strip() or None
+        models = self.models(pid)
+        if models is None:
+            return {"runtime": RUNTIME.get(self.kind(pid), "claude-code"), "model": fam, "effort": eff}
+        m = models.get(fam) or models["sonnet"]
+        return {"runtime": "opencode", "model": m["model"], "effort": pick_variant(eff, m.get("variants") or [])}
 
     # ── time ───────────────────────────────────────────────────────────────
     def tz(self) -> ZoneInfo:
@@ -544,7 +619,7 @@ class Budgets:
         for r in roles:
             if r.provider not in self.provider_ids(enabled_only=False):
                 raise BadRequest("bad_provider", f"Unknown provider {r.provider}.")
-            if r.tier not in TIERS and "/" not in r.tier:
+            if r.tier not in TIERS and "/" not in r.tier and r.tier not in GO_MODELS:  # GO_MODELS' keys: the bare tier names
                 raise BadRequest("bad_tier", f"Tiers look like model/effort, e.g. sonnet/medium. Known: {', '.join(TIERS)}.")
             saved[r.role] = {"provider": r.provider, "tier": r.tier, "allowed": r.allowed}
         self._kv_set("roles", saved)

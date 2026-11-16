@@ -79,6 +79,7 @@ class Session:
     runner_session: str
     offset: int
     runtime_session: str    # the runtime's id, for --resume ('' until reported)
+    runtime: str = "claude-code"
 
 
 class RunManager:
@@ -87,7 +88,7 @@ class RunManager:
         self.env, self.db, self.settings, self.live = env, db, settings, live
         self.conv, self.vault, self.budgets = conv, vault, budgets
         self.runner, self.egress, self.usage = runner, egress, usage
-        self.adapter = adapter or ADAPTERS["claude-code"]
+        self.fixed_adapter = adapter  # tests may pin one; otherwise each run's provider picks it
         # Hooks other parts of control attach: brief sections, run endings, the reviewer.
         self.brief_extra = None      # (run row) -> str: the wakeup brief's budget/plan sections
         self.on_finish: list = []    # (run row after finishing) -> None
@@ -95,6 +96,9 @@ class RunManager:
         self.tasks: dict[int, asyncio.Task] = {}
         self._bg: set[asyncio.Task] = set()
         self._start_lock = asyncio.Lock()
+
+    def adapter(self, runtime: str | None) -> RuntimeAdapter:
+        return self.fixed_adapter or ADAPTERS.get(runtime or "claude-code", ADAPTERS["claude-code"])
 
     # ── lifecycle ──────────────────────────────────────────────────────────
     async def startup(self) -> None:
@@ -157,7 +161,7 @@ class RunManager:
     def _process(self, run_id: int, sess: Session, event: dict, size: int) -> tuple[bool, dict | None]:
         """Store one log line and what it means, and advance the offset, atomically.
         Returns (run row changed, result if this was the session's result)."""
-        parsed = self.adapter.parse(event)
+        parsed = self.adapter(sess.runtime).parse(event)
         raw = self.vault.redact(json.dumps(event)) or ""
         if len(raw) > MAX_EVENT_BYTES:
             raw = json.dumps({"type": event.get("type"), "truncated": True, "preview": raw[:MAX_EVENT_BYTES]})
@@ -236,6 +240,9 @@ class RunManager:
         async with self._start_lock:
             if self.active_run_id() is not None:
                 raise Conflict("busy", "A run is already in progress.")
+            from ..updates import draining
+            if draining(self.db):
+                raise Conflict("updating", "An update is waiting for the assistant to be idle, so no new runs start until it's done.")
             reply = kind == "reply"
             provider = provider or self.budgets.role("replier" if reply else "worker").provider
             if provider not in self.budgets.provider_ids():
@@ -338,20 +345,24 @@ class RunManager:
 
     async def _start_session(self, run_id: int, resume: str | None = None, reason: str | None = None, prompt: str | None = None) -> Session:
         run = self.db.q1("SELECT * FROM runs WHERE id=?", (run_id,))
+        pid = run["provider"] or SUBSCRIPTION  # type: ignore[index]
+        spec = self.budgets.runtime_spec(pid, run["tier"])  # type: ignore[index]
+        adapter = self.adapter(spec["runtime"])
         if prompt is not None:
             system = _strip_comment((PROMPTS / "core.md").read_text())
         elif resume:
-            prompt, system = self.adapter.interrupted_prompt(reason or "restart"), _strip_comment((PROMPTS / "core.md").read_text())
+            prompt, system = adapter.interrupted_prompt(reason or "restart"), _strip_comment((PROMPTS / "core.md").read_text())
         else:
             prompt, system = self._prompt(run_id)
-        env = {**self.vault.env(), **self.budgets.provider_env(run["provider"] or SUBSCRIPTION)}  # type: ignore[index]
-        payload = self.adapter.session_request(run_id=run_id, prompt=prompt, system=system, tier=run["tier"], resume_session=resume, env=env)  # type: ignore[index]
+        env = {**self.vault.env(), **self.budgets.provider_env(pid)}
+        payload = adapter.session_request(run_id=run_id, prompt=prompt, system=system, tier=run["tier"], resume_session=resume, env=env,  # type: ignore[index]
+                                          model=spec["model"], effort=spec["effort"])
         sid = await self.runner.start(payload)
         row_id = self.db.ex(
             "INSERT INTO run_sessions(run_id, runtime, session_id, model, effort, log_path, runner_session, started_at) VALUES(?,?,?,?,?,?,?,?)",
-            (run_id, self.adapter.name, resume or "", payload.get("model"), payload.get("effort"), f"runner:{sid}", sid, self.db.now()),
+            (run_id, adapter.name, resume or "", payload.get("model"), payload.get("effort"), f"runner:{sid}", sid, self.db.now()),
         )
-        return Session(row_id, sid, 0, resume or "")
+        return Session(row_id, sid, 0, resume or "", adapter.name)
 
     # ── driving one run ────────────────────────────────────────────────────
     async def _drive(self, run_id: int) -> None:
@@ -373,9 +384,9 @@ class RunManager:
                         end_state = "failed_to_start"
                         break
                 elif row["state"] == "running":
-                    sess = Session(row["id"], row["runner_session"], row["log_offset"], row["session_id"])
+                    sess = Session(row["id"], row["runner_session"], row["log_offset"], row["session_id"], row["runtime"] or "claude-code")
                 else:  # re-attached after the last session ended (e.g. while holding for a reply)
-                    sess = Session(row["id"], row["runner_session"], row["log_offset"], row["session_id"])
+                    sess = Session(row["id"], row["runner_session"], row["log_offset"], row["session_id"], row["runtime"] or "claude-code")
                     end_state = row["state"]
                     ok = bool(row["result_ok"])
                     last_result = last_result or {"ok": ok, "text": (self.db.q1("SELECT result FROM runs WHERE id=?", (run_id,)) or {}).get("result") or ""}
@@ -443,7 +454,7 @@ class RunManager:
         assert run
         if run["stop_requested_at"]:
             return False
-        if not self.adapter.capabilities.resume or not sess.runtime_session:
+        if not self.adapter(sess.runtime).capabilities.resume or not sess.runtime_session:
             self.timeline(run_id, Item("control", "Not resumed: the session never reported an id to resume", True))
             return False
         if run["resumes"] >= self.settings.get("RUN_MAX_RESUMES"):

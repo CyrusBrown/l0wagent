@@ -13,6 +13,7 @@ dependencies = [
   "segno>=1.6.6",
   "cryptography>=50.0.2",
   "dulwich>=1.2.21",
+  "pywebpush>=2.5.0",
 ]
 
 [dependency-groups]

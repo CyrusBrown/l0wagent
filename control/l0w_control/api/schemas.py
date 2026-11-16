@@ -684,7 +684,7 @@ class LevelPreset(Model):
 
 
 class BudgetOverview(Model):
-    providers: list[ProviderBudget]
+    providers: list[ProviderBudget] = Field(description="Enabled providers, the worker role's first.")
     levels: list[LevelPreset]
     tiers: list[str]
     reserve_weekly_pct: float
@@ -716,14 +716,21 @@ class ReserveSettings(Model):
     sweep_ceiling_pct: float | None = None
 
 
+class TierModel(Model):
+    model: str = Field(description="opencode's provider/model id, e.g. opencode-go/glm-5.3.")
+    variants: list[str] = Field(description="The model's reasoning variants, where known; a tier's effort maps to the closest.")
+
+
 class ProviderInfo(Model):
     id: str
-    kind: str
+    kind: str = Field(description="claude-subscription | anthropic-api | opencode-go.")
     label: str
     enabled: bool
     status: str = Field(description="One line: logged in / key saved / usage source.")
     usage_source: str
     has_credential: bool
+    runtime: str = Field("claude-code", description="The agent CLI that runs sessions on it: claude-code or opencode.")
+    models: dict[str, TierModel] | None = Field(None, description="opencode providers: the model behind each tier name (haiku, sonnet, opus).")
 
 
 class ApiProviderCreate(Model):
@@ -731,11 +738,14 @@ class ApiProviderCreate(Model):
 
     key: str = Field(min_length=20, max_length=400)
     label: str | None = None
+    kind: Literal["anthropic-api", "opencode-go"] = "anthropic-api"
+    use_for_all_roles: bool = Field(False, description="Move every role (worker, reviewer, replier, chat, utility) onto this provider, e.g. when it's the only one.")
 
 
 class ProviderPatch(Model):
     enabled: bool | None = None
     label: str | None = None
+    models: dict[str, str] | None = Field(None, description="opencode providers: tier name → provider/model.")
 
 
 RoleName = Literal["worker", "reviewer", "replier", "chat", "utility"]
@@ -1007,6 +1017,74 @@ class SystemStatus(Model):
     egress: EgressHealth
     usage: UsageReading | None
     gate: GateState
+
+
+class UpdateInfo(Model):
+    current: str
+    channel: Literal["stable", "edge"]
+    latest: str | None
+    available: bool = Field(description="A newer stable release exists. Apply it with ./l0w update on the server.")
+    notes: str | None = Field(description="The release notes (Markdown) when an update is available.")
+    url: str | None
+    checked_at: datetime | None
+    error: str | None
+    draining_until: datetime | None = Field(description="An update is waiting for the assistant to be idle: no new runs start until then.")
+    waiting_for: list[str] = Field(description="What a pending update waits for (a run in progress, don't-interrupt jobs).")
+
+
+class ClaudeLoginStart(Model):
+    url: str = Field(description="Open this, sign in with the Claude account the assistant should use, and paste the code shown.")
+
+
+class ClaudeLoginCode(Model):
+    """Online only."""
+
+    code: str = Field(min_length=4, max_length=500)
+
+
+class ClaudeLoginResult(Model):
+    ok: bool
+    message: str
+
+
+class PushKeys(Model):
+    p256dh: str = Field(max_length=200)
+    auth: str = Field(max_length=100)
+
+
+class PushSubscribe(Model):
+    """A browser's PushSubscription (from pushManager.subscribe), plus a label for Settings."""
+
+    endpoint: str = Field(max_length=1000, pattern="^https://")
+    keys: PushKeys
+    label: str = Field("Browser", max_length=80)
+
+
+class PushSubscriptionInfo(Model):
+    id: int
+    label: str
+    created_at: datetime
+    last_ok_at: datetime | None
+    failures: int
+
+
+class NotificationSettings(Model):
+    """Which events notify (approval and new_device are on by default), ntfy, quiet hours."""
+
+    events: dict[str, bool]
+    ntfy_url: str | None = Field(None, max_length=500, description="Optional: an ntfy topic URL, for installs without HTTPS.")
+    quiet_start: str | None = Field(None, pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$")
+    quiet_end: str | None = Field(None, pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$")
+    event_labels: dict[str, str] = {}
+    subscriptions: list[PushSubscriptionInfo] = []
+
+
+class PushKey(Model):
+    public_key: str = Field(description="The server's VAPID public key (applicationServerKey).")
+
+
+class PushTestResult(Model):
+    sent: int
 
 
 class SelfTestCheck(Model):

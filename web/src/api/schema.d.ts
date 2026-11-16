@@ -805,7 +805,12 @@ export interface paths {
         /** List Providers */
         get: operations["list_providers_api_providers_get"];
         put?: never;
-        post?: never;
+        /**
+         * Add Key Provider
+         * @description Save a provider key: an Anthropic API key or an opencode Go key (write-only; only
+         *     sessions on that provider get it). `use_for_all_roles` moves every role onto it.
+         */
+        post: operations["add_key_provider_api_providers_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -826,6 +831,46 @@ export interface paths {
          * @description Save an Anthropic API key (write-only; only sessions on this provider get it).
          */
         post: operations["add_api_provider_api_providers_anthropic_api_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/claude-subscription/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claude Login Start
+         * @description Start logging the assistant's computer in to a Claude subscription: returns the sign-in link.
+         */
+        post: operations["claude_login_start_api_providers_claude_subscription_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/claude-subscription/login/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Claude Login Code
+         * @description Finish the login with the code Claude showed after signing in.
+         */
+        post: operations["claude_login_code_api_providers_claude_subscription_login_code_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1076,6 +1121,132 @@ export interface paths {
          * @description Run the isolation self-test (also shown at the end of the setup wizard).
          */
         post: operations["selftest_api_system_selftest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Notification Settings */
+        get: operations["notification_settings_api_notifications_settings_get"];
+        /**
+         * Set Notification Settings
+         * @description Online only.
+         */
+        put: operations["set_notification_settings_api_notifications_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/push/key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Push Key */
+        get: operations["push_key_api_push_key_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/push/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Push Subscribe */
+        post: operations["push_subscribe_api_push_subscriptions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/push/subscriptions/{sub_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Push Unsubscribe */
+        delete: operations["push_unsubscribe_api_push_subscriptions__sub_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/push/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Push Test */
+        post: operations["push_test_api_push_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Update Info
+         * @description Whether a newer release exists (apply it with ./l0w update), and whether one is waiting for idle.
+         */
+        get: operations["update_info_api_system_update_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/update/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check Update */
+        post: operations["check_update_api_system_update_check_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1354,6 +1525,18 @@ export interface components {
             key: string;
             /** Label */
             label?: string | null;
+            /**
+             * Kind
+             * @default anthropic-api
+             * @enum {string}
+             */
+            kind?: "anthropic-api" | "opencode-go";
+            /**
+             * Use For All Roles
+             * @description Move every role (worker, reviewer, replier, chat, utility) onto this provider, e.g. when it's the only one.
+             * @default false
+             */
+            use_for_all_roles?: boolean;
         };
         /** Attachment */
         Attachment: {
@@ -1494,7 +1677,10 @@ export interface components {
         };
         /** BudgetOverview */
         BudgetOverview: {
-            /** Providers */
+            /**
+             * Providers
+             * @description Enabled providers, the worker role's first.
+             */
             providers: components["schemas"]["ProviderBudget"][];
             /** Levels */
             levels: components["schemas"]["LevelPreset"][];
@@ -1665,6 +1851,29 @@ export interface components {
              */
             at: string;
             claim: components["schemas"]["Claim"];
+        };
+        /**
+         * ClaudeLoginCode
+         * @description Online only.
+         */
+        ClaudeLoginCode: {
+            /** Code */
+            code: string;
+        };
+        /** ClaudeLoginResult */
+        ClaudeLoginResult: {
+            /** Ok */
+            ok: boolean;
+            /** Message */
+            message: string;
+        };
+        /** ClaudeLoginStart */
+        ClaudeLoginStart: {
+            /**
+             * Url
+             * @description Open this, sign in with the Claude account the assistant should use, and paste the code shown.
+             */
+            url: string;
         };
         /**
          * Delivery
@@ -2001,6 +2210,37 @@ export interface components {
             setup_complete: boolean;
             /** Instance Name */
             instance_name: string;
+        };
+        /**
+         * NotificationSettings
+         * @description Which events notify (approval and new_device are on by default), ntfy, quiet hours.
+         */
+        NotificationSettings: {
+            /** Events */
+            events: {
+                [key: string]: boolean;
+            };
+            /**
+             * Ntfy Url
+             * @description Optional: an ntfy topic URL, for installs without HTTPS.
+             */
+            ntfy_url?: string | null;
+            /** Quiet Start */
+            quiet_start?: string | null;
+            /** Quiet End */
+            quiet_end?: string | null;
+            /**
+             * Event Labels
+             * @default {}
+             */
+            event_labels?: {
+                [key: string]: string;
+            };
+            /**
+             * Subscriptions
+             * @default []
+             */
+            subscriptions?: components["schemas"]["PushSubscriptionInfo"][];
         };
         /** Ok */
         Ok: {
@@ -2355,7 +2595,10 @@ export interface components {
         ProviderInfo: {
             /** Id */
             id: string;
-            /** Kind */
+            /**
+             * Kind
+             * @description claude-subscription | anthropic-api | opencode-go.
+             */
             kind: string;
             /** Label */
             label: string;
@@ -2370,6 +2613,19 @@ export interface components {
             usage_source: string;
             /** Has Credential */
             has_credential: boolean;
+            /**
+             * Runtime
+             * @description The agent CLI that runs sessions on it: claude-code or opencode.
+             * @default claude-code
+             */
+            runtime?: string;
+            /**
+             * Models
+             * @description opencode providers: the model behind each tier name (haiku, sonnet, opus).
+             */
+            models?: {
+                [key: string]: components["schemas"]["TierModel"];
+            } | null;
         };
         /** ProviderPatch */
         ProviderPatch: {
@@ -2377,6 +2633,63 @@ export interface components {
             enabled?: boolean | null;
             /** Label */
             label?: string | null;
+            /**
+             * Models
+             * @description opencode providers: tier name → provider/model.
+             */
+            models?: {
+                [key: string]: string;
+            } | null;
+        };
+        /** PushKey */
+        PushKey: {
+            /**
+             * Public Key
+             * @description The server's VAPID public key (applicationServerKey).
+             */
+            public_key: string;
+        };
+        /** PushKeys */
+        PushKeys: {
+            /** P256Dh */
+            p256dh: string;
+            /** Auth */
+            auth: string;
+        };
+        /**
+         * PushSubscribe
+         * @description A browser's PushSubscription (from pushManager.subscribe), plus a label for Settings.
+         */
+        PushSubscribe: {
+            /** Endpoint */
+            endpoint: string;
+            keys: components["schemas"]["PushKeys"];
+            /**
+             * Label
+             * @default Browser
+             */
+            label?: string;
+        };
+        /** PushSubscriptionInfo */
+        PushSubscriptionInfo: {
+            /** Id */
+            id: number;
+            /** Label */
+            label: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Ok At */
+            last_ok_at: string | null;
+            /** Failures */
+            failures: number;
+        };
+        /** PushTestResult */
+        PushTestResult: {
+            /** Sent */
+            sent: number;
         };
         /** Question */
         Question: {
@@ -3263,6 +3576,19 @@ export interface components {
             /** Pinned */
             pinned?: boolean | null;
         };
+        /** TierModel */
+        TierModel: {
+            /**
+             * Model
+             * @description opencode's provider/model id, e.g. opencode-go/glm-5.3.
+             */
+            model: string;
+            /**
+             * Variants
+             * @description The model's reasoning variants, where known; a tier's effort maps to the closest.
+             */
+            variants: string[];
+        };
         /** TimelineItem */
         TimelineItem: {
             /** Id */
@@ -3324,6 +3650,44 @@ export interface components {
              * @description The otpauth URI as an SVG QR code (generated by control).
              */
             qr_svg: string;
+        };
+        /** UpdateInfo */
+        UpdateInfo: {
+            /** Current */
+            current: string;
+            /**
+             * Channel
+             * @enum {string}
+             */
+            channel: "stable" | "edge";
+            /** Latest */
+            latest: string | null;
+            /**
+             * Available
+             * @description A newer stable release exists. Apply it with ./l0w update on the server.
+             */
+            available: boolean;
+            /**
+             * Notes
+             * @description The release notes (Markdown) when an update is available.
+             */
+            notes: string | null;
+            /** Url */
+            url: string | null;
+            /** Checked At */
+            checked_at: string | null;
+            /** Error */
+            error: string | null;
+            /**
+             * Draining Until
+             * @description An update is waiting for the assistant to be idle: no new runs start until then.
+             */
+            draining_until: string | null;
+            /**
+             * Waiting For
+             * @description What a pending update waits for (a run in progress, don't-interrupt jobs).
+             */
+            waiting_for: string[];
         };
         /** Upload */
         Upload: {
@@ -5192,6 +5556,39 @@ export interface operations {
             };
         };
     };
+    add_key_provider_api_providers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiProviderCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     add_api_provider_api_providers_anthropic_api_post: {
         parameters: {
             query?: never;
@@ -5212,6 +5609,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProviderInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claude_login_start_api_providers_claude_subscription_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeLoginStart"];
+                };
+            };
+        };
+    };
+    claude_login_code_api_providers_claude_subscription_login_code_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaudeLoginCode"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeLoginResult"];
                 };
             };
             /** @description Validation Error */
@@ -5831,6 +6281,203 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SelfTestResult"];
+                };
+            };
+        };
+    };
+    notification_settings_api_notifications_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettings"];
+                };
+            };
+        };
+    };
+    set_notification_settings_api_notifications_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationSettings"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_key_api_push_key_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushKey"];
+                };
+            };
+        };
+    };
+    push_subscribe_api_push_subscriptions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PushSubscribe"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_unsubscribe_api_push_subscriptions__sub_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sub_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    push_test_api_push_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushTestResult"];
+                };
+            };
+        };
+    };
+    update_info_api_system_update_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateInfo"];
+                };
+            };
+        };
+    };
+    check_update_api_system_update_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateInfo"];
                 };
             };
         };

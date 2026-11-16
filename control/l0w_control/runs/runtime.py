@@ -1,9 +1,10 @@
-"""Runtime adapters: the agent CLI that drives a session (Claude Code now, opencode in M8).
+"""Runtime adapters: the agent CLI that drives a session (Claude Code, and opencode for opencode Go).
 
 An adapter turns a run's settings into the runner's session request, and the runtime's
 raw events into normalized ones control stores and shows. Starting, following and
 stopping a session go through the runner and are the same for every runtime. Mid-run
-delivery is the runtime's job (Claude Code: the PostToolUse hook in the agent image),
+delivery is the runtime's job (Claude Code: the PostToolUse hook in the agent image;
+opencode: the runner's plugin, which runs the same hook after every tool call),
 declared with a capability flag. Keep adapters thin: the CLI's headless interface changes.
 """
 
@@ -51,7 +52,8 @@ class RuntimeAdapter:
     name: str
     capabilities: Capabilities
 
-    def session_request(self, *, run_id: int, prompt: str, system: str, tier: str, resume_session: str | None, env: dict[str, str]) -> dict:
+    def session_request(self, *, run_id: int, prompt: str, system: str, tier: str, resume_session: str | None, env: dict[str, str],
+                        model: str | None = None, effort: str | None = None) -> dict:
         raise NotImplementedError
 
     def interrupted_prompt(self, reason: str) -> str:
@@ -73,9 +75,9 @@ def _clip(text: str, n: int) -> str:
 
 
 def _tool_summary(name: str, inp: dict) -> str:
-    if name == "Bash":
+    if name.lower() == "bash":
         return f"$ {_clip(inp.get('command', ''), TOOL_TEXT_MAX)}"
-    for key in ("file_path", "path", "pattern", "url", "query", "description"):
+    for key in ("file_path", "filePath", "path", "pattern", "url", "query", "description"):
         if inp.get(key):
             return f"{name} {_clip(inp[key], TOOL_TEXT_MAX)}"
     return name
@@ -83,11 +85,14 @@ def _tool_summary(name: str, inp: dict) -> str:
 
 class ClaudeCode(RuntimeAdapter):
     name = "claude-code"
+    label = "Claude Code"
     capabilities = Capabilities(hooks=True, resume=True, effort=True, subagents=True)
 
-    def session_request(self, *, run_id, prompt, system, tier, resume_session, env):
-        model, effort = split_tier(tier)
-        return {"run_id": run_id, "prompt": prompt, "system_append": system, "model": model, "effort": effort,
+    def session_request(self, *, run_id, prompt, system, tier, resume_session, env, model=None, effort=None):
+        """`model`/`effort` come resolved from the provider (Budgets.runtime_spec); else from the tier."""
+        if model is None:
+            model, effort = split_tier(tier)
+        return {"run_id": run_id, "prompt": prompt, "system_append": system, "runtime": self.name, "model": model, "effort": effort,
                 "resume_session": resume_session, "env": env}
 
     def interrupted_prompt(self, reason: str) -> str:
@@ -102,12 +107,15 @@ class ClaudeCode(RuntimeAdapter):
             p.runner_data = ev
             if p.runner == "started":
                 p.items.append(Item("control", "Session started", True, {"argv": ev.get("argv_summary"), "head": ev.get("head")}))
+                if ev.get("runtime") == "opencode" and ev.get("model"):
+                    p.model = ev["model"]
+                    p.items.append(Item("model", f"Model {ev['model']}", False, {"model": ev["model"]}))
             elif p.runner == "pre_run":
                 p.items.append(Item("control", f"Pre-run report (exit {ev.get('returncode')})", False, {"output": _clip(ev.get("output") or "", RESULT_MAX)}))
             elif p.runner == "lost":
                 p.items.append(Item("error", "The agent computer restarted mid-session", True))
             elif p.runner == "exited" and ev.get("returncode") not in (0, None, 130):
-                p.items.append(Item("error", f"Claude Code exited with code {ev.get('returncode')}", True, {"stderr": _clip(ev.get("stderr_tail") or "", RESULT_MAX)}))
+                p.items.append(Item("error", f"{self.label} exited with code {ev.get('returncode')}", True, {"stderr": _clip(ev.get("stderr_tail") or "", RESULT_MAX)}))
             elif p.runner == "exited" and ev.get("error"):
                 p.items.append(Item("error", f"The runner failed: {_clip(ev['error'], 300)}", True))
             return p
@@ -159,4 +167,44 @@ class ClaudeCode(RuntimeAdapter):
         return p
 
 
-ADAPTERS: dict[str, RuntimeAdapter] = {"claude-code": ClaudeCode()}
+class OpenCode(ClaudeCode):
+    """`opencode run --format json`: step_start, text, reasoning, tool_use (with its output),
+    step_finish (tokens and cost) and error events, one JSON object per line. The runner adds
+    the final result line (Claude Code's shape), so runner, result and raw lines parse as there."""
+
+    name = "opencode"
+    label = "opencode"
+
+    def parse(self, ev: dict) -> Parsed:
+        t = ev.get("type")
+        if t in ("runner", "result", "raw"):
+            return super().parse(ev)
+        p = Parsed()
+        p.session_id = ev.get("sessionID")
+        part = ev.get("part") or {}
+        if t == "text" and (part.get("text") or "").strip():
+            p.items.append(Item("text", _clip(part["text"], RESULT_MAX)))
+        elif t == "reasoning" and (part.get("text") or "").strip():
+            p.items.append(Item("thinking", _clip(part["text"], RESULT_MAX)))
+        elif t == "tool_use":
+            state = part.get("state") or {}
+            inp = state.get("input") or {}
+            name = part.get("tool") or "tool"
+            out = state.get("output") if state.get("status") == "completed" else (state.get("error") or state.get("output") or "")
+            p.items.append(Item("tool", _tool_summary(name, inp), False,
+                                {"id": part.get("callID"), "name": name, "input": {k: _clip(v, 2000) if isinstance(v, str) else v for k, v in inp.items()},
+                                 "result": _clip(out or "", 2000), "is_error": state.get("status") == "error"}))
+        elif t == "step_finish":
+            tok = part.get("tokens") or {}
+            cache = tok.get("cache") or {}
+            p.usage = (part.get("id"), None, {"input_tokens": int(tok.get("input") or 0), "output_tokens": int((tok.get("output") or 0) + (tok.get("reasoning") or 0)),
+                                              "cache_read_input_tokens": int(cache.get("read") or 0), "cache_creation_input_tokens": int(cache.get("write") or 0),
+                                              "cost_usd": float(part.get("cost") or 0)})
+        elif t == "error":
+            err = ev.get("error") or {}
+            msg = (err.get("data") or {}).get("message") or err.get("name") or "error"
+            p.items.append(Item("error", f"opencode: {_clip(msg, 300)}", True, {"error": err}))
+        return p
+
+
+ADAPTERS: dict[str, RuntimeAdapter] = {"claude-code": ClaudeCode(), "opencode": OpenCode()}

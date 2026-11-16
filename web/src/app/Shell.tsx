@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { useLive } from '../api/live'
-import { useInboxCounts, useProjects, useStatus, useStopRun, useThreads } from '../api/queries'
+import { useInboxCounts, useProjects, useStatus, useStopRun, useThreads, useUpdateInfo } from '../api/queries'
 import { pts, until, usageText } from '../components/format'
 import { useOnline } from '../components/online'
+import { useOutbox } from '../api/offline'
 import { Palette } from './Palette'
 import { useTheme } from './theme'
 
@@ -12,6 +13,7 @@ const CONVERSATION = /^\/(t|p|projects|new)(\/|$)/
 export function Shell() {
   const live = useLive(true)
   const online = useOnline()
+  const outbox = useOutbox()
   const loc = useLocation()
   const nav = useNavigate()
   const [palette, setPalette] = useState(false)
@@ -34,8 +36,9 @@ export function Shell() {
   return (
     <div className="app">
       <Header onSearch={() => setPalette(true)} moreOpen={moreOpen} setMoreOpen={setMoreOpen} />
+      <UpdateBanner />
       {(!online || live === 'offline') && (
-        <div className="offline-bar">{!online ? 'Offline. Messages wait on this device until the connection returns.' : 'Reconnecting to the server…'}</div>
+        <div className="offline-bar">{!online ? `Offline. ${outbox.length ? `${outbox.length} item${outbox.length === 1 ? '' : 's'} waiting` : 'Messages wait'} on this device until the connection returns.` : 'Reconnecting to the server…'}</div>
       )}
       <div className="body">
         {inConversation && <Sidebar />}
@@ -158,5 +161,33 @@ function ThreadLink({ t, indent }: { t: { id: number; title: string; unread: num
       <span className="grow">{t.title}</span>
       {t.unread > 0 && <span className="badge">{t.unread}</span>}
     </NavLink>
+  )
+}
+
+
+/** The mockup's update banner. Applying an update happens on the server (`./l0w update`, which
+ * waits for the current run and don't-interrupt jobs), so the button shows how. Dismissed per version. */
+function UpdateBanner() {
+  const u = useUpdateInfo().data
+  const key = `l0w-update-dismissed-${u?.latest}`
+  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(key) === '1' } catch { return false } })
+  const [how, setHow] = useState(false)
+  useEffect(() => { try { setHidden(localStorage.getItem(key) === '1') } catch { /* private mode */ } }, [key])
+  if (u?.draining_until) {
+    return <div className="banner"><span style={{ fontWeight: 500 }}>Updating</span><span>Waiting for {u.waiting_for.length ? u.waiting_for.join('; ') : 'the assistant to be idle'}. No new runs start meanwhile.</span></div>
+  }
+  if (!u?.available || hidden) return null
+  const summary = (u.notes ?? '').split('\n').map((l) => l.replace(/^[-#*\s]+/, '')).find((l) => l.trim()) ?? ''
+  return (
+    <div className="banner" role="status">
+      <span style={{ fontWeight: 500 }}>l0wagent {u.latest} is available</span>
+      {summary && <span className="ellipsis" style={{ minWidth: 0 }}>{summary}</span>}
+      {u.url && <a href={u.url} target="_blank" rel="noreferrer">Release notes</a>}
+      <span style={{ flex: 1 }} />
+      {how
+        ? <span>On the server, in the l0wagent folder: <code>./l0w update</code> (it waits for the current run)</span>
+        : <button className="btn small" onClick={() => setHow(true)}>Update after the current run</button>}
+      <button className="x" aria-label="Dismiss" onClick={() => { try { localStorage.setItem(key, '1') } catch { /* private mode */ } setHidden(true) }}>✕</button>
+    </div>
   )
 }

@@ -1,0 +1,14 @@
+# Host resources for your machine. Copy to compose.override.yaml (Compose reads it
+# automatically, and ./l0w update keeps it). `./l0w install` writes one from your answers.
+services:
+  agent:
+    # Memory and CPU for the assistant's computer.
+    deploy:
+      resources:
+        limits: { memory: 8g, cpus: "4" }
+        # An NVIDIA GPU (needs nvidia-container-toolkit on the host).
+        # reservations:
+        #   devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+    # Host folders, read-only unless you mean otherwise. They appear under /mnt in the agent.
+    # volumes:
+    #   - /srv/media:/mnt/media:ro

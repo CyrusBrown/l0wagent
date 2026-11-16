@@ -40,4 +40,15 @@ Nightly, review and turbo modes are gone. You now plan your own wakeups within b
   command with `assistant job done ID; assistant notify "…"`. Never wait on it.
 - Sweep wakeups near the weekly reset spend what the owner didn't use; end with IDLE if nothing is worth it.
 - The owner can give standing instructions; they open every brief. Your core prompt was rewritten."""),
+    ("2026-11-17", "Updates wait for you", """\
+The owner now updates l0wagent with `./l0w update`, which waits until you're idle: your current run
+finishes, and jobs started with `assistant job start … --dont-interrupt` are waited for (use it only for
+work that can't survive a restart). While an update waits, no new run starts, so a wakeup can start late
+or be marked missed; replan it if it mattered. Your volumes and plan survive the update."""),
+    ("2026-11-17", "You may run on opencode", """\
+The owner can now give you an opencode Go subscription instead of (or next to) Claude. Runs on it use
+opencode as your agent CLI, with non-Claude models behind the same tier names (haiku, sonnet, opus)
+that the owner picks. Everything else is the same: your `assistant` commands, your workspace and `CLAUDE.md`, budgets in points
+(1 pt = $0.10 of the model's catalog price; free models cost nothing). Answers and the owner's messages
+arrive appended to a tool's output, marked [control notification], instead of as a separate note."""),
 ]

@@ -149,8 +149,18 @@ Code is reused from the old repo where it fits: egress, the agent-web forwarder,
 
 **Done when:** a friend installs on a clean Linux machine without your help, gets a push notification on their phone, and later updates without losing a run.
 
-## M6: Chat, tools and the connector
-**Goal:** the 1:1 chat, Tools & Secrets, and outside chat services.
+**Status (2026-11-17): built; not yet tried on a clean Linux machine or a phone.** The browser test `web/e2e/m5.spec.ts` covers the offline outbox (a message written offline is sent once when the connection returns), the cached threads and the notification settings; `control/tests/test_m5.py` covers the CLI with a device token, draining for updates, version comparison, control serving the built web app, which events notify, and logging the agent in to Claude through the server. Decisions along the way:
+- **Images:** four on GHCR (`l0wagent-control` with the built web app, `-agent`, `-egress`, `-agent-web`), multi-arch. A `vX.Y.Z` tag publishes `:X.Y.Z` and `:stable` plus a GitHub release with that version's `CHANGELOG.md` section; every push to main publishes `:edge`. Versions follow the milestones until 1.0 (this is 0.5.0).
+- **Installer:** `./l0w install` checks Docker, picks a free private sandbox subnet, writes `.env` (fresh tokens, mode 600) and `compose.override.yaml` (memory, NVIDIA GPU if present), pulls and starts. The browser wizard does the rest, including the agent's Claude login through the server.
+- **Updates:** control checks GitHub's latest release every 6 hours and shows a banner with its notes (stable channel only; edge has no banner). Control has no Docker socket, so applying is `./l0w update` on the host: pull first, then turn on draining (through `docker compose exec control python -m l0w_control.hostctl`), wait for the current run and "don't interrupt" jobs, recreate, check health. Draining is a database flag with an expiry, so it survives the restart and can't strand the assistant; while it's on, no run starts and wakeups wait (they can be marked missed). No updater sidecar.
+- **`l0w` CLI:** one stdlib-only Python file (`cli/l0w.py`), host commands (install, update, up/down, logs, claude-login) plus `ops` parity over the owner API with a revocable device token kept in `~/.config/l0w/config.json`.
+- **Offline:** projects, threads, messages, the Inbox, shelves, status, budget, calendar and runs are cached in IndexedDB for 7 days (never `me`/`meta`); messages, new threads, answers and finished tasks go to an outbox and are sent in order with their idempotency keys. Approvals, secrets, settings, budgets and promote requests are online only.
+- **Notifications:** web push signed with control's own VAPID key, sent straight to the browser's push service; it needs HTTPS (Tailscale HTTPS is documented). ntfy is the fallback for plain-HTTP installs. Approvals and new sign-ins notify by default; questions, tasks, messages and failed runs are opt-in; quiet hours hold back everything else.
+- **Not checked in Docker** in this pass: build the images and run `compose.yaml` and `dev/isolation-test.sh` before calling M5 reviewed.
+
+## M6: Chat, tools and the connector (plus opencode Go)
+**Goal:** the 1:1 chat, Tools & Secrets, and outside chat services; and friends without Claude can run the assistant on an **opencode Go** subscription.
+- **Moved up from M8 (owner, 2026-11-16): the opencode adapter, for opencode Go.** The runner drives `opencode run --format json`; an `OpenCode` runtime adapter; an `opencode-go` provider (key in the vault, models per tier); mid-run delivery through an opencode plugin (or the CLI fallback); egress gates opencode's model host; a fake opencode runtime for tests. Zen and other opencode providers come later.
 - **1:1 chat**: the in-control loop for API providers and the **chat-runtime sidecar** for Claude subscriptions; tools (read assistant data and the workspace, create threads and projects, post as the owner, wake the assistant); hand-off; cards for sensitive actions; independent chats.
 - **Tools & Secrets**: secret scopes (agent-only default), **brokered MCP servers**, sandbox MCP registration, per-tool policy, the **GitHub preset**, **secure input cards**, guided setup from the chat.
 - **MCP connector** at `/mcp` with OAuth 2.1 and scopes, plus the downloadable skill and the "open in app" link page. Reachable on the LAN/Tailscale until a hub exists.
@@ -158,12 +168,23 @@ Code is reused from the old repo where it fits: egress, the agent-web forwarder,
 
 **Done when:** you plan something in a chat, hand it to the assistant as a new project thread, set up GitHub through a secure card, and use the connector from Claude Desktop.
 
+**Status (2026-11-17): the opencode Go part is built; the chat, Tools & Secrets and the connector aren't started.** Phase 0 ran against opencode 1.18.31 on opencode Go's free models: `opencode run --format json` (stdin must be closed, or it waits for more input), resume with `--session`, the system prompt as a config-defined agent, `--auto` for no permission prompts, and a plugin's `tool.execute.after` appending to a tool's output, which the model reads. `control/tests/test_opencode.py` covers the adapter, the runner's result line, tier mapping, and a Go-only stack (gate refusing unknown Claude usage) running a wakeup and a Reply now that hears the owner's answer mid-run; the browser test `web/e2e/opencode.spec.ts` saves a key, edits the tier models, moves the worker and wakes it. Decisions:
+- **The runtime is per session**, chosen by the run's provider (`claude-code` or `opencode`); the runner gets it in the session request. opencode writes no final result line, so the runner appends one in Claude Code's shape (last reply, steps, summed cost and tokens) and control's handling of results is unchanged.
+- **Tiers keep Claude's names.** On opencode Go each of haiku/sonnet/opus maps to a model the owner picks (defaults: deepseek-v4.1-flash, deepseek-v4-pro, glm-5.3), and the effort to the model's closest variant. Roles, levels and wakeup validation are unchanged.
+- **Usage:** opencode reports each step's cost at the catalog price; 1 pt = $0.10, as on an API key. Free models cost nothing. Go's own plan limits aren't read (no meter is known); the gate only checks that a key is saved. **Unverified:** what happens when a Go plan limit is hit mid-run.
+- **Mid-run delivery:** `agent/runner/opencode-plugin.js` runs the same `assistant-hook` after every tool call and appends its text to the tool's output.
+- **The reviewer** runs on its own provider's runtime (opencode with `edit` denied and no plugin).
+- **Egress gates `opencode.ai`** like `api.anthropic.com`: model access only under a run's lease.
+- **Setup:** the wizard offers "Use opencode Go" next to the Claude login; it moves every role onto Go. The budget overview lists the worker's provider first, and the level and Boost controls act on it.
+- **Fake runtime:** `agent/runner/fake_opencode.py` wraps `fake_claude.py`, so every scenario also runs in opencode's event format.
+- **Not checked in Docker:** the image installs `opencode-ai@1.18.31` from npm; build it and run one real session through egress before relying on it.
+
 ## M7: Migrate your instance (timing is yours)
 Once M5 (and ideally M6) work, move the current assistant over as planned in [migration.md](migration.md): export, fresh instance, legacy folder, archived threads, the re-setup run.
 
 ## M8: Extensions and the second runtime
 - **Extension SDK v1 with UI support**: everything in [server-platform.md](server-platform.md#extensions), including what hub-service extensions will need (gateway calls, background jobs, managed folders, Inbox and thread types). Plus `extensions/AGENTS.md` and `docs/EXTENDING.md`, and one example extension.
-- **opencode adapter** (Zen and other API providers) as soon as there's a key to test with. It can move earlier if a key turns up.
+- **More opencode providers** (Zen and other API providers); the opencode Go adapter itself moved to M6.
 
 **Done when:** a coding agent, following only the guide, builds a small extension with a page and an agent command, and it survives an update.
 
@@ -192,5 +213,5 @@ So the later work doesn't need rewrites:
 - **Claude Code's headless interface changes**: keep the adapter thin, and pin the CLI version.
 - **Usage measurement**: agent-only attribution needs calibration. Start simple (per-run deltas with token counts) and refine in M4.
 - **Docker Desktop isolation** may differ from Linux: the self-test must catch it before friends rely on it.
-- **opencode is untested**: until M8, everything assumes Claude Code, with the adapter interface kept honest.
+- **opencode is new**: the adapter arrives in M6 for opencode Go; until then everything assumes Claude Code, with the adapter interface kept honest.
 - **Scope creep**: anything not in the current milestone goes into this file's later list, not into the build.

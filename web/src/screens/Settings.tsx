@@ -7,6 +7,7 @@ import {
 import { ago, clock, usageText } from '../components/format'
 import { useTheme, type ThemePref } from '../app/theme'
 import { Budgets, Instructions, Providers, Reviewer, Roles } from './SettingsBudget'
+import { Notifications } from './SettingsNotify'
 
 // Tab list and order from the mockup. Tabs without a screen yet say which milestone brings them.
 const TABS: [slug: string, label: string, later?: string][] = [
@@ -17,7 +18,7 @@ const TABS: [slug: string, label: string, later?: string][] = [
   ['reviewer', 'Reviewer'],
   ['instructions', 'Standing instructions'],
   ['account', 'Account'],
-  ['notifications', 'Notifications', 'Notification settings arrive with push notifications (M5). New-device sign-ins already show in your Inbox.'],
+  ['notifications', 'Notifications'],
   ['extensions', 'Extensions', 'Extensions arrive with M8. They can add pages, sidebar sections, cards and settings panels here.'],
   ['system', 'System'],
 ]
@@ -40,7 +41,7 @@ export function Settings() {
 
 const PAGES: Record<string, JSX.Element> = {
   appearance: <Appearance />, budgets: <Budgets />, providers: <Providers />, roles: <Roles />, reviewer: <Reviewer />, instructions: <Instructions />,
-  account: <Account />, system: <System />,
+  account: <Account />, system: <System />, notifications: <Notifications />,
 }
 
 function Later({ title, text }: { title: string; text: string }) {

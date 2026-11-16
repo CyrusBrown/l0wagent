@@ -1,5 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError, CLIENT_HEADERS, newKey, ok, type S } from './client'
+import { clearOffline, enqueue, isNetworkError, type OutboxItem } from './offline'
+
+/** Send now, or queue on this device when offline (only messages, new threads, answers and
+ * finished tasks: never approvals, secrets, settings or budgets). Returns null when queued. */
+async function orQueue<T>(item: OutboxItem, send: () => Promise<T>): Promise<T | null> {
+  if (!navigator.onLine) {
+    await enqueue(item)
+    return null
+  }
+  try {
+    return await send()
+  } catch (e) {
+    if (isNetworkError(e)) {
+      await enqueue(item)
+      return null
+    }
+    throw e
+  }
+}
+const now = () => new Date().toISOString()
 
 // Query keys start with the entity name so live events can invalidate by prefix (see live.ts).
 
@@ -53,23 +73,29 @@ const cardKeys = [['inbox'], ['thread'], ['threads'], ['projects'], ['status']]
 export const usePostMessage = (threadId: number) =>
   useInvalidating((m: string | { body: string; upload_ids?: number[] }) => {
     const { body, upload_ids = [] } = typeof m === 'string' ? { body: m } : m
-    return ok(api.POST('/api/threads/{thread_id}/messages', { params: { path: { thread_id: threadId } }, body: { body, upload_ids, idempotency_key: newKey() } }))
+    const b = { body, upload_ids, idempotency_key: newKey() }
+    return orQueue({ kind: 'message', thread: threadId, body: b, at: now() },
+      () => ok(api.POST('/api/threads/{thread_id}/messages', { params: { path: { thread_id: threadId } }, body: b })))
   }, [['thread'], ['threads']])
 
 export const useReplyNow = (threadId: number) =>
   useInvalidating(() => ok(api.POST('/api/threads/{thread_id}/reply-now', { params: { path: { thread_id: threadId } } })), [['status'], ['runs'], ['thread']])
 
 export const useAnswer = () =>
-  useInvalidating((a: { id: number; value: unknown; note?: string }) =>
-    ok(api.POST('/api/questions/{qid}/answer', { params: { path: { qid: a.id } }, body: { value: a.value, note: a.note || null, idempotency_key: newKey() } })), cardKeys)
+  useInvalidating((a: { id: number; value: unknown; note?: string }) => {
+    const b = { value: a.value, note: a.note || null, idempotency_key: newKey() }
+    return orQueue({ kind: 'answer', question: a.id, body: b, at: now() }, () => ok(api.POST('/api/questions/{qid}/answer', { params: { path: { qid: a.id } }, body: b })))
+  }, cardKeys)
 
 export const useDecidePermission = () =>
   useInvalidating((a: { id: number } & S['PermissionDecision']) =>
     ok(api.POST('/api/permissions/{pid}/decide', { params: { path: { pid: a.id } }, body: { decision: a.decision, scope: a.scope, note: a.note } })), cardKeys)
 
 export const useResolveTask = () =>
-  useInvalidating((a: { id: number; outcome: 'done' | 'declined'; note?: string }) =>
-    ok(api.POST('/api/tasks/{tid}/resolve', { params: { path: { tid: a.id } }, body: { outcome: a.outcome, note: a.note || null, idempotency_key: newKey() } })), cardKeys)
+  useInvalidating((a: { id: number; outcome: 'done' | 'declined'; note?: string }) => {
+    const b = { outcome: a.outcome, note: a.note || null, idempotency_key: newKey() }
+    return orQueue({ kind: 'task', task: a.id, body: b, at: now() }, () => ok(api.POST('/api/tasks/{tid}/resolve', { params: { path: { tid: a.id } }, body: b })))
+  }, cardKeys)
 
 export const useDecideSuggestion = () =>
   useInvalidating((a: { id: number; decision: 'accept' | 'dismiss' }) =>
@@ -104,8 +130,10 @@ export const useRecent = (sender?: S['Message']['sender']) =>
   useQuery({ queryKey: ['threads', 'recent', sender ?? 'all'], queryFn: () => ok(api.GET('/api/messages/recent', { params: { query: { sender, limit: 5 } } })) })
 
 export const useCreateThread = () =>
-  useInvalidating((b: { title: string; project?: string | null; first_message?: string; upload_ids?: number[] }) =>
-    ok(api.POST('/api/threads', { body: { ...b, idempotency_key: newKey() } })), [['threads'], ['projects']])
+  useInvalidating((b: { title: string; project?: string | null; first_message?: string; upload_ids?: number[] }) => {
+    const body = { ...b, idempotency_key: newKey() }
+    return orQueue({ kind: 'thread', body, at: now() }, () => ok(api.POST('/api/threads', { body })))
+  }, [['threads'], ['projects']])
 
 // ── M1: runs, account, system, setup ───────────────────────────────────────
 export const useStartRun = () =>
@@ -126,7 +154,7 @@ export const useTotpDisable = () => useInvalidating((b: S['TotpDisable']) => ok(
 export const useSetupOwner = () => useMutation({ mutationFn: (b: S['SetupOwnerRequest']) => ok(api.POST('/api/setup/owner', { body: b })) })
 export const useLogout = () => {
   const qc = useQueryClient()
-  return useMutation({ mutationFn: () => ok(api.POST('/api/auth/logout')), onSuccess: () => qc.invalidateQueries() })
+  return useMutation({ mutationFn: () => ok(api.POST('/api/auth/logout')), onSuccess: async () => { await clearOffline(); qc.clear(); qc.invalidateQueries() } })
 }
 
 /** The `detail` (or error code) from a failed request, for showing inline. */
@@ -184,18 +212,19 @@ const budgetKeys = [['budget'], ['status'], ['calendar'], ['thread']]
 const P = 'claude-subscription'
 
 export const useBudget = () => useQuery({ queryKey: ['budget'], queryFn: () => ok(api.GET('/api/budget')) })
-export const usePatchBudget = (provider = P) =>
-  useInvalidating((b: S['BudgetPatch']) => ok(api.PATCH('/api/budget/{provider}', { params: { path: { provider } }, body: b })), budgetKeys)
-export const useBoost = (provider = P) =>
-  useInvalidating((b: S['BoostRequest']) => ok(api.POST('/api/budget/{provider}/boost', { params: { path: { provider } }, body: b })), budgetKeys)
-export const useClearBoost = (provider = P) =>
-  useInvalidating(() => ok(api.DELETE('/api/budget/{provider}/boost', { params: { path: { provider } } })), budgetKeys)
+// Each takes the provider whose budget changes (the overview lists the worker's provider first).
+export const usePatchBudget = () =>
+  useInvalidating(({ provider = P, ...b }: S['BudgetPatch'] & { provider?: string }) => ok(api.PATCH('/api/budget/{provider}', { params: { path: { provider } }, body: b })), budgetKeys)
+export const useBoost = () =>
+  useInvalidating(({ provider = P, ...b }: S['BoostRequest'] & { provider?: string }) => ok(api.POST('/api/budget/{provider}/boost', { params: { path: { provider } }, body: b })), budgetKeys)
+export const useClearBoost = () =>
+  useInvalidating((provider: string = P) => ok(api.DELETE('/api/budget/{provider}/boost', { params: { path: { provider } } })), budgetKeys)
 export const usePatchReserve = () => useInvalidating((b: S['ReserveSettings']) => ok(api.PATCH('/api/budget', { body: b })), budgetKeys)
 
 export const useProviders = () => useQuery({ queryKey: ['budget', 'providers'], queryFn: () => ok(api.GET('/api/providers')) })
-export const useAddApiProvider = () => useInvalidating((b: S['ApiProviderCreate']) => ok(api.POST('/api/providers/anthropic-api', { body: b })), budgetKeys)
+export const useAddApiProvider = () => useInvalidating((b: S['ApiProviderCreate']) => ok(api.POST('/api/providers', { body: b })), budgetKeys)
 export const usePatchProvider = () =>
-  useInvalidating((a: { id: string } & S['ProviderPatch']) => ok(api.PATCH('/api/providers/{provider}', { params: { path: { provider: a.id } }, body: { enabled: a.enabled, label: a.label } })), budgetKeys)
+  useInvalidating((a: { id: string } & S['ProviderPatch']) => ok(api.PATCH('/api/providers/{provider}', { params: { path: { provider: a.id } }, body: { enabled: a.enabled, label: a.label, models: a.models } })), budgetKeys)
 export const useDeleteProvider = () => useInvalidating((id: string) => ok(api.DELETE('/api/providers/{provider}', { params: { path: { provider: id } } })), budgetKeys)
 
 export const useRoles = () => useQuery({ queryKey: ['budget', 'roles'], queryFn: () => ok(api.GET('/api/roles')) })
@@ -223,3 +252,33 @@ export const usePatchRoutine = () =>
     return ok(api.PATCH('/api/routines/{routine_id}', { params: { path: { routine_id: id } }, body }))
   }, budgetKeys)
 export const useDeleteRoutine = () => useInvalidating((id: number) => ok(api.DELETE('/api/routines/{routine_id}', { params: { path: { routine_id: id } } })), budgetKeys)
+
+// ── M5: updates, notifications, logging the agent in ───────────────────────
+export const useUpdateInfo = () => useQuery({ queryKey: ['system', 'update'], queryFn: () => ok(api.GET('/api/system/update')), refetchInterval: 30 * 60_000 })
+export const useCheckUpdate = () => useInvalidating(() => ok(api.POST('/api/system/update/check')), [['system']])
+export const useNotificationSettings = () => useQuery({ queryKey: ['notifications'], queryFn: () => ok(api.GET('/api/notifications/settings')) })
+export const useSetNotificationSettings = () =>
+  useInvalidating((b: S['NotificationSettings']) => ok(api.PUT('/api/notifications/settings', { body: b })), [['notifications']])
+export const usePushTest = () => useMutation({ mutationFn: () => ok(api.POST('/api/push/test')) })
+export const useRemovePushSubscription = () =>
+  useInvalidating((id: number) => ok(api.DELETE('/api/push/subscriptions/{sub_id}', { params: { path: { sub_id: id } } })), [['notifications']])
+
+/** Ask the browser for notification permission and register this device for web push. */
+export async function subscribePush(label: string): Promise<void> {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('This browser has no web push (on iPhone, add the app to the Home Screen first).')
+  if (!window.isSecureContext) throw new Error('Notifications need HTTPS: open this app at its https:// address (see the install docs).')
+  const perm = await Notification.requestPermission()
+  if (perm !== 'granted') throw new Error('Notifications are blocked for this site in the browser settings.')
+  const reg = (await navigator.serviceWorker.getRegistration()) ?? (await navigator.serviceWorker.register('/sw.js'))
+  await navigator.serviceWorker.ready
+  const { public_key } = await ok(api.GET('/api/push/key'))
+  const pad = '='.repeat((4 - (public_key.length % 4)) % 4)
+  const raw = Uint8Array.from(atob((public_key + pad).replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))
+  const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: raw }))
+  const j = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } }
+  await ok(api.POST('/api/push/subscriptions', { body: { endpoint: j.endpoint, keys: j.keys, label } }))
+}
+
+export const useClaudeLoginStart = () => useMutation({ mutationFn: () => ok(api.POST('/api/providers/claude-subscription/login')) })
+export const useClaudeLoginCode = () =>
+  useInvalidating((code: string) => ok(api.POST('/api/providers/claude-subscription/login/code', { body: { code } })), [['system'], ['status'], ['budget']])

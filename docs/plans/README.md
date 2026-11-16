@@ -27,9 +27,9 @@ Status: **planning only** (as of 2026-11-14). Nothing here is built. Decisions a
 | M3 | Files: shelf, uploads, file browser, previews |
 | M4 | Budgets, wakeups and runs: providers, budgets, wakeup planning, routines, reviewer, run views, prompts |
 | M5 | Installable and shareable: images, installer, wizard, updates, `l0w` CLI, web app + push, offline |
-| M6 | Chat, tools and the connector: 1:1 chat, Tools & Secrets, MCP connector |
+| M6 | Chat, tools and the connector: 1:1 chat, Tools & Secrets, MCP connector; the opencode adapter for opencode Go |
 | M7 | Migrate your instance (when you choose) |
-| M8 | Extension SDK v1 (with UI) and the opencode adapter |
+| M8 | Extension SDK v1 (with UI) and more opencode providers |
 | M9 | Desktop app (Tauri) |
 | Later | Hub, more providers, catalog, backups and other extras, only when you say |
 
@@ -96,7 +96,7 @@ From the current assistant's workspace (run 94, 934 commits, 481 MB):
 | **Login** | **One owner per instance.** Username + password, optional TOTP 2FA and passkeys. Apps get revocable device tokens. |
 | **Extensions** | Written by the owner with their own coding agent, on the host, through a versioned SDK that **includes UI** from v1. The assistant can't write or install them. A guide for contributing agents ships with the SDK. **The instance side of hub services (email, board, shared spaces…) is built as first-party extensions.** |
 | **Harness changes** | The assistant and the 1:1 chat tell the user they can't change harness or container code, point to a coding agent, and can draft the spec. |
-| **Providers** | Multi-provider is core. First: **Claude** (subscription or API) through Claude Code, and **opencode Zen** through opencode. Google AI Studio later. Zen is untested here (no account); it's a normal API provider to opencode. |
+| **Providers** | Multi-provider is core. First: **Claude** (subscription or API) through Claude Code, and **opencode Go** (a subscription) through opencode, from M6. Zen and Google AI Studio later. |
 | **Budgets** | The owner sets budgets and limits per provider; **the agent plans its own wakeups**, including timed ones. Control checks plans, adds a fallback wakeup (on by default, after 2 nights without one) and can sweep leftovers. A script helps the agent plan; a planner model is optional. |
 | **Reply now** | Draws on a small separate reply budget (about 3% of the week for Claude subscriptions, $1/week for API providers). Turning a reply into a full run needs the owner's approval. |
 | **Reserve** | Never start a wakeup above 80% weekly usage; keep the 5-hour window below 70%. When they apply comes from the schedule's allowed hours. |

@@ -62,7 +62,7 @@ services:
     environment:
       EGRESS_TOKEN: ${L0W_EGRESS_TOKEN:-dev-egress-token}
       SANDBOX_SUBNET: ${SANDBOX_SUBNET:-172.31.240.0/24}
-      GATED_HOSTS: api.anthropic.com
+      GATED_HOSTS: api.anthropic.com,opencode.ai
       DEFAULT_POLICY: ${EGRESS_DEFAULT_POLICY:-allow}
       DATA_DIR: /data
     volumes:

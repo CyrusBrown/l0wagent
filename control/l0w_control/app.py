@@ -94,7 +94,32 @@ def create_app(backend: Backend) -> FastAPI:
         return spec
 
     app.openapi = openapi  # type: ignore[method-assign]
+    _serve_ui(app)
     return app
+
+
+def _serve_ui(app: FastAPI) -> None:
+    """In the release image control also serves the web app (built into L0W_WEB_DIR):
+    hashed assets cached for good, everything else (index.html, the service worker, the
+    manifest) revalidated, and any other path falls back to index.html for the router."""
+    from pathlib import Path
+
+    from fastapi.responses import FileResponse
+
+    root = Path(os.environ.get("L0W_WEB_DIR", "/app/web"))
+    if not (root / "index.html").is_file():
+        return
+    root = root.resolve()
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def ui(path: str):
+        if path.startswith("api/") or path == "api":
+            return JSONResponse({"error": "not_found", "detail": path}, status_code=404)
+        target = (root / path).resolve()
+        if path and target.is_file() and target.is_relative_to(root):
+            immutable = path.startswith("assets/")
+            return FileResponse(target, headers={"Cache-Control": "public, max-age=31536000, immutable" if immutable else "no-cache"})
+        return FileResponse(root / "index.html", headers={"Cache-Control": "no-cache"})
 
 
 def _default_backend() -> Backend:

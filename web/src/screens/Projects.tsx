@@ -193,7 +193,7 @@ export function NewItem() {
   const submit = () => {
     const body = text.trim()
     if (!body || uploading) return
-    create.mutate({ title: body.split('\n')[0].slice(0, 80), project, first_message: body, upload_ids: files.map((f) => f.id) }, { onSuccess: (t) => nav(`/t/${t.id}`) })
+    create.mutate({ title: body.split('\n')[0].slice(0, 80), project, first_message: body, upload_ids: files.map((f) => f.id) }, { onSuccess: (t) => nav(t ? `/t/${t.id}` : project ? `/p/${project}` : '/') })  // null: queued offline, sent when back online
   }
   const where = project ? (projectInfo.data?.name ?? project) : 'General'
   return (

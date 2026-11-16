@@ -87,8 +87,8 @@ describe('screens render with mock data', () => {
     expect(await screen.findByText("Can't reach the LAN or the host")).toBeInTheDocument()
   })
   it('Settings: a later tab says when it arrives', async () => {
-    renderAt('/settings/notifications')
-    expect(await screen.findByText(/arrive with push notifications \(M5\)/)).toBeInTheDocument()
+    renderAt('/settings/extensions')
+    expect(await screen.findByText(/arrive with M8/)).toBeInTheDocument()
   })
   it('Settings: budgets and levels', async () => {
     renderAt('/settings/budgets')

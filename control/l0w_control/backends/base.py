@@ -143,6 +143,20 @@ class Backend:
     # system
     def system_status(self) -> s.SystemStatus: raise NotImplementedError
     def selftest(self) -> s.SelfTestResult: raise NotImplementedError
+    def update_info(self) -> s.UpdateInfo: raise NotImplementedError
+
+    # logging the agent in to Claude (M5 wizard); online only
+    def claude_login_start(self) -> s.ClaudeLoginStart: raise NotImplementedError
+    def claude_login_code(self, req: s.ClaudeLoginCode) -> s.ClaudeLoginResult: raise NotImplementedError
+
+    # notifications (M5)
+    def push_key(self) -> s.PushKey: raise NotImplementedError
+    def push_subscribe(self, req: s.PushSubscribe) -> s.NotificationSettings: raise NotImplementedError
+    def push_unsubscribe(self, sub_id: int) -> None: raise NotImplementedError
+    def notification_settings(self) -> s.NotificationSettings: raise NotImplementedError
+    def set_notification_settings(self, req: s.NotificationSettings) -> s.NotificationSettings: raise NotImplementedError
+    def push_test(self) -> s.PushTestResult: raise NotImplementedError
+    def check_update(self) -> s.UpdateInfo: raise NotImplementedError
 
     # files
     def list_dir(self, volume: str, path: str) -> s.Listing: raise NotImplementedError

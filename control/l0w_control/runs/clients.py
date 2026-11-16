@@ -53,6 +53,12 @@ class RunnerClient:
     async def refresh_auth(self) -> dict:
         return await self._call("POST", "/auth/refresh", timeout=180)
 
+    async def login_start(self) -> dict:
+        return await self._call("POST", "/auth/login", timeout=60)
+
+    async def login_code(self, code: str) -> dict:
+        return await self._call("POST", "/auth/login/code", timeout=120, json={"code": code})
+
     async def consult(self, payload: dict) -> dict:
         """One reviewer turn (blocks until it ends)."""
         return await self._call("POST", "/consult", timeout=600, json=payload)

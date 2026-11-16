@@ -35,7 +35,7 @@ from .config import Settings
 from .db import Database
 from .live import Live
 from .runs.clients import RunnerClient, RunnerError
-from .runs.runtime import Item, split_tier
+from .runs.runtime import Item
 
 if TYPE_CHECKING:
     from .runs.manager import RunManager
@@ -115,12 +115,13 @@ class Reviewer:
             if self._out_of_budget(run):
                 return None, None
             cfg = self.budgets.reviewer_config()
-            model, effort = split_tier(cfg.tier)
-            key = self._session_key(run)
+            pid = cfg.provider if cfg.provider in self.budgets.provider_ids() else run["provider"]
+            spec = self.budgets.runtime_spec(pid, cfg.tier)
+            key = self._session_key(run) + ("" if spec["runtime"] == "claude-code" else f":{spec['runtime']}")
             row = self.db.q1("SELECT value FROM kv WHERE key=?", (key,))
             resume = json.loads(row["value"]) if row else None
-            payload = {"run_id": run_id, "prompt": f"{self._header(run)}\n\n{prompt}", "system_append": self._system(), "model": model, "effort": effort,
-                       "resume_session": resume}
+            payload = {"run_id": run_id, "prompt": f"{self._header(run)}\n\n{prompt}", "system_append": self._system(), "runtime": spec["runtime"],
+                       "model": spec["model"], "effort": spec["effort"], "resume_session": resume, "env": self.budgets.provider_env(pid)}
             try:
                 out = await self.runner.consult(payload)
             except RunnerError as e:

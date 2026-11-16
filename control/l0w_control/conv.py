@@ -54,11 +54,20 @@ class Conversations:
         self.delete_egress_rule: Callable[[int], None] | None = None
         # Set by the backend: routine proposals (validate, apply on approval, revert).
         self.routines: Any = None
+        # Set by the backend: notifications (kind, title, body, url, ref_kind, ref_id).
+        self.notify: Callable[..., None] = lambda *a, **k: None
         live.getters.update(
             project=lambda i: self.project(i), thread=lambda i: self.thread(int(i)), message=lambda i: self.message(int(i)),
             question=lambda i: self.question(int(i)), permission=lambda i: self.permission(int(i)), task=lambda i: self.task(int(i)),
             claim=lambda i: self.claim(int(i)), suggestion=lambda i: self.suggestion(int(i)), promote=lambda i: self.promote(int(i)),
         )
+
+    def _url(self, thread_id: int | None) -> str:
+        return f"/t/{thread_id}" if thread_id else "/inbox"
+
+    def _preview(self, text: str | None, n: int = 140) -> str:
+        t = " ".join((text or "").split())
+        return t if len(t) <= n else t[: n - 1] + "…"
 
     def r(self, text: str | None) -> str | None:
         return self.vault.redact(text)
@@ -354,6 +363,7 @@ class Conversations:
                          (thread_id, "assistant", self.r(body), run_id, self.db.now()))
         self.live.changed("message", mid)
         self._touch_thread(thread_id)
+        self.notify("assistant_message", f"The assistant in “{t['title']}”", self._preview(self.r(body)), self._url(thread_id), "message", str(mid))
         return self.message(mid)
 
     def system_message(self, thread_id: int, body: str) -> None:
@@ -385,7 +395,9 @@ class Conversations:
                          (self._ask_thread(thread_id), run_id, kind, self.r(text), json.dumps([self.r(o) for o in options]), json.dumps(default),
                           json.dumps(scale_labels) if scale_labels else None, self.db.now()))
         self._card("question", qid, thread_id)
-        return self.question(qid)
+        q = self.question(qid)
+        self.notify("question", "The assistant asks", self._preview(q.text), self._url(q.thread_id), "question", str(qid))
+        return q
 
     def file_permission(self, run_id: int | None, thread_id: int | None, text: str, reason: str | None, actions: list[dict]) -> s.Permission:
         checked = [self._check_routine(a) if a.get("kind") == "routine" else _check_action(a) for a in actions]
@@ -395,7 +407,10 @@ class Conversations:
             for kind, payload in checked:
                 db.ex("INSERT INTO permission_actions(permission_id, kind, payload_json) VALUES(?,?,?)", (pid, kind, json.dumps(payload)))
         self._card("permission", pid, thread_id)
-        return self.permission(pid)
+        p = self.permission(pid)
+        title = "Secure input needed" if any(a.kind == "secret" for a in p.actions) else "Approval needed"
+        self.notify("approval", title, self._preview(p.text), self._url(p.thread_id), "permission", str(pid))
+        return p
 
     def _check_routine(self, a: dict) -> tuple[str, dict]:
         if self.routines is None:
@@ -412,7 +427,9 @@ class Conversations:
         tid = self.db.ex("INSERT INTO tasks(thread_id, run_id, text, detail, created_at) VALUES(?,?,?,?,?)",
                          (self._ask_thread(thread_id), run_id, self.r(text), self.r(detail), self.db.now()))
         self._card("task", tid, thread_id)
-        return self.task(tid)
+        t = self.task(tid)
+        self.notify("task", "A task for you", self._preview(t.text), self._url(t.thread_id), "task", str(tid))
+        return t
 
     def withdraw(self, kind: str, id_: int) -> None:
         table = {"question": "questions", "permission": "permissions", "task": "tasks", "suggestion": "suggestions"}[kind]
@@ -526,6 +543,7 @@ class Conversations:
         pid = self.db.ex("INSERT INTO promote_requests(run_id, thread_id, reason, budget, created_at) VALUES(?,?,?,?,?)",
                          (run_id, thread_id, self.r(reason), budget, self.db.now()))
         self._card("promote", pid, thread_id)
+        self.notify("approval", f"Promote a reply to a full run (+{budget:g} pts)?", self._preview(self.r(reason)), self._url(thread_id), "promote", str(pid))
         return self.promote(pid)
 
     def expire_promotes(self, run_id: int | None = None, older_than: str | None = None) -> None:

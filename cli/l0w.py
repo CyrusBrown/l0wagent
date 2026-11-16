@@ -1,0 +1,669 @@
+#!/usr/bin/env python3
+"""l0w: install, update and talk to your l0wagent server, from its host (or any machine).
+
+Install and update (run in the folder with compose.yaml):
+  l0w install [--channel stable|edge] [--port 8000] [--yes]
+                         check Docker, pick a sandbox subnet, write .env (fresh tokens) and
+                         compose.override.yaml, pull the images, start, print the address
+  l0w update [--timeout 120] [--force] [--version X.Y.Z]
+                         pull, wait until the assistant is idle (no run, no don't-interrupt
+                         jobs; no new runs start meanwhile), recreate, check it's healthy
+  l0w up | down | restart | ps | logs [SERVICE]
+  l0w claude-login       log the assistant's computer in to your Claude subscription (interactive)
+  l0w version
+
+Talk to it (log in once; the device token is kept in ~/.config/l0w/config.json, mode 600):
+  l0w login [URL]        username, password (and 2FA code) → a revocable device token
+  l0w logout
+  l0w status             the assistant now, budget, what's waiting
+  l0w inbox [--history]  everything waiting on you (questions, permissions, tasks, …)
+  l0w answer ID VALUE… [--note …]          a question: yes/no, an option, several options, or text
+  l0w approve ID [--scope once|project|always] [--note …]   ·   l0w deny ID [--note …]
+  l0w done ID [--note …]  ·  l0w decline ID [--note …]      tasks for you
+  l0w promote ID approve|deny               a reply asking to become a full run
+  l0w threads [--project P]  ·  l0w read THREAD [-n 20]
+  l0w send THREAD "text" [--now]           (- reads stdin); --now presses Reply now
+  l0w send --new "Title" [--project P] "text"
+  l0w runs [-n 15]  ·  l0w run ID [--detailed]  ·  l0w wake [--budget N] [--tier T]  ·  l0w stop RUN
+  l0w jobs  ·  l0w budget  ·  l0w level dormant|frugal|steady|busy|max  ·  l0w boost LEVEL [--hours 24 | --until-reset]
+  l0w calendar           this week's planned wakeups
+  l0w secrets  ·  l0w secret set NAME [VALUE|@file|-] [--desc …]  ·  l0w secret rm NAME   (write-only)
+  l0w selftest  ·  l0w update-check
+
+L0W_URL and L0W_TOKEN override the saved login (for scripts and coding agents).
+"""
+
+from __future__ import annotations
+
+import argparse
+import getpass
+import ipaddress
+import json
+import os
+import platform
+import secrets
+import shutil
+import socket
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+from pathlib import Path
+
+CONFIG = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "l0w" / "config.json"
+SUBNETS = [f"172.31.{n}.0/24" for n in range(240, 255)] + [f"10.231.{n}.0/24" for n in range(0, 16)]
+_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def die(msg: str, code: int = 1):
+    print(msg, file=sys.stderr)
+    sys.exit(code)
+
+
+# ── the API ────────────────────────────────────────────────────────────────
+def config() -> dict:
+    try:
+        return json.loads(CONFIG.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_config(c: dict) -> None:
+    CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    CONFIG.write_text(json.dumps(c, indent=2))
+    CONFIG.chmod(0o600)
+
+
+def server() -> tuple[str, str | None]:
+    c = config()
+    url = os.environ.get("L0W_URL") or c.get("url") or "http://localhost:8000"
+    return url.rstrip("/"), os.environ.get("L0W_TOKEN") or c.get("token")
+
+
+def call(method: str, path: str, body=None, auth: bool = True, url: str | None = None, timeout: float = 30):
+    base, token = server()
+    base = url or base
+    headers = {"Content-Type": "application/json", "X-L0W-Client": "l0w-cli"}
+    if auth:
+        if not token:
+            die("Not logged in: run `l0w login`.")
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(f"{base}/api{path}", data=json.dumps(body).encode() if body is not None else None, method=method, headers=headers)
+    try:
+        with _opener.open(req, timeout=timeout) as r:
+            raw = r.read()
+            return json.loads(raw) if raw else None
+    except urllib.error.HTTPError as e:
+        try:
+            err = json.loads(e.read())
+        except json.JSONDecodeError:
+            err = {}
+        if e.code == 401 and auth:
+            die("The server refused the saved token (revoked or expired): run `l0w login`.")
+        die(f"{e.code}: {err.get('detail') or err.get('error') or e.reason}")
+    except urllib.error.URLError as e:
+        die(f"Can't reach {base}: {e.reason}")
+
+
+def key() -> str:
+    return str(uuid.uuid4())
+
+
+def text_arg(parts: list[str]) -> str:
+    joined = " ".join(parts)
+    return sys.stdin.read() if joined == "-" else joined
+
+
+def when(iso: str | None) -> str:
+    if not iso:
+        return "–"
+    from datetime import datetime
+    return datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone().strftime("%a %d %b %H:%M")
+
+
+# ── host helpers ───────────────────────────────────────────────────────────
+def compose(*args: str, check: bool = True, capture: bool = False) -> subprocess.CompletedProcess:
+    cmd = ["docker", "compose", *args]
+    return subprocess.run(cmd, check=check, text=True, capture_output=capture)
+
+
+def need_docker() -> None:
+    if not shutil.which("docker"):
+        die("Docker isn't installed. See docs/install.md.")
+    if subprocess.run(["docker", "info"], capture_output=True).returncode != 0:
+        die("Docker isn't running, or this user can't use it (try sudo, or add yourself to the docker group).")
+    if subprocess.run(["docker", "compose", "version"], capture_output=True).returncode != 0:
+        die("Docker Compose v2 is missing (`docker compose`). See docs/install.md.")
+    if not Path("compose.yaml").is_file():
+        die("Run this in the folder with compose.yaml (the l0wagent checkout or release).")
+
+
+def env_file() -> dict[str, str]:
+    out = {}
+    if Path(".env").is_file():
+        for line in Path(".env").read_text().splitlines():
+            if "=" in line and not line.lstrip().startswith("#"):
+                k, _, v = line.partition("=")
+                out[k.strip()] = v.strip()
+    return out
+
+
+def write_env(env: dict[str, str]) -> None:
+    lines = ["# Written by `l0w install`. Keep it private: it holds the tokens control, the runner and egress use.", ""]
+    lines += [f"{k}={v}" for k, v in env.items()]
+    Path(".env").write_text("\n".join(lines) + "\n")
+    Path(".env").chmod(0o600)
+
+
+def used_subnets() -> list[ipaddress.IPv4Network]:
+    ids = subprocess.run(["docker", "network", "ls", "-q"], capture_output=True, text=True).stdout.split()
+    if not ids:
+        return []
+    data = json.loads(subprocess.run(["docker", "network", "inspect", *ids], capture_output=True, text=True).stdout or "[]")
+    nets = []
+    for n in data:
+        for c in (n.get("IPAM") or {}).get("Config") or []:
+            try:
+                nets.append(ipaddress.ip_network(c.get("Subnet", ""), strict=False))
+            except ValueError:
+                pass
+    return nets
+
+
+def pick_subnet() -> str:
+    used = used_subnets()
+    for cand in SUBNETS:
+        net = ipaddress.ip_network(cand)
+        if not any(net.overlaps(u) for u in used if u.version == 4):
+            return cand
+    die("No free subnet for the sandbox network; set SANDBOX_SUBNET in .env by hand.")
+    return ""
+
+
+def lan_ip() -> str:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("192.0.2.1", 9))  # no packet is sent; this just picks the outbound interface
+        return s.getsockname()[0]
+    except OSError:
+        return "localhost"
+    finally:
+        s.close()
+
+
+def wait_healthy(port: str, timeout: float = 120) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with _opener.open(f"http://127.0.0.1:{port}/api/meta", timeout=3) as r:
+                if r.status == 200:
+                    return True
+        except (urllib.error.URLError, OSError):
+            pass
+        time.sleep(2)
+    return False
+
+
+def hostctl(*args: str) -> dict:
+    r = compose("exec", "-T", "control", "python", "-m", "l0w_control.hostctl", *args, capture=True, check=False)
+    if r.returncode != 0:
+        raise RuntimeError(r.stderr.strip() or r.stdout.strip())
+    return json.loads(r.stdout)
+
+
+def ask(prompt: str, default: str, yes: bool) -> str:
+    if yes:
+        return default
+    got = input(f"{prompt} [{default}]: ").strip()
+    return got or default
+
+
+# ── commands: host ─────────────────────────────────────────────────────────
+def cmd_install(a) -> None:
+    need_docker()
+    env = env_file()
+    if env.get("L0W_AGENT_TOKEN"):
+        print("Found .env: keeping its tokens and subnet.")
+    else:
+        env.update({
+            "L0W_AGENT_TOKEN": secrets.token_urlsafe(32), "L0W_RUNNER_TOKEN": secrets.token_urlsafe(32), "L0W_EGRESS_TOKEN": secrets.token_urlsafe(32),
+            "SANDBOX_SUBNET": pick_subnet(),
+        })
+    env.setdefault("L0W_CHANNEL", a.channel)
+    env.setdefault("L0W_VERSION", a.channel)
+    env.setdefault("L0W_PORT", str(a.port))
+    env.setdefault("L0W_INSTANCE_NAME", ask("A name for this assistant", platform.node().split(".")[0] or "l0wagent", a.yes))
+    env.setdefault("TZ", os.environ.get("TZ") or _host_tz())
+    write_env(env)
+    print(f"Wrote .env (sandbox subnet {env['SANDBOX_SUBNET']}).")
+
+    if not Path("compose.override.yaml").exists():
+        gpu = shutil.which("nvidia-smi") is not None and "nvidia" in subprocess.run(["docker", "info", "--format", "{{json .Runtimes}}"], capture_output=True, text=True).stdout
+        mem = ask("Memory for the assistant's computer (e.g. 8g)", "8g", a.yes)
+        use_gpu = gpu and ask("Give it the NVIDIA GPU? (y/n)", "y", a.yes).lower().startswith("y")
+        out = ["# Written by `l0w install`; see compose.override.example.yaml. ./l0w update keeps it.", "services:", "  agent:", "    deploy:", "      resources:",
+               f"        limits: {{ memory: {mem} }}"]
+        if use_gpu:
+            out += ["        reservations:", "          devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]"]
+        Path("compose.override.yaml").write_text("\n".join(out) + "\n")
+        print("Wrote compose.override.yaml" + (" (with the GPU)." if use_gpu else "."))
+
+    print("Pulling the images…")
+    compose("pull")
+    compose("up", "-d")
+    port = env["L0W_PORT"]
+    if not wait_healthy(port):
+        die("Control didn't come up within 2 minutes: `./l0w logs control`.")
+    ip = lan_ip()
+    print(f"\nl0wagent is running: open http://{ip}:{port} (or http://localhost:{port} on this machine).")
+    print("The setup wizard creates your account, then logs the assistant in to Claude and runs the isolation self-test.")
+    print("Phones need HTTPS for notifications and installing the app: see docs/install.md (Tailscale HTTPS).")
+
+
+def _host_tz() -> str:
+    try:
+        link = os.readlink("/etc/localtime")
+        return link.split("zoneinfo/", 1)[1]
+    except (OSError, IndexError):
+        return "UTC"
+
+
+def cmd_update(a) -> None:
+    need_docker()
+    env = env_file()
+    port = env.get("L0W_PORT", "8000")
+    if a.version:
+        env["L0W_VERSION"] = a.version.lstrip("v")
+        write_env(env)
+        print(f"Pinned to {env['L0W_VERSION']} in .env.")
+    try:
+        before = compose("exec", "-T", "control", "python", "-m", "l0w_control.hostctl", "version", capture=True, check=False).stdout.strip()
+    except OSError:
+        before = "?"
+    print("Pulling the new images (the assistant keeps working meanwhile)…")
+    compose("pull")
+    print("Waiting until the assistant is idle (no new runs start meanwhile)…")
+    try:
+        hostctl("drain", "on", str(a.timeout + 30))
+    except RuntimeError as e:
+        print(f"Couldn't ask control to wait ({e}); updating anyway.")
+    deadline = time.time() + a.timeout * 60
+    shown = None
+    while not a.force:
+        try:
+            st = hostctl("idle")
+        except RuntimeError:
+            break
+        if st["idle"]:
+            break
+        if st["waiting_for"] != shown:
+            shown = st["waiting_for"]
+            print("  waiting for: " + "; ".join(shown))
+        if time.time() > deadline:
+            try:
+                hostctl("drain", "off")
+            except RuntimeError:
+                pass
+            die(f"Still busy after {a.timeout} min. Run `./l0w update --force` to update anyway (a run in progress resumes after the restart).")
+        time.sleep(10)
+    compose("up", "-d")
+    if not wait_healthy(port):
+        die("Control didn't come back within 2 minutes: `./l0w logs control`. The previous images are still on disk.")
+    try:
+        hostctl("drain", "off")
+    except RuntimeError:
+        pass
+    after = compose("exec", "-T", "control", "python", "-m", "l0w_control.hostctl", "version", capture=True, check=False).stdout.strip()
+    print(f"Updated: {before or '?'} → {after or '?'}.")
+    subprocess.run(["docker", "image", "prune", "-f", "--filter", "label=org.opencontainers.image.source=https://github.com/CyrusBrown/l0wagent"], capture_output=True)
+
+
+def cmd_compose(a) -> None:
+    need_docker()
+    args = {"up": ["up", "-d"], "down": ["down"], "restart": ["restart"], "ps": ["ps"], "logs": ["logs", "--tail", "200", "-f", *([a.service] if a.service else [])]}[a.cmd]
+    compose(*args, check=False)
+
+
+def cmd_claude_login(a) -> None:
+    need_docker()
+    print("Opening the Claude login on the assistant's computer. Follow the link, then paste the code back here.")
+    subprocess.run(["docker", "compose", "exec", "-u", "agent", "agent", "claude", "auth", "login"])
+
+
+# ── commands: API ──────────────────────────────────────────────────────────
+def cmd_login(a) -> None:
+    url = (a.url or server()[0]).rstrip("/")
+    user = input("Username: ").strip()
+    pw = getpass.getpass("Password: ")
+    label = f"l0w CLI on {platform.node()}"
+    r = call("POST", "/auth/login", {"username": user, "password": pw, "want": "device_token", "device_label": label}, auth=False, url=url)
+    if r["status"] == "totp_required":
+        code = input("2FA code: ").strip()
+        r = call("POST", "/auth/totp", {"challenge": r["challenge"], "code": code}, auth=False, url=url)
+    if not r.get("device_token"):
+        die("The server didn't issue a device token.")
+    save_config({"url": url, "token": r["device_token"]})
+    print(f"Logged in to {url} as {user}. Revoke this device any time in Settings → Account.")
+
+
+def cmd_logout(a) -> None:
+    if config().get("token"):
+        call("POST", "/auth/logout", {})
+    CONFIG.unlink(missing_ok=True)
+    print("Logged out (the device token is revoked).")
+
+
+def cmd_status(a) -> None:
+    st = call("GET", "/status")
+    if st["state"] == "working":
+        print(f"Working (run #{st['run_id']}, {st['run_used'] or 0:.1f} of {st['run_budget'] or 0:g} pts): {st['now'] or '…'}")
+    elif st.get("next_wakeup_at"):
+        print(f"Asleep. Next wakeup {when(st['next_wakeup_at'])}.")
+    else:
+        print("Dormant: no wakeups planned.")
+    b = st.get("budget")
+    if b:
+        print(f"Budget: {b['left']:.0f} of {b['allowance']:.0f} pts left this week (you {b['used_by_owner']:.0f}, the assistant {b['used_by_assistant']:.0f}); "
+              f"reply budget {st.get('reply_budget_left') or 0:.0f} pts.")
+    print(f"Waiting on you: {st['inbox_waiting']}.")
+    up = call("GET", "/system/update")
+    if up.get("available"):
+        print(f"Update available: {up['current']} → {up['latest']} (run ./l0w update on the server).")
+
+
+def fmt_entry(e: dict) -> str:
+    kind = e["kind"]
+    obj = e.get(kind) or {}
+    where = f"  [#{e['thread_id']} {e['thread_title']}]" if e.get("thread_id") else ""
+    if kind == "question":
+        opts = f"  options: {', '.join(obj.get('options') or [])}" if obj.get("options") else ""
+        return f"question #{obj['id']} ({obj['kind']}): {obj['text']}{opts}  default: {obj.get('default')!r}{where}"
+    if kind == "permission":
+        acts = "".join(f"\n      if approved: {x['summary']}" for x in obj.get("actions") or [])
+        return f"permission #{obj['id']}: {obj['text']}{where}{acts}"
+    if kind == "task":
+        return f"task #{obj['id']}: {obj['text']}{where}"
+    if kind == "promote":
+        return f"promote #{obj['id']}: {obj['reason']} (+{obj['budget']:g} pts){where}"
+    if kind == "suggestion":
+        return f"suggestion #{obj['id']}: {obj['text']}{where}"
+    if kind == "security":
+        return f"security #{obj['id']}: {obj['text']}"
+    return f"{kind}: {obj}"
+
+
+def cmd_inbox(a) -> None:
+    rows = call("GET", "/inbox?view=" + ("history" if a.history else "waiting"))
+    print("\n".join(fmt_entry(e) for e in rows) or "Nothing waiting on you.")
+
+
+def cmd_answer(a) -> None:
+    q = next((e["question"] for e in call("GET", "/inbox?view=waiting&kind=question") if e["question"]["id"] == a.id), None)
+    if not q:
+        die(f"No open question #{a.id}.")
+    raw = " ".join(a.value)
+    kind = q["kind"]
+    value: object = raw
+    if kind == "yes_no":
+        value = raw.lower() in ("y", "yes", "true", "1")
+    elif kind == "multi":
+        value = [x.strip() for x in raw.split(",") if x.strip()]
+    elif kind == "scale":
+        value = int(raw)
+    call("POST", f"/questions/{a.id}/answer", {"value": value, "note": a.note, "idempotency_key": key()})
+    print(f"Answered question #{a.id}.")
+
+
+def cmd_decide(a) -> None:
+    if a.cmd == "approve":
+        call("POST", f"/permissions/{a.id}/decide", {"decision": "allow", "scope": a.scope, "note": a.note})
+        print(f"Approved permission #{a.id}.")
+    else:
+        call("POST", f"/permissions/{a.id}/decide", {"decision": "deny", "note": a.note})
+        print(f"Denied permission #{a.id}.")
+
+
+def cmd_task(a) -> None:
+    call("POST", f"/tasks/{a.id}/resolve", {"outcome": "done" if a.cmd == "done" else "declined", "note": a.note, "idempotency_key": key()})
+    print(f"Task #{a.id} {'done' if a.cmd == 'done' else 'declined'}.")
+
+
+def cmd_promote(a) -> None:
+    call("POST", f"/promote-requests/{a.id}/decide", {"decision": a.decision})
+    print(f"Promote request #{a.id}: {a.decision}d.")
+
+
+def cmd_threads(a) -> None:
+    q = f"?project={urllib.parse.quote(a.project)}" if a.project else ""
+    for t in call("GET", "/threads" + q):
+        unread = f"  ({t['unread']} unread)" if t.get("unread") else ""
+        print(f"#{t['id']:<5} {t['title']}  [{t.get('project') or 'General'}]{unread}")
+
+
+def cmd_read(a) -> None:
+    items = call("GET", f"/threads/{a.thread}/items?limit={a.n}")["items"]
+    for it in items:
+        if it["type"] == "message":
+            m = it["message"]
+            print(f"── {m['sender']} · {when(m['created_at'])}\n{m['body']}\n")
+        else:
+            obj = it.get(it["type"]) or {}
+            print(f"── [{it['type']}] {obj.get('text') or obj.get('plan') or obj.get('reason') or ''}\n")
+
+
+def cmd_send(a) -> None:
+    body = text_arg(a.text)
+    if a.new:
+        t = call("POST", "/threads", {"title": a.new, "project": a.project, "first_message": body, "idempotency_key": key()})
+        tid = t["id"]
+        print(f"Started thread #{tid}.")
+    else:
+        if a.thread is None:
+            die("Give a thread id, or --new \"Title\".")
+        tid = a.thread
+        call("POST", f"/threads/{tid}/messages", {"body": body, "upload_ids": [], "idempotency_key": key()})
+        print(f"Sent to thread #{tid}.")
+    if a.now:
+        r = call("POST", f"/threads/{tid}/reply-now")
+        print(f"Reply now: run #{r['id']} ({r['budget']:g} pts at most).")
+
+
+def cmd_runs(a) -> None:
+    for r in call("GET", f"/runs?limit={a.n}"):
+        print(f"#{r['id']:<5} {r['kind']:<8} {r['status']:<8} {when(r['started_at'])}  {r['used']:.1f}/{r['budget'] or 0:g} pts  {r.get('about') or r['why']}")
+
+
+def cmd_run(a) -> None:
+    d = call("GET", f"/runs/{a.id}")
+    r = d["run"]
+    print(f"Run #{r['id']} ({r['kind']}, {r['why']}) · {r['status']} · {r['used']:.1f} of {r['budget'] or 0:g} pts · {r['tier']}")
+    if r.get("about"):
+        print(r["about"])
+    for i in call("GET", f"/runs/{a.id}/timeline?view={'detailed' if a.detailed else 'simple'}"):
+        print(f"  {when(i['at'])[-5:]}  {i['kind']:<9} {i['text'][:200]}")
+
+
+def cmd_wake(a) -> None:
+    r = call("POST", "/runs", {"budget": a.budget, "tier": a.tier, "reason": "manual"})
+    print(f"Started run #{r['id']} ({r['budget']:g} pts, {r['tier']}).")
+
+
+def cmd_stop(a) -> None:
+    call("POST", f"/runs/{a.id}/stop")
+    print(f"Stopping run #{a.id}.")
+
+
+def cmd_jobs(a) -> None:
+    for j in call("GET", "/jobs"):
+        print(f"#{j['id']} {j['label']} [{j['status']}]" + (f" · {j['progress']}" if j.get("progress") else ""))
+        tail = (j.get("log_tail") or "").strip().splitlines()[-3:]
+        for line in tail:
+            print(f"    {line}")
+
+
+def cmd_budget(a) -> None:
+    o = call("GET", "/budget")
+    for p in o["providers"]:
+        boost = f" (Boost {p['boost']['level']} until {when(p['boost']['until'])})" if p.get("boost") else ""
+        print(f"{p['label']}: level {p['level']}{boost}; {p['left']:.0f} of {p['allowance']:.0f} pts left; {p['native']}.")
+        print(f"  you {p['used_by_owner']:.0f} · chats {p['used_by_chat']:.0f} · the assistant {p['used_by_assistant']:.0f} pts;"
+              f" reply budget {p['reply_left']:.0f}/{p['reply_allowance']:.0f}")
+        print(f"  {p['pace']}")
+
+
+def cmd_level(a) -> None:
+    p = call("PATCH", "/budget/claude-subscription", {"level": a.level})
+    print(f"Level set to {p['level']} ({p['allowance']:.0f} pts a week).")
+
+
+def cmd_boost(a) -> None:
+    body = {"level": a.level, "until_reset": a.until_reset} | ({} if a.until_reset else {"hours": a.hours})
+    p = call("POST", "/budget/claude-subscription/boost", body)
+    print(f"Boost: {p['effective_level']} until {when(p['boost']['until'])}.")
+
+
+def cmd_calendar(a) -> None:
+    c = call("GET", "/calendar")
+    for w in c["wakeups"]:
+        print(f"{when(w['at'])}  {w['budget']:>5g} pts  {w['kind']:<8} {w['status']:<8} {w['reason']}")
+    if not c["wakeups"]:
+        print("Nothing this week.")
+
+
+def cmd_secrets(a) -> None:
+    if a.cmd == "secrets":
+        for s in call("GET", "/secrets"):
+            print(f"{s['name']:<28} reads {s['reads']:<4} {s.get('description') or ''}")
+        return
+    if a.action == "set":
+        v = a.value
+        if v is None or v == "-":
+            v = getpass.getpass(f"Value for {a.name}: ") if v is None and sys.stdin.isatty() else sys.stdin.read()
+        elif v.startswith("@"):
+            v = Path(v[1:]).read_text()
+        call("PUT", f"/secrets/{a.name}", {"value": v.strip(), "description": a.desc})
+        print(f"Saved {a.name.upper()} (write-only; redacted everywhere).")
+    elif a.action == "rm":
+        call("DELETE", f"/secrets/{a.name}")
+        print(f"Deleted {a.name.upper()}.")
+
+
+def cmd_selftest(a) -> None:
+    r = call("POST", "/system/selftest", timeout=120)
+    for c in r["checks"]:
+        print(f"{c['result']:<5} {c['label']}: {c.get('detail') or ''}")
+    print("OK" if r["ok"] else "Some checks failed: see docs/troubleshooting.md.")
+
+
+def cmd_update_check(a) -> None:
+    u = call("POST", "/system/update/check")
+    if u["available"]:
+        print(f"Update available: {u['current']} → {u['latest']}. Run ./l0w update on the server.\n\n{u.get('notes') or ''}")
+    else:
+        print(f"Up to date ({u['current']}, {u['channel']})." + (f" Check failed: {u['error']}" if u.get("error") else ""))
+
+
+def cmd_version(a) -> None:
+    base, token = server()
+    print(f"l0w CLI; server {base}")
+    if token:
+        print(f"server version {call('GET', '/meta', auth=False)['server_version']}")
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(prog="l0w", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="cmd", required=True)
+    i = sub.add_parser("install")
+    i.add_argument("--channel", choices=["stable", "edge"], default="stable")
+    i.add_argument("--port", type=int, default=8000)
+    i.add_argument("--yes", "-y", action="store_true", help="accept the defaults")
+    u = sub.add_parser("update")
+    u.add_argument("--timeout", type=float, default=120, help="minutes to wait for idle")
+    u.add_argument("--force", action="store_true", help="don't wait for idle")
+    u.add_argument("--version", help="pin a version (X.Y.Z), or stable / edge")
+    for name in ("up", "down", "restart", "ps"):
+        sub.add_parser(name)
+    lg = sub.add_parser("logs")
+    lg.add_argument("service", nargs="?")
+    sub.add_parser("claude-login")
+    sub.add_parser("version")
+    li = sub.add_parser("login")
+    li.add_argument("url", nargs="?")
+    sub.add_parser("logout")
+    sub.add_parser("status")
+    ib = sub.add_parser("inbox")
+    ib.add_argument("--history", action="store_true")
+    an = sub.add_parser("answer")
+    an.add_argument("id", type=int)
+    an.add_argument("value", nargs="+")
+    an.add_argument("--note")
+    for name in ("approve", "deny"):
+        d = sub.add_parser(name)
+        d.add_argument("id", type=int)
+        d.add_argument("--note")
+        if name == "approve":
+            d.add_argument("--scope", choices=["once", "project", "always"], default="always")
+    for name in ("done", "decline"):
+        d = sub.add_parser(name)
+        d.add_argument("id", type=int)
+        d.add_argument("--note")
+    pr = sub.add_parser("promote")
+    pr.add_argument("id", type=int)
+    pr.add_argument("decision", choices=["approve", "deny"])
+    th = sub.add_parser("threads")
+    th.add_argument("--project")
+    rd = sub.add_parser("read")
+    rd.add_argument("thread", type=int)
+    rd.add_argument("-n", type=int, default=20)
+    sd = sub.add_parser("send")
+    sd.add_argument("thread", type=int, nargs="?")
+    sd.add_argument("text", nargs="+")
+    sd.add_argument("--new", metavar="TITLE")
+    sd.add_argument("--project")
+    sd.add_argument("--now", action="store_true", help="press Reply now")
+    rs = sub.add_parser("runs")
+    rs.add_argument("-n", type=int, default=15)
+    rn = sub.add_parser("run")
+    rn.add_argument("id", type=int)
+    rn.add_argument("--detailed", action="store_true")
+    wk = sub.add_parser("wake")
+    wk.add_argument("--budget", type=float)
+    wk.add_argument("--tier")
+    sp = sub.add_parser("stop")
+    sp.add_argument("id", type=int)
+    sub.add_parser("jobs")
+    sub.add_parser("budget")
+    lv = sub.add_parser("level")
+    lv.add_argument("level", choices=["dormant", "frugal", "steady", "busy", "max"])
+    bo = sub.add_parser("boost")
+    bo.add_argument("level", choices=["frugal", "steady", "busy", "max"])
+    bo.add_argument("--hours", type=float, default=24)
+    bo.add_argument("--until-reset", action="store_true")
+    sub.add_parser("calendar")
+    sub.add_parser("secrets")
+    sc = sub.add_parser("secret")
+    sc.add_argument("action", choices=["set", "rm"])
+    sc.add_argument("name")
+    sc.add_argument("value", nargs="?")
+    sc.add_argument("--desc")
+    sub.add_parser("selftest")
+    sub.add_parser("update-check")
+    a = p.parse_args()
+    {
+        "install": cmd_install, "update": cmd_update, "up": cmd_compose, "down": cmd_compose, "restart": cmd_compose, "ps": cmd_compose, "logs": cmd_compose,
+        "claude-login": cmd_claude_login, "version": cmd_version, "login": cmd_login, "logout": cmd_logout, "status": cmd_status, "inbox": cmd_inbox,
+        "answer": cmd_answer, "approve": cmd_decide, "deny": cmd_decide, "done": cmd_task, "decline": cmd_task, "promote": cmd_promote,
+        "threads": cmd_threads, "read": cmd_read, "send": cmd_send, "runs": cmd_runs, "run": cmd_run, "wake": cmd_wake, "stop": cmd_stop,
+        "jobs": cmd_jobs, "budget": cmd_budget, "level": cmd_level, "boost": cmd_boost, "calendar": cmd_calendar, "secrets": cmd_secrets,
+        "secret": cmd_secrets, "selftest": cmd_selftest, "update-check": cmd_update_check,
+    }[a.cmd](a)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(130)

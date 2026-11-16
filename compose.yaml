@@ -1,0 +1,141 @@
+# l0wagent: the release stack, from prebuilt images. Install and update with ./l0w:
+#
+#   ./l0w install     checks Docker, picks a sandbox subnet, writes .env with fresh tokens,
+#                     pulls the images and starts this stack
+#   ./l0w update      waits until the assistant is idle, pulls, recreates
+#
+# Host resources (GPU, memory, extra folders) go in compose.override.yaml, which Compose reads
+# automatically; see compose.override.example.yaml. compose.dev.yaml builds from source instead.
+#
+#   LAN ──:8000 control (web app + API) ──(sandbox net)──▶ agent (runner :8765)
+#        :8001 control's files origin (agent-made files, sandboxed)
+#        :8787 agent-web ──(sandbox net)──▶ agent :8787 (its own page; your cookies stripped)
+#   agent ── HTTP(S)_PROXY ──▶ egress ──▶ internet (logged; model access only under a lease)
+#
+# The agent's only network is `sandbox`: internal (no route out) and with no host IP on the
+# bridge, so it can't reach the host, the LAN or the internet except through egress.
+name: l0wagent
+
+x-tokens: &tokens
+  L0W_AGENT_TOKEN: ${L0W_AGENT_TOKEN:?run ./l0w install (it writes .env)}
+  L0W_RUNNER_TOKEN: ${L0W_RUNNER_TOKEN:?run ./l0w install}
+  L0W_EGRESS_TOKEN: ${L0W_EGRESS_TOKEN:?run ./l0w install}
+
+services:
+  control:
+    image: ghcr.io/cyrusbrown/l0wagent-control:${L0W_VERSION:-stable}
+    restart: unless-stopped
+    environment:
+      <<: *tokens
+      L0W_RUNNER_URL: http://agent:8765
+      L0W_EGRESS_URL: http://egress-admin:8090
+      L0W_SANDBOX_SUBNET: ${SANDBOX_SUBNET:?run ./l0w install}
+      L0W_AGENT_HOME: /agent-home
+      L0W_FILES_PORT: "8001"
+      L0W_INSTANCE_NAME: ${L0W_INSTANCE_NAME:-l0wagent}
+      L0W_CHANNEL: ${L0W_CHANNEL:-stable}
+      L0W_SECRET_KEY: ${L0W_SECRET_KEY:-}
+      USAGE_UNKNOWN_POLICY: ${USAGE_UNKNOWN_POLICY:-refuse}
+    ports:
+      - "${L0W_BIND:-0.0.0.0}:${L0W_PORT:-8000}:8000"
+      - "${L0W_BIND:-0.0.0.0}:${L0W_FILES_PUBLISHED_PORT:-8001}:8001"
+    volumes:
+      - control-data:/data
+      - agent-home:/agent-home:ro
+      - agent-workspace:/workspace:ro
+      - agent-work:/work:ro
+      # Control's only write path into the agent's storage: owner uploads into _inbox/.
+      - type: volume
+        source: agent-work
+        target: /work/_inbox
+        volume: { subpath: _inbox }
+    networks: [outside, sandbox, ctl]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    depends_on: [agent]
+
+  egress:
+    image: ghcr.io/cyrusbrown/l0wagent-egress:${L0W_VERSION:-stable}
+    restart: unless-stopped
+    environment:
+      EGRESS_TOKEN: ${L0W_EGRESS_TOKEN}
+      SANDBOX_SUBNET: ${SANDBOX_SUBNET}
+      GATED_HOSTS: api.anthropic.com,opencode.ai
+      DEFAULT_POLICY: ${EGRESS_DEFAULT_POLICY:-allow}
+      DATA_DIR: /data
+    volumes:
+      - egress-data:/data
+    networks:
+      outside: {}
+      sandbox: {}
+      ctl:
+        aliases: [egress-admin]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  agent:
+    image: ghcr.io/cyrusbrown/l0wagent-agent:${L0W_VERSION:-stable}
+    restart: unless-stopped
+    hostname: sandbox
+    environment:
+      RUNNER_TOKEN: ${L0W_RUNNER_TOKEN}
+      AGENT_API_TOKEN: ${L0W_AGENT_TOKEN}
+      CONTROL_URL: http://control:8000
+      FAKE_CLAUDE: "0"
+      HTTP_PROXY: http://egress:3128
+      HTTPS_PROXY: http://egress:3128
+      http_proxy: http://egress:3128
+      https_proxy: http://egress:3128
+      NO_PROXY: localhost,127.0.0.1,control,agent,egress
+      no_proxy: localhost,127.0.0.1,control,agent,egress
+      NODE_USE_ENV_PROXY: "1"
+      ENABLE_CLAUDEAI_MCP_SERVERS: "false"
+      GIT_AUTHOR_NAME: Assistant
+      GIT_AUTHOR_EMAIL: assistant@sandbox.local
+      GIT_COMMITTER_NAME: Assistant
+      GIT_COMMITTER_EMAIL: assistant@sandbox.local
+      TZ: ${TZ:-UTC}
+    volumes:
+      - agent-home:/home/agent
+      - agent-workspace:/workspace
+      - agent-work:/work
+      - agent-cache:/cache
+    networks: [sandbox]
+    cap_drop: [NET_RAW, NET_ADMIN, SYS_PTRACE, SYS_MODULE, SYS_TIME]
+    deploy:
+      resources:
+        limits: { pids: 2048 }  # compose.override.yaml adds memory, CPU and the GPU here
+    depends_on: [egress]
+
+  agent-web:
+    image: ghcr.io/cyrusbrown/l0wagent-agent-web:${L0W_VERSION:-stable}
+    restart: unless-stopped
+    environment:
+      TARGET_HOST: agent
+      TARGET_PORT: "8787"
+    ports: ["${L0W_BIND:-0.0.0.0}:${L0W_AGENT_WEB_PORT:-8787}:8787"]
+    networks: [outside, sandbox]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    depends_on: [agent]
+
+networks:
+  outside: {}
+  sandbox:
+    internal: true
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.inhibit_ipv4: "true"
+    ipam:
+      config:
+        - subnet: ${SANDBOX_SUBNET}
+  ctl:
+    internal: true
+
+volumes:
+  control-data:
+  egress-data:
+  agent-home:
+  agent-workspace:
+  agent-work:
+  agent-cache:

@@ -392,10 +392,29 @@ def list_providers(be: Be) -> list[s.ProviderInfo]:
     return be.providers()
 
 
+@api.post("/providers", tags=["budgets"])
+def add_key_provider(req: s.ApiProviderCreate, be: Be) -> s.ProviderInfo:
+    """Save a provider key: an Anthropic API key or an opencode Go key (write-only; only
+    sessions on that provider get it). `use_for_all_roles` moves every role onto it."""
+    return be.add_api_provider(req)
+
+
 @api.post("/providers/anthropic-api", tags=["budgets"])
 def add_api_provider(req: s.ApiProviderCreate, be: Be) -> s.ProviderInfo:
     """Save an Anthropic API key (write-only; only sessions on this provider get it)."""
-    return be.add_api_provider(req)
+    return be.add_api_provider(req.model_copy(update={"kind": "anthropic-api"}))
+
+
+@api.post("/providers/claude-subscription/login", tags=["budgets"])
+def claude_login_start(be: Be) -> s.ClaudeLoginStart:
+    """Start logging the assistant's computer in to a Claude subscription: returns the sign-in link."""
+    return be.claude_login_start()
+
+
+@api.post("/providers/claude-subscription/login/code", tags=["budgets"])
+def claude_login_code(req: s.ClaudeLoginCode, be: Be) -> s.ClaudeLoginResult:
+    """Finish the login with the code Claude showed after signing in."""
+    return be.claude_login_code(req)
 
 
 @api.patch("/providers/{provider}", tags=["budgets"])
@@ -514,6 +533,49 @@ def system_status(be: Be) -> s.SystemStatus:
 def selftest(be: Be) -> s.SelfTestResult:
     """Run the isolation self-test (also shown at the end of the setup wizard)."""
     return be.selftest()
+
+
+@api.get("/notifications/settings", tags=["notifications"])
+def notification_settings(be: Be) -> s.NotificationSettings:
+    return be.notification_settings()
+
+
+@api.put("/notifications/settings", tags=["notifications"])
+def set_notification_settings(req: s.NotificationSettings, be: Be) -> s.NotificationSettings:
+    """Online only."""
+    return be.set_notification_settings(req)
+
+
+@api.get("/push/key", tags=["notifications"])
+def push_key(be: Be) -> s.PushKey:
+    return be.push_key()
+
+
+@api.post("/push/subscriptions", tags=["notifications"])
+def push_subscribe(req: s.PushSubscribe, be: Be) -> s.NotificationSettings:
+    return be.push_subscribe(req)
+
+
+@api.delete("/push/subscriptions/{sub_id}", tags=["notifications"])
+def push_unsubscribe(sub_id: int, be: Be) -> s.Ok:
+    be.push_unsubscribe(sub_id)
+    return s.Ok()
+
+
+@api.post("/push/test", tags=["notifications"])
+def push_test(be: Be) -> s.PushTestResult:
+    return be.push_test()
+
+
+@api.get("/system/update", tags=["system"])
+def update_info(be: Be) -> s.UpdateInfo:
+    """Whether a newer release exists (apply it with ./l0w update), and whether one is waiting for idle."""
+    return be.update_info()
+
+
+@api.post("/system/update/check", tags=["system"])
+def check_update(be: Be) -> s.UpdateInfo:
+    return be.check_update()
 
 
 # ── Files and shelf ────────────────────────────────────────────────────────

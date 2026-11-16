@@ -56,6 +56,9 @@ class Stack:
         claude = bindir / "claude"
         claude.write_text(f"#!/bin/sh\nexec {sys.executable} {RUNNER / 'fake_claude.py'} \"$@\"\n")
         claude.chmod(0o755)
+        opencode = bindir / "opencode"
+        opencode.write_text(f"#!/bin/sh\nexec {sys.executable} {RUNNER / 'fake_opencode.py'} \"$@\"\n")
+        opencode.chmod(0o755)
         assistant = bindir / "assistant"
         assistant.write_text(f"#!/bin/sh\nexec {sys.executable} {REPO / 'agent' / 'bin' / 'assistant'} \"$@\"\n")
         assistant.chmod(0o755)
@@ -81,10 +84,13 @@ class Stack:
         self._spawn("runner", [sys.executable, str(RUNNER / "runner.py")], {
             "RUNNER_TOKEN": TOKENS["runner"], "WORKSPACE": str(self.tmp / "workspace"), "RUNNER_STATE_DIR": str(self.tmp / "runner"),
             "RUNNER_SEED": str(self.tmp / "no-seed"), "CLAUDE_BIN": str(self.bindir / "claude"), "CLAUDE_SETTINGS": "/nonexistent",
+            "OPENCODE_BIN": str(self.bindir / "opencode"),
             "RUNNER_HOST": "127.0.0.1", "RUNNER_PORT": str(self.ports["runner"]), "PATH": f"{self.bindir}:{os.environ['PATH']}",
             "FAKE_STEPS": str(self.steps),
             "WORK_DIR": str(self.tmp / "work"), "FAKE_RERUN_DELAY": "3", "FAKE_STEP_DELAY": str(self.delay), "FAKE_CALL_ASSISTANT": "1", "FAKE_CLAUDE_STATE": str(self.tmp / "fake-claude"),
             "CONTROL_URL": self.url, "AGENT_API_TOKEN": TOKENS["agent"],
+            # The agent's home: never the developer's own (the fake `claude auth login` writes credentials there).
+            "HOME": str(self.tmp / "agent-home"),
             "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
             **self.runner_env,
         })

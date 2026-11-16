@@ -60,8 +60,11 @@ if [ -f /workspace/system/boot.sh ]; then
   chown agent:agent /workspace/system/boot.log 2>/dev/null || true
 fi
 
-# FAKE_CLAUDE=1 (development): the runner drives a fake Claude Code, no login or usage needed.
-if [ "${FAKE_CLAUDE:-0}" = "1" ]; then export CLAUDE_BIN=/opt/runner/fake_claude.py; echo "[entrypoint] using the fake claude"; fi
+# FAKE_CLAUDE=1 (development): the runner drives fake runtimes (Claude Code and opencode), no login or usage needed.
+if [ "${FAKE_CLAUDE:-0}" = "1" ]; then
+  export CLAUDE_BIN=/opt/runner/fake_claude.py OPENCODE_BIN=/opt/runner/fake_opencode.py
+  echo "[entrypoint] using the fake claude and opencode"
+fi
 
 exec env HOME=/home/agent USER=agent LOGNAME=agent \
   setpriv --reuid=agent --regid=agent --init-groups \

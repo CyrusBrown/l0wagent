@@ -29,14 +29,15 @@ Credentials plus a usage source, all kept in control's vault.
 - **First targets**:
   - `claude-subscription`: Pro/Max login. Usage = 5-hour and weekly %, read from the usage endpoint.
   - `anthropic-api`: an API key. Usage = $ from token counts.
-  - `opencode-zen`: a Zen key. Usage = $ from token counts × Zen's published prices (and Zen's balance, if it exposes one).
+  - `opencode-go` (M6): an opencode Go subscription key (`OPENCODE_API_KEY`), models as `opencode-go/<model>`. Usage = $ from opencode's per-step `cost` (catalog prices from models.dev), counted against the Go plan's limits; 1 pt = $0.10 until Go exposes a usage meter.
+  - `opencode-zen` (later): a Zen key, the same runtime; pay per token.
 - **Later**: Google AI Studio, other OpenAI/Anthropic-compatible endpoints (OpenRouter, LiteLLM, local models), ChatGPT via Codex.
 - Each friend uses their own accounts. Two *people* sharing one subscription may break the provider's terms; one person running several instances doesn't.
 
 ### Runtimes
 The agent CLI that drives a session. Each provider's sanctioned client is used, which matters for subscription terms.
 - **Claude Code** for the Claude providers.
-- **opencode** for Zen, and later most other providers.
+- **opencode** for opencode Go (M6), then Zen and most other providers.
 
 The **runtime adapter** covers:
 - start, resume, stream normalized events, deliver mid-run messages, stop, report usage

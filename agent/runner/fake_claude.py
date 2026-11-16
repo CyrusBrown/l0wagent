@@ -327,7 +327,24 @@ def scenario(sess: Session, prompt: str, resume: str | None) -> int | None:
     return None
 
 
+def fake_login() -> int:
+    """`claude auth login`: print a sign-in link, read the code, write a credentials file."""
+    print("Opening the browser failed. Visit this URL to sign in:\nhttps://claude.ai/oauth/authorize?code=true&client_id=fake&state=abc\n", flush=True)
+    print("Paste code here if prompted > ", end="", flush=True)
+    code = sys.stdin.readline().strip()
+    if code != "good-code":
+        print("\nInvalid code.", flush=True)
+        return 1
+    creds = Path.home() / ".claude" / ".credentials.json"
+    creds.parent.mkdir(parents=True, exist_ok=True)
+    creds.write_text(json.dumps({"claudeAiOauth": {"accessToken": "fake-access", "refreshToken": "fake-refresh", "expiresAt": int(time.time() + 86400) * 1000}}))
+    print("\nLogin successful.", flush=True)
+    return 0
+
+
 def main() -> int:
+    if sys.argv[1:3] == ["auth", "login"]:
+        return fake_login()
     if "--version" in sys.argv:
         print("2.9.0 (fake)")
         return 0
