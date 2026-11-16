@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router'
-import { ApiError, type S } from '../api/client'
+import { ApiError, newKey, type S } from '../api/client'
 import { problem, uploadFile, useDelivery, usePatchThread, usePostMessage, useProject, useProjects, useReplyNow, useThread, useThreadItems } from '../api/queries'
 import { ClaimCard, PermissionCard, PromoteCard, QuestionCard, SuggestionCard, TaskCard } from '../components/Cards'
 import { bytes, pts } from '../components/format'
@@ -181,7 +181,7 @@ function Composer({ threadId, project, append, appended }: { threadId: number; p
 
   const attach = (list: FileList | File[]) => {
     for (const file of Array.from(list)) {
-      const key = crypto.randomUUID()
+      const key = newKey()
       setFiles((fs) => [...fs, { key, name: file.name || 'pasted' }])
       uploadFile(file, project).then(
         (upload) => setFiles((fs) => fs.map((f) => (f.key === key ? { ...f, upload } : f))),
