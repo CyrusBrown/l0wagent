@@ -32,8 +32,8 @@ function zonedToUtc(date: string, minutes: number, tz: string): Date {
 }
 
 const fmtDay = (iso: string, tz: string) => new Date(iso).toLocaleDateString(undefined, { timeZone: tz, month: 'short', day: 'numeric' })
-const when = (iso: string, tz: string) => new Date(iso).toLocaleString(undefined, { timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit' })
-const tierText = (t: string) => t.split('/').map((x) => x[0].toUpperCase() + x.slice(1)).join(' · ')
+const when = (iso: string, tz: string) => new Date(iso).toLocaleString(undefined, { timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+const tierText = (t: string) => t.split('/').map((x, i) => (i === 0 ? x[0].toUpperCase() + x.slice(1) : x)).join(' · ')  // "Sonnet · medium"
 
 export function Calendar() {
   const [offset, setOffset] = useState(0)
@@ -204,7 +204,7 @@ function Side({ c }: { c: S['Calendar'] }) {
       </div>
       <div className="stack" style={{ gap: 8 }}>
         <div className="side-label">You vs. the assistant</div>
-        <div className="split-bar"><div style={{ width: `${(you / total) * 100}%`, background: '#6b8fb8' }} /><div style={{ flex: 1, background: '#c4673f' }} /></div>
+        <div className="split-bar"><div style={{ width: `${(you / total) * 100}%`, background: 'var(--infoDot)' }} /><div style={{ flex: 1, background: 'var(--accent)' }} /></div>
         <div className="row-between sub" style={{ fontSize: 12.5 }}><span>You · {Math.round(you)} pts</span><span>Assistant · {Math.round(b.used_by_assistant)} pts</span></div>
         {b.used_by_chat > 0 && <div className="sub" style={{ fontSize: 12 }}>Yours includes {Math.round(b.used_by_chat)} pts of 1:1 chats.</div>}
       </div>

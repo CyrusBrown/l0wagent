@@ -24,6 +24,7 @@ weekly cap per provider (`chat_cap` in the provider's config) stops the chat whe
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -51,12 +52,30 @@ DELTA_EVERY_S = 0.06
 ANTHROPIC_MODELS = {"haiku": "claude-haiku-5-5", "sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5"}
 FALLBACK_MODELS = {"claude-sonnet-5-5", "claude-opus-5-5"}  # server-side refusal fallbacks ("default" routing)
 GO_BASE = os.environ.get("L0W_GO_BASE", "https://opencode.ai/inference/go/openai/v1")
-CATALOG_URL = "https://models.dev/api.json"
-GO_FALLBACK_PRICE = (1.0, 4.0)  # $/M tokens when the catalog can't be read: on the safe side
 
 
 class ChatError(Exception):
     pass
+
+
+MAX_FILE = 25 * 1024 * 1024
+TEXT_MAX = 200_000
+IMAGES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+TEXTISH = (".txt", ".md", ".csv", ".tsv", ".json", ".yaml", ".yml", ".toml", ".py", ".js", ".ts", ".tsx", ".html", ".css", ".sh", ".log",
+           ".xml", ".ini", ".cfg", ".c", ".h", ".cpp", ".rs", ".go", ".java", ".sql")
+
+
+def _as_text(name: str, mime: str, data: bytes) -> str | None:
+    """A file's text, if it's a text file; None for binary."""
+    textual = mime.startswith("text/") or mime in ("application/json", "application/xml") or name.lower().endswith(TEXTISH)
+    if not textual or b"\x00" in data[:8192]:
+        return None
+    text = data.decode("utf-8", errors="replace")
+    return text if len(text) <= TEXT_MAX else text[:TEXT_MAX] + f"\n… [{len(text) - TEXT_MAX} more characters cut]"
+
+
+def _file_note(f: dict) -> str:
+    return f"(Attached: {f['name']}, {f['mime']}, {f['size']} bytes.)"
 
 
 @dataclass
@@ -100,7 +119,19 @@ class AnthropicClient:
 
         for r in rows:
             if r["role"] == "owner":
-                add("user", [{"type": "text", "text": r["body"]}])
+                blocks: list[dict] = []
+                for f in r.get("blobs", []):
+                    b64 = base64.b64encode(f["data"]).decode()
+                    text = _as_text(f["name"], f["mime"], f["data"])
+                    if f["mime"] in IMAGES and f["size"] <= 5 * 1024 * 1024:
+                        blocks.append({"type": "image", "source": {"type": "base64", "media_type": f["mime"], "data": b64}})
+                    elif f["mime"] == "application/pdf":
+                        blocks.append({"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": b64}, "title": f["name"]})
+                    elif text is not None:
+                        blocks.append({"type": "text", "text": f"Attached file {f['name']}:\n```\n{text}\n```"})
+                    else:
+                        blocks.append({"type": "text", "text": _file_note(f) + " Its contents can't be read here."})
+                add("user", [*blocks, {"type": "text", "text": r["body"]}])
             elif r["role"] == "system":
                 add("user", [{"type": "text", "text": f"[control] {r['body']}"}])
             elif r["role"] == "assistant":
@@ -165,7 +196,20 @@ class OpenAICompatClient:
         msgs: list[dict] = [{"role": "system", "content": system}]
         for r in rows:
             if r["role"] == "owner":
-                msgs.append({"role": "user", "content": r["body"]})
+                blobs = r.get("blobs", [])
+                if not blobs:
+                    msgs.append({"role": "user", "content": r["body"]})
+                    continue
+                parts: list[dict] = []
+                for f in blobs:
+                    text = _as_text(f["name"], f["mime"], f["data"])
+                    if f["mime"] in IMAGES:
+                        parts.append({"type": "image_url", "image_url": {"url": f"data:{f['mime']};base64,{base64.b64encode(f['data']).decode()}"}})
+                    elif text is not None:
+                        parts.append({"type": "text", "text": f"Attached file {f['name']}:\n```\n{text}\n```"})
+                    else:
+                        parts.append({"type": "text", "text": _file_note(f) + " This model can't read it here."})
+                msgs.append({"role": "user", "content": [*parts, {"type": "text", "text": r["body"]}]})
             elif r["role"] == "system":
                 msgs.append({"role": "user", "content": f"[control] {r['body']}"})
             elif r["role"] == "assistant":
@@ -248,6 +292,16 @@ class FakeClient:
             out.text = "I'll hand that to the assistant."
             out.calls = [{"id": f"c{time.time_ns()}", "name": "create_thread", "input": {"title": "Water the tomatoes", "message": "Please set up a watering reminder for the tomatoes."}}]
             return out
+        if not after_tool and "fake:settings" in last_owner:
+            out.calls = [{"id": f"c{time.time_ns()}", "name": "propose_settings",
+                          "input": {"changes": [{"setting": "level", "value": "busy"}, {"setting": "reply_pts", "value": 50}], "reason": "A deadline week"}}]
+            return out
+        if not after_tool and "fake:propose-handoff" in last_owner:
+            out.text = "This needs the assistant's computer. I'll propose handing it over."
+            out.calls = [{"id": f"c{time.time_ns()}", "name": "propose_handoff",
+                          "input": {"target": "new_thread", "mode": "transcript", "title": "Set up the drip timer",
+                                    "message": "Please set up the drip timer for the tomatoes: 10 minutes at 06:00 daily. Details are in the attached chat."}}]
+            return out
         if not after_tool and "fake:secret" in last_owner:
             out.calls = [{"id": f"c{time.time_ns()}", "name": "ask_for_secret",
                           "input": {"name": "GITHUB_TOKEN", "description": "A fine-grained token with read access to your repos", "help_url": "https://github.com/settings/tokens"}}]
@@ -256,7 +310,9 @@ class FakeClient:
             last = rows[-1]
             text = f"Done: {T.summary([last['data'].get('name', '')])}." if last["role"] == "tool" else f"Noted: {last['body']}"
         else:
-            text = f"You said: {last_owner}"
+            last = next((r for r in reversed(rows) if r["role"] == "owner"), {})
+            names = [f["name"] for f in last.get("blobs", [])]
+            text = f"You said: {last_owner}" + (f" (attached: {', '.join(names)})" if names else "")
         for i in range(0, len(text), 8):
             out.text = text[: i + 8]
             on_text(out.text)
@@ -331,6 +387,47 @@ class Chats:
         self._touch(chat_id)
         return mid
 
+    # files
+    def _dir(self) -> Path:
+        d = Path(self.be.env.data_dir) / "chat-files"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _read(self, f: dict) -> bytes:
+        try:
+            return (Path(self.be.env.data_dir) / f["path"]).read_bytes()
+        except OSError:
+            return b""
+
+    def upload(self, name: str, data: bytes, mime: str | None) -> s.ChatFile:
+        if len(data) > MAX_FILE:
+            raise BadRequest("too_big", f"Files up to {MAX_FILE // (1024 * 1024)} MB.")
+        if not data:
+            raise BadRequest("empty", "That file is empty.")
+        safe = "".join(c for c in Path(name or "file").name if c.isalnum() or c in "._- ")[:120] or "file"
+        mime = (mime or "application/octet-stream").split(";")[0].strip().lower()
+        fid = self.db.ex("INSERT INTO chat_files(name, mime, size, path, created_at) VALUES(?,?,?,?,?)", (safe, mime, len(data), "", self.db.now()))
+        rel = f"chat-files/{fid}"
+        (self._dir() / str(fid)).write_bytes(data)
+        self.db.ex("UPDATE chat_files SET path=? WHERE id=?", (rel, fid))
+        return s.ChatFile(id=fid, name=safe, mime=mime, size=len(data))
+
+    def file(self, fid: int) -> tuple[bytes, str, str]:
+        f = self.db.q1("SELECT * FROM chat_files WHERE id=?", (fid,))
+        if not f:
+            raise NotFound(f"file {fid}")
+        return self._read(f), f["name"], f["mime"]
+
+    def _bind(self, chat_id: int, message_id: int, ids: list[int]) -> list[dict]:
+        out = []
+        for fid in ids[:20]:
+            f = self.db.q1("SELECT * FROM chat_files WHERE id=? AND message_id IS NULL", (fid,))
+            if not f:
+                raise BadRequest("bad_file", f"File {fid} is unknown or already sent.")
+            self.db.ex("UPDATE chat_files SET chat_id=?, message_id=? WHERE id=?", (chat_id, message_id, fid))
+            out.append({"id": f["id"], "name": f["name"], "mime": f["mime"], "size": f["size"]})
+        return out
+
     # owner actions
     def create(self, req: s.ChatCreate) -> s.Chat:
         if req.idempotency_key:
@@ -344,7 +441,7 @@ class Chats:
         title = (req.title or req.message.strip().splitlines()[0] if req.message.strip() else "New chat")[:80]
         now = self.db.now()
         cid = self.db.ex("INSERT INTO chats(title, provider, tier, created_at, updated_at) VALUES(?,?,?,?,?)", (self.vault.redact(title), provider, tier, now, now))
-        self.send(cid, s.ChatMessageCreate(body=req.message, idempotency_key=req.idempotency_key))
+        self.send(cid, s.ChatMessageCreate(body=req.message, upload_ids=req.upload_ids, idempotency_key=req.idempotency_key))
         return self.chat(cid)
 
     def patch(self, chat_id: int, req: s.ChatPatch) -> s.Chat:
@@ -372,6 +469,9 @@ class Chats:
             raise Conflict("busy", "The chat is still replying.")
         why = self.available(row["provider"])
         mid = self._add(chat_id, "owner", req.body, key=req.idempotency_key)
+        if req.upload_ids:
+            files = self._bind(chat_id, mid, req.upload_ids)
+            self.db.ex("UPDATE chat_messages SET data_json=? WHERE id=?", (json.dumps({"files": files}), mid))
         if why:
             self._add(chat_id, "system", why)
         else:
@@ -415,30 +515,18 @@ class Chats:
         return "l0w-" + hashlib.sha256(f"{self.vault.key!r}:chat:{chat_id}".encode()).hexdigest()[:32]
 
     def _go_prices(self, model: str) -> tuple[float, float]:
-        """opencode Go's catalog price for a model ($/M in, out), from models.dev, cached a day."""
-        row = self.db.q1("SELECT value, updated_at FROM kv WHERE key='go_catalog'")
-        cat = None
-        if row:
-            cat = json.loads(row["value"])
-            if datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00")) < utcnow() - timedelta(days=1):
-                cat = None if not cat else cat  # stale but usable; refresh below
-                row = None
-        if row is None:
-            try:
-                r = httpx.get(CATALOG_URL, timeout=10, headers={"User-Agent": "l0wagent"})
-                go = r.json().get(OPENCODE_GO, {}).get("models", {})
-                cat = {k: [v.get("cost", {}).get("input", 0), v.get("cost", {}).get("output", 0)] for k, v in go.items()}
-                self.db.ex("INSERT INTO kv(key, value, updated_at) VALUES('go_catalog', ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
-                           (json.dumps(cat), self.db.now()))
-            except (httpx.HTTPError, ValueError):
-                pass
-        p = (cat or {}).get(model.split("/", 1)[-1])
-        return (float(p[0]), float(p[1])) if p else GO_FALLBACK_PRICE
+        """opencode Go's catalog price for a model ($/M in, out); a cautious price when unknown."""
+        from .catalog import price as catalog_price
+
+        return catalog_price(self.db, model)
 
     def _history(self, chat_id: int) -> list[dict]:
         rows = []
         for r in self.db.q("SELECT * FROM chat_messages WHERE chat_id=? AND role IN ('owner','assistant','tool','system') ORDER BY id", (chat_id,)):
-            rows.append({**r, "data": json.loads(r["data_json"] or "{}")})
+            row = {**r, "data": json.loads(r["data_json"] or "{}")}
+            if r["role"] == "owner":
+                row["blobs"] = [{**f, "data": self._read(f)} for f in self.db.q("SELECT * FROM chat_files WHERE message_id=? ORDER BY id", (r["id"],))]
+            rows.append(row)
         # A reply cut off between calling tools and their results: answer the missing calls.
         out: list[dict] = []
         for i, r in enumerate(rows):
@@ -560,6 +648,19 @@ class Chats:
             add(card["host"], card.get("action", "allow"), f"chat #{chat_id}")
             card["state"] = "done"
             note = f"The owner added the network rule: {card.get('action', 'allow')} {card['host']}."
+        elif kind == "settings":
+            from .chat_settings import apply
+
+            try:
+                done = apply(self.be, card["changes"])
+            except (BadRequest, Conflict, NotFound) as e:
+                raise BadRequest("settings_failed", f"Couldn't apply the change: {getattr(e, 'detail', None) or e}") from e
+            card["state"] = "done"
+            note = "The owner approved the settings changes: " + "; ".join(done) + "."
+        elif kind == "handoff":
+            t = self._handoff(chat_id, card)
+            card.update(state="done", thread_id=t.id, thread_title=t.title)
+            note = f"The owner approved the hand-off: it's in the thread #{t.id} “{t.title}” for the assistant."
         else:
             raise BadRequest("bad_card", f"Unknown card kind {kind}.")
         self.db.ex("UPDATE chat_messages SET data_json=? WHERE id=?", (json.dumps(card), message_id))
@@ -571,7 +672,8 @@ class Chats:
         lines = [f"# Chat: {self._row(chat_id)['title']}", ""]
         for r in self.db.q("SELECT * FROM chat_messages WHERE chat_id=? ORDER BY id", (chat_id,)):
             if r["role"] == "owner":
-                lines += [f"**Owner:** {r['body']}", ""]
+                files = json.loads(r["data_json"] or "{}").get("files") or []
+                lines += [f"**Owner:** {r['body']}" + (f"  (attached: {', '.join(f['name'] for f in files)})" if files else ""), ""]
             elif r["role"] == "assistant" and r["body"].strip():
                 lines += [f"**Chat:** {r['body']}", ""]
             elif r["role"] == "tool":
@@ -580,6 +682,28 @@ class Chats:
             elif r["role"] == "system":
                 lines += [f"_{r['body']}_", ""]
         return "\n".join(lines)
+
+    def _handoff(self, chat_id: int, card: dict):
+        """Carry out an approved hand-off card: a new thread (in General, a project, or a new
+        project) or a message into an existing thread; the transcript attached in transcript mode."""
+        conv = self.be.conv
+        project = card.get("project")
+        if card["target"] == "new_project":
+            project = self.be.create_project(s.ProjectCreate(name=card["project_name"], idempotency_key=None)).slug
+        attach = []
+        if card["mode"] == "transcript":
+            attach = [self.be.upload(project, f"chat-{chat_id}.md", self._transcript(chat_id).encode(), "text/markdown", None).id]
+        for f in self.db.q("SELECT * FROM chat_files WHERE chat_id=? ORDER BY id", (chat_id,))[:20]:  # the chat's files go along
+            attach.append(self.be.upload(project, f["name"], self._read(f), f["mime"], None).id)
+        body = card["message"] + ("\n\n(Handed over from a 1:1 chat; the transcript is attached.)" if attach else "\n\n(Handed over from a 1:1 chat.)")
+        if card["target"] == "existing_thread":
+            conv.post_owner_message(card["thread_id"], body, attach, None, via=f"chat:{chat_id}")
+            t = self.be.thread(card["thread_id"])
+        else:
+            t = conv.create_thread(card["title"], project, "chat")
+            conv.post_owner_message(t.id, body, attach, None, via=f"chat:{chat_id}")
+        self.db.ex("UPDATE chats SET handed_off_thread_id=? WHERE id=?", (t.id, chat_id))
+        return t
 
     def handoff(self, chat_id: int, req: s.ChatHandoff) -> s.Chat:
         row = self._row(chat_id)

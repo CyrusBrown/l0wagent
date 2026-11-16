@@ -4,7 +4,7 @@ import { signIn } from './helpers'
 // M6: the 1:1 chat. Start one from New, watch it read the assistant's threads through its
 // tools, save a secret on a card without the model seeing it, and move the chat to the
 // assistant as a thread. (The e2e stack runs chats on a scripted model.)
-test('1:1 chat: tools, a secret card and moving it to the assistant', async ({ page, request }) => {
+test('1:1 chat: tools, a secret card and handing it to the assistant', async ({ page, request }) => {
   await signIn(page, request)
 
   await page.goto('/new?chat=1')
@@ -26,10 +26,14 @@ test('1:1 chat: tools, a secret card and moving it to the assistant', async ({ p
   await expect(page.getByText('The owner saved the secret GITHUB_TOKEN', { exact: false })).toBeVisible()
   await expect(page.getByText('ghp_e2e_secret_value_123456')).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Move to the assistant…' }).click()
-  await page.getByLabel('Thread title').fill('GitHub access for the assistant')
-  await page.getByRole('button', { name: 'Move', exact: true }).click()
-  await page.getByRole('link', { name: /Continued in the thread #\d+ “GitHub access for the assistant”/ }).click()
-  await expect(page.getByRole('heading', { name: 'GitHub access for the assistant' })).toBeVisible()
+  // The chat proposes handing the work over; you approve the card.
+  await expect(page.getByTitle('Send (↵)')).toBeVisible()
+  await page.getByLabel('Message', { exact: true }).fill('fake:propose-handoff can the assistant set up the drip timer?')
+  await page.getByLabel('Message', { exact: true }).press('Enter')
+  const handoff = page.getByLabel('Hand off to the assistant')
+  await expect(handoff).toContainText('with this whole chat attached')
+  await handoff.getByRole('button', { name: 'Approve' }).click()
+  await handoff.getByRole('link', { name: /Open #Set up the drip timer/ }).click()
+  await expect(page.getByRole('heading', { name: 'Set up the drip timer' })).toBeVisible()
   await expect(page.getByText('Handed over from a 1:1 chat', { exact: false })).toBeVisible()
 })

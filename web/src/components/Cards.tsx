@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { createContext, useContext, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { S } from '../api/client'
 import {
@@ -7,6 +7,10 @@ import {
 import { useOnline } from './online'
 import { pts } from './format'
 
+/** Where a card is shown. Home: the label reads "Question · #thread" (the mockup's Waiting on
+ * you). Inbox: the label row is the thread (a link) and the time; the group title names the kind. */
+export const CardPlace = createContext<{ mode: 'home' | 'inbox'; where?: ReactNode; when?: string } | null>(null)
+
 /** The shared frame: label row, body, optional note ("+ Add comment"), and the decided state. */
 function Card({ label, right, children, decided, actions, id }: {
   label: string; right?: ReactNode; children: ReactNode; decided?: ReactNode | false
@@ -14,9 +18,12 @@ function Card({ label, right, children, decided, actions, id }: {
 }) {
   const [noteOpen, setNoteOpen] = useState(false)
   const [note, setNote] = useState('')
+  const place = useContext(CardPlace)
   return (
-    <div className="card" id={id}>
-      <div className="card-label"><span>{label}</span>{right && <span className="r">{right}</span>}</div>
+    <div className={`card ${place ? `card-${place.mode}` : ''}`} id={id}>
+      {place?.mode === 'inbox'
+        ? <div className="card-label inbox"><span>{place.where}</span><span className="r">{right ? <>{right} · </> : null}{place.when}</span></div>
+        : <div className="card-label"><span>{place?.mode === 'home' && place.where ? <>{label.split(' · ')[0]} · {place.where}</> : label}</span>{right && <span className="r">{right}</span>}</div>}
       {children}
       {decided ? decided : actions && (
         <>

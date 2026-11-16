@@ -53,14 +53,24 @@ API = "anthropic-api"
 OPENCODE_GO = "opencode-go"
 KEY_PROVIDERS = {API: "Anthropic API", OPENCODE_GO: "opencode Go"}
 RUNTIME = {SUBSCRIPTION: "claude-code", API: "claude-code", OPENCODE_GO: "opencode"}
-# opencode Go: the model behind each tier name, and the variants (reasoning efforts) it has.
-# Defaults picked from Go's catalog (2026-11); the owner changes them on Settings → Providers.
-GO_MODELS = {
-    "haiku": {"model": "opencode-go/deepseek-v4.1-flash", "variants": ["low", "high", "max"]},
-    "sonnet": {"model": "opencode-go/deepseek-v4-pro", "variants": ["high", "max"]},
-    "opus": {"model": "opencode-go/glm-5.3", "variants": ["low", "high", "max"]},
-}
+# opencode Go: the models the assistant may use (the owner picks them from Go's catalog on
+# Settings → Providers). Roles, wakeups and chats name a model directly, with an effort:
+# "opencode-go/glm-5.3/high". Defaults picked from Go's catalog (2026-11), cheapest first.
+GO_DEFAULT_MODELS = ["opencode-go/deepseek-v4.1-flash", "opencode-go/deepseek-v4-pro", "opencode-go/glm-5.3"]
+# Older configs and Claude-style tiers ("sonnet/medium") on Go map by size to the enabled list.
+GO_FAMILY_INDEX = {"haiku": 0, "sonnet": 1, "opus": 2}
 EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
+CLAUDE_MODELS = ["haiku", "sonnet", "opus"]
+
+
+def split_tier(tier: str) -> tuple[str, str | None]:
+    """'sonnet/medium' → ('sonnet', 'medium'); 'opencode-go/glm-5.3/high' → ('opencode-go/glm-5.3', 'high');
+    'opencode-go/glm-5.3' → ('opencode-go/glm-5.3', None)."""
+    tier = (tier or "").strip()
+    head, sep, last = tier.rpartition("/")
+    if sep and last in EFFORTS:
+        return head, last
+    return tier or "sonnet", None
 UNIT = "pts"
 DEFAULT_PTS_PER_USD = 2.0       # Claude subscription, until calibrated
 PLAN_HORIZON_DAYS = 8
@@ -122,7 +132,7 @@ def default_config(kind: str) -> dict:
            "fallback_pts": None, "chat_cap": None, "period": "month" if month else "week", "reset_day": 1,
            "caps": {"five_hour": 0.2, "week": 0.5} if month else None}
     if kind == OPENCODE_GO:
-        cfg["models"] = json.loads(json.dumps(GO_MODELS))
+        cfg["models"] = list(GO_DEFAULT_MODELS)
     return cfg
 
 
@@ -256,38 +266,63 @@ class Budgets:
     def kind(self, pid: str) -> str:
         return self._row(pid)["kind"]
 
-    def models(self, pid: str) -> dict[str, dict] | None:
-        """opencode Go: tier name → {"model", "variants"}; None for Claude providers."""
+    def models(self, pid: str) -> list[str] | None:
+        """opencode providers: the enabled model ids, in the owner's order; None for Claude providers."""
         if self.kind(pid) != OPENCODE_GO:
             return None
-        return {**GO_MODELS, **(self.config(pid).get("models") or {})}
+        raw = self.config(pid).get("models") or list(GO_DEFAULT_MODELS)
+        if isinstance(raw, dict):  # the first M6 builds kept a model per tier name
+            raw = [v["model"] for k, v in sorted(raw.items(), key=lambda kv: GO_FAMILY_INDEX.get(kv[0], 9)) if isinstance(v, dict) and v.get("model")]
+        return [m for i, m in enumerate(raw) if m not in raw[:i]] or list(GO_DEFAULT_MODELS)
 
-    def set_models(self, pid: str, models: dict[str, str]) -> None:
+    def set_models(self, pid: str, models: list[str]) -> None:
         if self.kind(pid) != OPENCODE_GO:
-            raise BadRequest("no_models", "Only opencode providers have a model for each tier.")
-        cfg = self.config(pid)
-        cur = self.models(pid) or {}
-        for fam, model in models.items():
-            if fam not in GO_MODELS:
-                raise BadRequest("bad_tier", f"Tiers are {', '.join(GO_MODELS)}.")
-            model = model.strip()
-            if not model.startswith(OPENCODE_GO + "/") or len(model) > 120 or any(c.isspace() for c in model):
+            raise BadRequest("no_models", "Only opencode providers have a model list; Claude's are haiku, sonnet and opus.")
+        clean = []
+        for m in models:
+            m = (m or "").strip()
+            if not m.startswith(OPENCODE_GO + "/") or len(m) > 120 or any(c.isspace() for c in m):
                 raise BadRequest("bad_model", f"Models look like {OPENCODE_GO}/<model>, as `opencode models {OPENCODE_GO}` lists them.")
-            # Variants are only known for the defaults; for another model, effort is left to it.
-            known = next((v["variants"] for v in GO_MODELS.values() if v["model"] == model), [])
-            cur[fam] = {"model": model, "variants": known}
-        cfg["models"] = cur
+            if m not in clean:
+                clean.append(m)
+        if not clean:
+            raise BadRequest("no_models", "Keep at least one model.")
+        cfg = self.config(pid)
+        cfg["models"] = clean
         self.save_config(pid, cfg)
+
+    def model_options(self, pid: str) -> list[str]:
+        """What a role or wakeup may name on this provider: Claude's tiers, or the enabled opencode models."""
+        return self.models(pid) or list(TIERS)
+
+    def resolve(self, pid: str, tier: str) -> tuple[str, str | None]:
+        """(model, effort) for a provider: on opencode Go a Claude-style name maps by size to the enabled models."""
+        model, effort = split_tier(tier)
+        models = self.models(pid)
+        if models is None:
+            return model, effort
+        if model not in models:
+            if model in GO_FAMILY_INDEX:
+                model = models[min(GO_FAMILY_INDEX[model], len(models) - 1)]
+            elif not model.startswith(OPENCODE_GO + "/"):
+                model = models[0]
+        return model, effort
+
+    def tier_allowed(self, pid: str, tier: str, allowed: list[str]) -> bool:
+        """Is this model/effort allowed? Claude: the exact tier is listed. opencode: its model is listed."""
+        if self.models(pid) is None:
+            return tier in allowed
+        model, _ = self.resolve(pid, tier)
+        return model in allowed
 
     def runtime_spec(self, pid: str, tier: str) -> dict:
         """What a session on this provider and tier runs: {"runtime", "model", "effort"}."""
-        fam, _, effort = tier.partition("/")
-        fam, eff = fam.strip() or "sonnet", effort.strip() or None
-        models = self.models(pid)
-        if models is None:
-            return {"runtime": RUNTIME.get(self.kind(pid), "claude-code"), "model": fam, "effort": eff}
-        m = models.get(fam) or models["sonnet"]
-        return {"runtime": "opencode", "model": m["model"], "effort": pick_variant(eff, m.get("variants") or [])}
+        from .catalog import variants
+
+        model, effort = self.resolve(pid, tier)
+        if self.models(pid) is None:
+            return {"runtime": RUNTIME.get(self.kind(pid), "claude-code"), "model": model, "effort": effort}
+        return {"runtime": "opencode", "model": model, "effort": pick_variant(effort, variants(model))}
 
     # ── time ───────────────────────────────────────────────────────────────
     def tz(self) -> ZoneInfo:
@@ -342,6 +377,9 @@ class Budgets:
                 if k in LIMIT_KEYS and v is not None:
                     setattr(limits, k, v)
                     custom.append(k)
+        models = self.models(pid)
+        if models is not None and "tiers" not in custom:  # level tiers are Claude's; opencode allows its enabled models
+            limits.tiers = list(models) if limits.allowance > 0 else []
         unit = self.period_unit(pid)
         if unit != "week" and "allowance" not in custom:  # presets are per week
             start, end = self.week(pid, now)
@@ -546,7 +584,7 @@ class Budgets:
             fallback_pts=self.fallback_pts(pid, now), has_credential=bool(row["credential_enc"]) or pid == SUBSCRIPTION,
             period=eff.period, reset_day=int(self.config(pid).get("reset_day") or 1) if eff.period == "month" else None,  # type: ignore[arg-type]
             caps=s.BudgetCaps(**(self.config(pid).get("caps") or {})) if pid != SUBSCRIPTION and self.config(pid).get("caps") else None,
-            cap_reason=self.cap_reason(pid, now),
+            cap_reason=self.cap_reason(pid, now), model_options=self.model_options(pid),
         )
 
     def budget_summary(self, pid: str) -> s.BudgetSummary:
@@ -581,8 +619,8 @@ class Budgets:
                 return f"The level is {eff.level.capitalize()}: no scheduled wakeups."
             if budget > lim.max_wakeup:
                 return f"At most {lim.max_wakeup:g} {UNIT} per wakeup at the {eff.level.capitalize()} level."
-            if tier not in lim.tiers:
-                return f"Tier {tier} isn't allowed. Allowed: {', '.join(lim.tiers)}."
+            if not self.tier_allowed(pid, tier, lim.tiers):
+                return f"Model {tier} isn't allowed. Allowed: {', '.join(lim.tiers)}" + (" (with any effort)." if self.models(pid) else ".")
             if not in_hours(lim.allowed_hours, self.local(at)):
                 return f"{self.local(at):%a %H:%M} is outside the allowed hours ({hours_text(lim.allowed_hours)})."
             day = self.local(at).date()
@@ -616,7 +654,8 @@ class Budgets:
         if eff.boost:
             boost = f" (Boost until {self.local(parse(eff.boost['until'])):%a %H:%M}; your level is {eff.base_level.capitalize()})"  # type: ignore[arg-type]
         limits = (f"allowed hours {hours_text(lim.allowed_hours)}; at most {lim.max_per_day}/day, {lim.min_gap_minutes} min apart, "
-                  f"{lim.max_wakeup:g} {UNIT} each; tiers {', '.join(lim.tiers) or 'none'}")
+                  f"{lim.max_wakeup:g} {UNIT} each; " + (f"models {', '.join(lim.tiers) or 'none'} (add /low, /medium or /high for the effort)"
+                                                          if self.models(pid) else f"tiers {', '.join(lim.tiers) or 'none'}"))
         lines = [f"{b.label}: {b.left:.0f} of {b.allowance:.0f} {UNIT} left this {eff.period} (resets {self.local(b.resets_at):%a %b %d %H:%M}); {b.native}.",
                  f"Level {eff.level.capitalize()}{boost}: {limits}.",
                  f"Reply budget: {b.reply_left:.0f} of {b.reply_allowance:.0f} {UNIT} left.",
@@ -665,7 +704,7 @@ class Budgets:
             pid = r.get("provider") or prov
             if pid not in self.provider_ids():
                 pid = SUBSCRIPTION
-            allowed = self.effective(pid).limits.tiers if name == "worker" else (r.get("allowed") or list(TIERS))
+            allowed = self.effective(pid).limits.tiers if name == "worker" else (r.get("allowed") or self.model_options(pid))
             out.append(s.RoleConfig(role=name, provider=pid, tier=r.get("tier") or tier, allowed=allowed, note=self.ROLE_NOTES[name]))  # type: ignore[arg-type]
         return out
 
@@ -677,7 +716,7 @@ class Budgets:
         for r in roles:
             if r.provider not in self.provider_ids(enabled_only=False):
                 raise BadRequest("bad_provider", f"Unknown provider {r.provider}.")
-            if r.tier not in TIERS and "/" not in r.tier and r.tier not in GO_MODELS:  # GO_MODELS' keys: the bare tier names
+            if r.tier not in TIERS and "/" not in r.tier and r.tier not in CLAUDE_MODELS:
                 raise BadRequest("bad_tier", f"Tiers look like model/effort, e.g. sonnet/medium. Known: {', '.join(TIERS)}.")
             saved[r.role] = {"provider": r.provider, "tier": r.tier, "allowed": r.allowed}
         self._kv_set("roles", saved)

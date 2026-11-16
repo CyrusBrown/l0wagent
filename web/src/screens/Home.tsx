@@ -1,13 +1,25 @@
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import type { S } from '../api/client'
-import { useClaims, useInbox, useJobs, useMe, useRecent, useRun, useStatus, useWebPage } from '../api/queries'
-import { ClaimCard, InboxCard } from '../components/Cards'
-import { ago, clock, duration, pts, until } from '../components/format'
+import { useCalendar, useClaims, useInbox, useJobs, useMe, useRecent, useStatus, useSystem, useUpdateInfo, useWebPage } from '../api/queries'
+import { CardPlace, InboxCard } from '../components/Cards'
+import { ago, pts } from '../components/format'
 import { Markdown } from '../components/Markdown'
+
+// Home, ported from the mockup's HOME screen: the greeting and the assistant's state; on the
+// left what's waiting on you and recent messages; on the right what it's working on, what's
+// coming up, the budget, long jobs, its web page and the system line.
 
 function greeting(d = new Date()) {
   const h = d.getHours()
   return h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
+}
+
+const STATE: Record<string, string> = { working: 'Working', asleep: 'Asleep', dormant: 'Dormant', paused: 'Paused' }
+const CLAIM: Record<string, [string, string]> = { in_progress: ['In progress', 'var(--accentInk)'], planned: ['Planned', 'var(--infoInk)'], done: ['Done', 'var(--okInk)'], dropped: ['Dropped', 'var(--muted)'] }
+
+function when(iso: string): string {
+  const d = new Date(iso)
+  return `${d.toLocaleDateString(undefined, { weekday: 'short' })} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}`
 }
 
 export function Home() {
@@ -18,127 +30,113 @@ export function Home() {
   const claims = useClaims()
   const jobs = useJobs()
   const web = useWebPage()
+  const cal = useCalendar()
+  const nav = useNavigate()
   const st = status.data
-  const top = (waiting.data ?? []).slice(0, 3)
+  const top = [...(waiting.data ?? [])].sort((a, b) => Number(b.kind === 'security') - Number(a.kind === 'security')).slice(0, 3)  // security first
+  const upcoming = (cal.data?.wakeups ?? []).filter((w) => w.status === 'planned').slice(0, 3)
+  const stateText = !st ? '' : st.state === 'working' ? (st.now ?? 'Starting…') : st.next_wakeup_at ? `next wakeup ${when(st.next_wakeup_at)}` : 'no wakeups planned'
 
   return (
-    <div className="page">
-      <div className="stack" style={{ gap: 4 }}>
+    <div className="home">
+      <div className="home-head">
         <h1>{greeting()}{me.data?.display_name ? `, ${me.data.display_name}` : ''}</h1>
-        {st && (
-          <div className="sub" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5 }}>
-            <span className={`dot ${st.state === 'working' ? 'working' : ''}`} />
-            {st.state === 'working' ? <>Working · {st.now}</> : st.next_wakeup_at ? <>Asleep · next wakeup {until(st.next_wakeup_at)}</> : <>Dormant · no wakeups planned</>}
-          </div>
-        )}
+        {st && <div className="home-state"><span className={`dot ${st.state === 'working' ? 'working' : ''}`} /><span className="s">{STATE[st.state]}</span><span>{stateText}</span></div>}
       </div>
 
-      <div className="grid2">
-        <div className="stack" style={{ gap: 22 }}>
-          <section className="stack">
-            <div className="section-label">Waiting on you <Link to="/inbox">Open Inbox · {waiting.data?.length ?? 0}</Link></div>
-            {waiting.isSuccess && top.length === 0 && <div className="empty">Nothing waiting on you.</div>}
+      <div className="home-grid">
+        <div className="home-col" style={{ gap: 28 }}>
+          <div className="home-sec" style={{ gap: 10 }}>
+            <div className="home-label"><span>Waiting on you</span><Link to="/inbox">Open Inbox · {waiting.data?.length ?? 0}</Link></div>
+            {waiting.isSuccess && top.length === 0 && <div className="sub">Nothing waiting on you.</div>}
             {top.map((e) => (
-              <div key={e.kind + e.id} className="stack" style={{ gap: 4 }}>
-                {e.thread_id && <Link className="sub" to={`/t/${e.thread_id}`}>#{e.thread_title}</Link>}
+              <CardPlace.Provider key={e.kind + e.id} value={{ mode: 'home', where: e.thread_id ? <Link to={`/t/${e.thread_id}`}>#{e.thread_title}</Link> : undefined }}>
                 <InboxCard e={e} />
+              </CardPlace.Provider>
+            ))}
+          </div>
+          <div className="home-sec" style={{ gap: 4 }}>
+            <div className="home-label"><span>Recent from the assistant</span></div>
+            {recent.isSuccess && recent.data.length === 0 && <div className="sub">No messages yet. The assistant writes here after its first run.</div>}
+            {recent.data?.map((r) => (
+              <div key={r.message.id} className="recent-row" role="link" tabIndex={0} onClick={() => nav(`/t/${r.message.thread_id}`)} onKeyDown={(e) => { if (e.key === 'Enter') nav(`/t/${r.message.thread_id}`) }}>
+                <div className="row-between meta"><span className="t">#{r.thread_title}</span><span>{ago(r.message.created_at)}</span></div>
+                <div className="body"><Markdown>{r.message.body}</Markdown></div>
               </div>
             ))}
-          </section>
-
-          <section className="stack">
-            <div className="section-label">Recent from the assistant</div>
-            {recent.isSuccess && recent.data.length === 0 && <div className="empty">No messages yet. The assistant writes here after its first run.</div>}
-            {recent.data?.map((r) => (
-              <Link key={r.message.id} to={`/t/${r.message.thread_id}`} className="card" style={{ color: 'var(--fg)', textDecoration: 'none', gap: 6 }}>
-                <div className="row-between sub"><span>#{r.thread_title}</span><span>{ago(r.message.created_at)}</span></div>
-                <div className="theirs" style={{ fontSize: 14.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                  <Markdown>{r.message.body}</Markdown>
-                </div>
-              </Link>
-            ))}
-          </section>
+          </div>
         </div>
 
-        <div className="stack" style={{ gap: 22 }}>
+        <div className="home-col" style={{ gap: 24 }}>
           {!!claims.data?.length && (
-            <section className="stack">
-              <div className="section-label">Working on</div>
+            <div className="home-sec" style={{ gap: 10 }}>
+              <div className="home-label"><span>Working on</span></div>
               {claims.data.map((c) => (
-                <div key={c.id} className="stack" style={{ gap: 4 }}>
-                  <Link className="sub" to={`/t/${c.thread_id}`}>#{c.thread_title}</Link>
-                  <ClaimCard c={c} />
-                </div>
+                <Link key={c.id} to={`/t/${c.thread_id}`} className="work-card">
+                  <div className="row-between meta"><span>#{c.thread_title}</span><span style={{ color: CLAIM[c.status]?.[1] }}>{CLAIM[c.status]?.[0] ?? c.status}</span></div>
+                  <span className="title">{c.plan}</span>
+                </Link>
               ))}
-            </section>
+            </div>
           )}
-
-          {st?.state === 'working' && st.run_id && <CurrentRun id={st.run_id} />}
-
-          {st?.budget ? <BudgetCard b={st.budget} /> : st && <UsageCard u={st.usage} />}
-
+          <div className="home-sec" style={{ gap: 6 }}>
+            <div className="home-label"><span>Coming up</span><Link to="/calendar">Calendar</Link></div>
+            {cal.isSuccess && !upcoming.length && <div className="sub" style={{ padding: '8px 0' }}>Nothing planned.</div>}
+            {upcoming.map((w) => (
+              <div key={w.id} className="up-row"><span className="w">{when(w.at)}</span><span className="r">{w.reason}</span><span className="b">{pts(w.budget)} pts</span></div>
+            ))}
+          </div>
+          {st?.budget && <Budget b={st.budget} />}
+          {!!jobs.data?.length && (
+            <div className="home-sec" style={{ gap: 8 }}>
+              <div className="home-label"><span>Long jobs</span><Link to="/runs?tab=jobs">All jobs</Link></div>
+              {jobs.data.map((j) => (
+                <div key={j.id} className="job-row"><span className="l"><span className="d" /><span className="ellipsis">{j.label}</span></span><span className="mono">{j.progress}</span></div>
+              ))}
+            </div>
+          )}
           {web.data?.reachable && (
-            <Link to="/web" className="card" style={{ color: 'var(--fg)', textDecoration: 'none', gap: 4 }}>
-              <div className="section-label"><span>The assistant's web page</span><span className="dot ok" /></div>
-              <div style={{ fontSize: 13.5 }}>Something is running on its port 8787. Open it</div>
+            <Link to="/web" className="web-card">
+              <div className="stack" style={{ gap: 2 }}><span className="t">Assistant's web page</span><span className="mono">port 8787</span></div>
+              <span style={{ color: 'var(--faint)' }}>›</span>
             </Link>
           )}
-
-          <section className="stack">
-            <div className="section-label">Long jobs <Link to="/runs?tab=jobs">All jobs</Link></div>
-            {jobs.isSuccess && jobs.data.length === 0 && <div className="empty">No long jobs running.</div>}
-            {jobs.data?.map((j) => (
-              <div key={j.id} className="card" style={{ gap: 4 }}>
-                <div className="row-between"><span style={{ fontWeight: 500 }}>{j.label}</span><span className="sub">{j.progress}</span></div>
-                <div className="sub">{j.dont_interrupt ? "Don't interrupt · " : ''}{j.expected_end ? `ends ${until(j.expected_end)}` : ''}</div>
-              </div>
-            ))}
-          </section>
+          <SystemLine />
         </div>
       </div>
     </div>
   )
 }
 
-function CurrentRun({ id }: { id: number }) {
-  const run = useRun(id)
-  const r = run.data?.run
-  if (!r) return null
+function Budget({ b }: { b: S['BudgetSummary'] }) {
+  const whole = Math.max(b.allowance, 1)
+  const you = b.used_by_owner + b.used_by_chat
   return (
-    <Link to={`/runs/${id}`} className="card" style={{ color: 'var(--fg)', textDecoration: 'none' }}>
-      <div className="section-label"><span>Current run · #{id}</span><span>{duration(r.started_at)}{r.deadline ? ` · until ${clock(r.deadline)}` : ''}</span></div>
-      {r.about && <div style={{ fontSize: 14 }}>{r.about}</div>}
-      <div className="sub" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span className="dot working" />{r.now ?? 'Starting…'}</div>
-    </Link>
-  )
-}
-
-function BudgetCard({ b }: { b: S['BudgetSummary'] }) {
-  return (
-    <section className="card">
-      <div className="section-label"><span>Budget this {b.period ?? 'week'}</span><Link to="/calendar">Calendar</Link></div>
-      <div><span style={{ font: '500 28px var(--serif)' }}>{pts(b.left)}</span> <span className="sub">of {pts(b.allowance)} {b.unit} left</span></div>
-      <div className="gauge"><div style={{ width: `${b.allowance ? Math.min(100, ((b.allowance - b.left) / b.allowance) * 100) : 100}%` }} /></div>
-      <div className="row-between sub">
-        <span><span className="dot ok" style={{ display: 'inline-block', marginRight: 6 }} />You · {pts(b.used_by_owner)}</span>
-        <span><span className="dot info" style={{ display: 'inline-block', marginRight: 6, background: 'var(--infoInk)' }} />Your chats · {pts(b.used_by_chat)}</span>
-        <span><span className="dot working" style={{ display: 'inline-block', marginRight: 6, animation: 'none' }} />Assistant · {pts(b.used_by_assistant)}</span>
+    <div className="home-sec" style={{ gap: 8 }}>
+      <div className="home-label"><span>Budget this {b.period ?? 'week'}</span></div>
+      <div className="row-start" style={{ alignItems: 'baseline', gap: 6 }}><span className="big-num">{pts(b.left)}</span><span className="sub" style={{ fontSize: 13 }}>of {pts(b.allowance)} {b.unit} left</span></div>
+      <div className="split-bar2">
+        <div style={{ width: `${Math.min(100, (you / whole) * 100)}%`, background: 'var(--infoDot)' }} />
+        <div style={{ width: `${Math.min(100, (b.used_by_assistant / whole) * 100)}%`, background: 'var(--accent)' }} />
       </div>
-    </section>
+      <div className="row-start legend"><span><i style={{ background: 'var(--infoDot)' }} />You · {pts(you)}</span><span><i style={{ background: 'var(--accent)' }} />Assistant · {pts(b.used_by_assistant)}</span></div>
+    </div>
   )
 }
 
-/** Until budgets exist (M4): the provider's own meter. */
-function UsageCard({ u }: { u: S['UsageReading'] | null | undefined }) {
-  const known = u?.seven_day_pct != null
+function SystemLine() {
+  const sys = useSystem().data
+  const up = useUpdateInfo().data
+  if (!sys) return null
+  const parts = [
+    sys.runner.reachable ? "the assistant's computer is up" : "the assistant's computer isn't reachable",
+    sys.gate.open ? 'runs can start' : `runs held: ${sys.gate.reason ?? 'gate closed'}`,
+    up?.available ? `l0wagent ${up.latest} available` : `l0wagent ${sys.server_version}`,
+  ]
   return (
-    <section className="card">
-      <div className="section-label"><span>Claude usage this week</span>{u && <span>as of {clock(u.fetched_at)}</span>}</div>
-      {known ? <>
-        <div><span style={{ font: '500 28px var(--serif)' }}>{Math.round(u!.seven_day_pct!)}%</span> <span className="sub">used{u!.seven_day_resets_at ? ` · resets ${until(u!.seven_day_resets_at)}` : ''}</span></div>
-        <div className="gauge"><div style={{ width: `${Math.min(100, u!.seven_day_pct!)}%` }} /></div>
-        {u!.five_hour_pct != null && <div className="sub">5-hour window {Math.round(u!.five_hour_pct)}%{u!.five_hour_resets_at ? ` · resets ${until(u!.five_hour_resets_at)}` : ''}</div>}
-      </> : <div className="sub">Unknown{u?.error ? `: ${u.error}` : ''}. <Link to="/settings/system">System</Link></div>}
-    </section>
+    <div className="home-sec" style={{ gap: 6 }}>
+      <div className="home-label"><span>System</span></div>
+      <div className="sys-line">{parts.join(' · ')}</div>
+    </div>
   )
 }

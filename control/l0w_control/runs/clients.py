@@ -16,10 +16,17 @@ class RunnerError(Exception):
         self.status = status
 
 
+class RunnerIdle(RunnerError):
+    """The log stream was open but went quiet past the idle timeout: not lost contact."""
+
+
+HEARTBEAT = b"\x1e"  # the runner's keep-alive line on a quiet log stream (agent/runner/runner.py)
+
+
 class RunnerClient:
     # The log stream is reconnected whenever it goes quiet this long, which also
     # notices a runner that disappeared without closing the connection.
-    LOG_IDLE_TIMEOUT = 30.0
+    LOG_IDLE_TIMEOUT = 30.0  # the runner sends a heartbeat every 10 s, so 30 s of silence means trouble
 
     def __init__(self, env: Env):
         self.url = env.runner_url
@@ -73,22 +80,32 @@ class RunnerClient:
         """Yield (event, size in bytes) for each complete line after `offset`, following
         the session until it ends. Partial trailing lines are left for the next read."""
         timeout = httpx.Timeout(connect=10, read=self.LOG_IDLE_TIMEOUT, write=10, pool=10)
+        connected = False
         try:
             async with httpx.AsyncClient(timeout=timeout) as c:
                 async with c.stream("GET", f"{self.url}/sessions/{sid}/log", params={"offset": offset}, headers=self.headers) as r:
                     if r.status_code >= 400:
                         raise RunnerError(f"runner log: HTTP {r.status_code}", r.status_code)
+                    connected = True
+                    yield None, 0  # in touch: the stream is open
                     buf = b""
                     async for chunk in r.aiter_bytes():
                         buf += chunk
                         while (nl := buf.find(b"\n")) >= 0:
                             line, buf = buf[:nl], buf[nl + 1 :]
+                            if line == HEARTBEAT:  # the runner is there; not part of the log, not counted
+                                yield None, 0
+                                continue
                             size = len(line) + 1
                             try:
                                 event = json.loads(line) if line.strip() else None
                             except json.JSONDecodeError:
                                 event = {"type": "raw", "text": line.decode(errors="replace")[:4000]}
                             yield (event or {"type": "blank"}), size
+        except httpx.ReadTimeout as e:
+            if connected:  # an open stream went quiet (a runner older than heartbeats, or a slow one): reconnect quietly
+                raise RunnerIdle(f"runner log: idle for {self.LOG_IDLE_TIMEOUT:g}s") from e
+            raise RunnerError(f"runner log: {type(e).__name__}: {e}") from e
         except httpx.HTTPError as e:
             raise RunnerError(f"runner log: {type(e).__name__}: {e}") from e
 

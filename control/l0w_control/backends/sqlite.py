@@ -571,6 +571,12 @@ class SqliteBackend(Backend):
     def chat_pull(self, chat_id: int, req: s.ChatPull) -> s.Chat:
         return self.chats_.pull(chat_id, req.thread_id)
 
+    def upload_chat_file(self, name: str, data: bytes, mime: str | None) -> s.ChatFile:
+        return self.chats_.upload(name, data, mime)
+
+    def chat_file(self, file_id: int) -> tuple[bytes, str, str]:
+        return self.chats_.file(file_id)
+
     def set_secret(self, name: str, req: s.SecretSet) -> s.SecretInfo:
         out = self.vault.set(name, req.value, req.description)
         self.live.emit("status")
@@ -780,10 +786,29 @@ class SqliteBackend(Backend):
         else:
             source = "ledger"
             status = "API key saved (write-only); usage priced from the runtime's reported cost" if r["credential_enc"] else "No API key saved"
-        models = self.budgets.models(pid)
+        models = self._models(pid)
         return s.ProviderInfo(id=r["id"], kind=r["kind"], label=r["label"], enabled=bool(r["enabled"]), status=status, usage_source=source,
                               has_credential=bool(r["credential_enc"]) or r["kind"] == SUBSCRIPTION, runtime=RUNTIME.get(r["kind"], "claude-code"),
-                              models={k: s.TierModel(model=v["model"], variants=v.get("variants") or []) for k, v in models.items()} if models else None)
+                              models=models)
+
+    def _models(self, pid: str) -> list[s.ProviderModel] | None:
+        from ..catalog import models as catalog
+
+        enabled = self.budgets.models(pid)
+        if enabled is None:
+            return None
+        cat = {m["id"]: m for m in catalog(self.db, pid)}
+        return [s.ProviderModel(id=m, name=cat.get(m, {}).get("name") or m.split("/", 1)[1], input=cat.get(m, {}).get("input"), output=cat.get(m, {}).get("output"),
+                                variants=cat.get(m, {}).get("variants") or [], enabled=True) for m in enabled]
+
+    def provider_catalog(self, provider: str, refresh: bool = False) -> list[s.ProviderModel]:
+        from ..catalog import models as catalog
+
+        enabled = self.budgets.models(provider)
+        if enabled is None:
+            raise BadRequest("no_catalog", "Claude providers use haiku, sonnet and opus.")
+        return [s.ProviderModel(id=m["id"], name=m["name"], input=m["input"], output=m["output"], variants=m["variants"], enabled=m["id"] in enabled)
+                for m in catalog(self.db, provider, refresh) if m.get("tools", True)]
 
     def providers(self) -> list[s.ProviderInfo]:
         return [self._provider_info(p) for p in self.budgets.provider_ids(enabled_only=False)]
@@ -791,7 +816,10 @@ class SqliteBackend(Backend):
     def add_api_provider(self, req: s.ApiProviderCreate) -> s.ProviderInfo:
         self.budgets.add_api_provider(req.key, req.label, req.kind)
         if req.use_for_all_roles:
-            self.budgets.set_roles([r.model_copy(update={"provider": req.kind}) for r in self.budgets.roles()])
+            def moved(r: s.RoleConfig) -> s.RoleConfig:
+                model, effort = self.budgets.resolve(req.kind, r.tier)  # sonnet/medium → that-size Go model, same effort
+                return r.model_copy(update={"provider": req.kind, "tier": f"{model}/{effort}" if effort else model})
+            self.budgets.set_roles([moved(r) for r in self.budgets.roles()])
         self._budget_changed()
         return self._provider_info(req.kind)
 

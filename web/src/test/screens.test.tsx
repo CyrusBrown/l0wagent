@@ -92,8 +92,10 @@ describe('screens render with mock data', () => {
   })
   it('Settings: budgets and levels', async () => {
     renderAt('/settings/budgets')
-    expect(await screen.findByRole('button', { name: /Steady\s*150 pts\/wk/ })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByText('Weekly allowance')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Steady\s*150 pts \/ week/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText("Steady's limits")).toBeInTheDocument()
+    expect(screen.getByText('Allowance')).toBeInTheDocument()
+    expect(screen.getByText('Always, whatever the level')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Boost for 24 h' })).toBeInTheDocument()
   })
   it('Calendar: planned wakeups, routines and the budget', async () => {

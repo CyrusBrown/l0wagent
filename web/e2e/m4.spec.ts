@@ -8,14 +8,14 @@ test('levels, a wakeup that plans the next one, the calendar and both run views'
   await signIn(page, request)
 
   await page.goto('/settings/budgets')
-  await page.getByRole('button', { name: /Busy\s*400 pts\/wk/ }).click()
-  await expect(page.getByRole('button', { name: /Busy\s*400 pts\/wk/ })).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.getByText(/400 pts \/ wk/)).toBeVisible()
+  await page.getByRole('button', { name: /Busy\s*400 pts \/ week/ }).click()
+  await expect(page.getByRole('button', { name: /Busy\s*400 pts \/ week/ })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByText(/400 of 400 pts left|of 400 pts left/).first()).toBeVisible()
 
   await page.goto('/settings/instructions')
   await page.getByLabel('Standing instructions').fill('fake:m4 Keep the garden sensor exports running nightly.')
-  await page.getByRole('button', { name: 'Save' }).click()
-  await expect(page.getByText(/^Saved /)).toBeVisible()
+  await page.getByLabel('Standing instructions').blur()  // saved when you leave the box
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible()
 
   // The tests share one server: wait for an earlier test's run (e.g. M3's reply) to finish.
   await expect.poll(async () => {

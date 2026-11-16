@@ -417,6 +417,12 @@ def claude_login_code(req: s.ClaudeLoginCode, be: Be) -> s.ClaudeLoginResult:
     return be.claude_login_code(req)
 
 
+@api.get("/providers/{provider}/catalog", tags=["budgets"])
+def provider_catalog(provider: str, be: Be, refresh: bool = False) -> list[s.ProviderModel]:
+    """opencode providers: every model the catalog offers (with tool use), prices, and which are enabled."""
+    return be.provider_catalog(provider, refresh)
+
+
 @api.patch("/providers/{provider}", tags=["budgets"])
 def patch_provider(provider: str, req: s.ProviderPatch, be: Be) -> s.ProviderInfo:
     return be.patch_provider(provider, req)
@@ -562,6 +568,22 @@ def chat_ask(chat_id: int, req: s.ChatAsk, be: Be) -> s.ChatMessage:
 def chat_pull(chat_id: int, req: s.ChatPull, be: Be) -> s.Chat:
     """Pull a thread into the chat as read-only context."""
     return be.chat_pull(chat_id, req)
+
+
+@api.post("/chat-files", tags=["chats"], status_code=201)
+async def upload_chat_file(be: Be, file: Annotated[UploadFile, File()]) -> s.ChatFile:
+    """A file for a 1:1 chat message (up to 25 MB). It stays in control, not the agent's storage;
+    send it with the message's upload_ids."""
+    return be.upload_chat_file(file.filename or "file", await file.read(), file.content_type)
+
+
+@api.get("/chat-files/{file_id}", tags=["chats"], response_class=Response)
+def chat_file(file_id: int, be: Be) -> Response:
+    """Download a chat file (always as an attachment, never rendered on this origin)."""
+    data, name, mime = be.chat_file(file_id)
+    return Response(data, media_type="application/octet-stream" if mime in ("text/html", "image/svg+xml") else mime,
+                    headers={"Content-Disposition": f'attachment; filename="{name}"', "X-Content-Type-Options": "nosniff",
+                             "Content-Security-Policy": "sandbox; default-src 'none'"})
 
 
 # ── Secrets ────────────────────────────────────────────────────────────────

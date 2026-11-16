@@ -40,7 +40,7 @@ from ..budgets import SUBSCRIPTION, Budgets
 from ..config import Env, Settings
 from ..db import Database
 from ..live import Live
-from .clients import EgressClient, RunnerClient, RunnerError
+from .clients import EgressClient, RunnerClient, RunnerError, RunnerIdle
 from .runtime import ADAPTERS, Item, RuntimeAdapter
 from .usage import Usage
 
@@ -426,17 +426,21 @@ class RunManager:
         while True:
             try:
                 async for event, size in self.runner.log(sess.runner_session, sess.offset):
+                    if out_of_touch_since is not None:  # the stream opened, or a heartbeat or event arrived
+                        self.timeline(run_id, Item("control", "Back in touch with the agent computer", True))
+                    out_of_touch_since, backoff = None, 1.0
+                    if event is None:  # the stream opened, or a heartbeat: contact, nothing to store
+                        continue
                     changed, r = self._process(run_id, sess, event, size)
                     result = r or result
                     if changed:
                         self._run_changed(run_id)
-                    if out_of_touch_since is not None:
-                        self.timeline(run_id, Item("control", "Back in touch with the agent computer", True))
-                        out_of_touch_since, backoff = None, 1.0
                 st = await self.runner.session(sess.runner_session)
                 if st["state"] != "running" and sess.offset >= st["size"]:
                     return ("lost" if st["state"] == "lost" else "exited"), result
                 await asyncio.sleep(0.5)
+            except RunnerIdle:
+                continue  # a quiet stream, reconnected right away: not lost contact (issue #1)
             except RunnerError as e:
                 if e.status == 404:
                     self.timeline(run_id, Item("error", "The agent computer no longer has this session's log", True))

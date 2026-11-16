@@ -20,7 +20,9 @@ control/   FastAPI app (Python 3.12, SQLite, no ORM). api/ = schemas + owner rou
            vault.py (write-only secrets, redaction); runs/ = run manager, runtime adapters,
            runner/egress clients, usage reader + gate; prompts/ = control-owned prompts and
            harness news (news.py); chat.py (the 1:1 chat: loop, model clients, cards, hand-off);
-           tools.py (the chat's and the connector's tools, written once); notify.py (web push, ntfy);
+           tools.py (the chat's and the connector's tools, written once); chat_settings.py (settings the chat
+           reads and proposes); guide/ (the user guide the chat's `help` tool reads: keep it current);
+           catalog.py (opencode model catalogs and prices); notify.py (web push, ntfy);
            updates.py (update check, draining); hostctl.py (host-side commands for ./l0w);
            db/migrations/ = versioned SQL
 agent/     the agent image: runner/ (runner.py, fake_claude.py, fake_opencode.py, opencode-plugin.js, selftest.py),
@@ -41,6 +43,7 @@ cd control && uv sync                                  # once
 cd control && uv run python scripts/dev_stack.py --port 8000   # control + runner (fake claude) + egress, no Docker
 cd control && L0W_BACKEND=mock uv run uvicorn l0w_control.app:app --reload --port 8000   # the in-memory mock API
 cd web && pnpm install && pnpm dev                     # UI on :5173, proxies /api to :8000
+dev/ui-demo.sh                                         # the UI on fake data (mock API + Vite), nothing else needed
 docker compose -f compose.dev.yaml up --build          # the whole stack in containers (fake claude by default)
 ./l0w --help                                           # the host CLI (install/update use compose.yaml + prebuilt images)
 

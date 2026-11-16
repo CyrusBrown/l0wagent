@@ -3,18 +3,18 @@ import { Link, useNavigate, useParams } from 'react-router'
 import type { S } from '../api/client'
 import { useDraft } from '../api/live'
 import {
-  problem, useChat, useChatAsk, useChatHandoff, useChatMessages, useChatPull, useDecideChatCard, useDelivery, usePatchChat, useProjects, useProviders,
-  useReplyNow, useSendChat, useStopChat, useThreads,
+  problem, useChat, useChatMessages, useChatPull, useDecideChatCard, useDelivery, usePatchChat, useProviderCatalog, useProviders,
+  uploadChatFile, useReplyNow, useSendChat, useStopChat, useThreads,
 } from '../api/queries'
+import { bytes } from '../components/format'
 import { Markdown } from '../components/Markdown'
+import { joinTier, modelChoices, splitTier, tierLabel } from '../components/models'
 
 // The mockup's chat screen (M6): a header with the hand-off actions, the conversation (your
 // bubbles, the model's serif replies, one quiet line for its tool use, cards for anything
 // sensitive), and the composer with the model picker. Replies stream as they're written.
 
-const TIERS = ['haiku', 'sonnet', 'opus'].flatMap((m) => ['low', 'medium', 'high'].map((e) => `${m}/${e}`))
 const cap = (x: string) => x[0].toUpperCase() + x.slice(1)
-const tierLabel = (t: string) => t.split('/').map(cap).join(' · ')
 
 export function Chat() {
   const id = Number(useParams().id)
@@ -24,15 +24,26 @@ export function Chat() {
   const send = useSendChat(id)
   const stop = useStopChat(id)
   const [text, setText] = useState('')
+  const [files, setFiles] = useState<S['ChatFile'][]>([])
+  const [uploading, setUploading] = useState(0)
+  const [upErr, setUpErr] = useState<string | null>(null)
+  const picker = useRef<HTMLInputElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
+  const attach = async (list: FileList | File[]) => {
+    setUpErr(null)
+    for (const f of Array.from(list)) {
+      setUploading((n) => n + 1)
+      try { const u = await uploadChatFile(f); setFiles((fs) => [...fs, u]) } catch (e) { setUpErr(problem(e)) } finally { setUploading((n) => n - 1) }
+    }
+  }
   const c = chat.data
   useEffect(() => { scroller.current?.scrollTo({ top: scroller.current.scrollHeight }) }, [msgs.data?.length, draft])
   if (chat.isError) return <div className="page"><div className="error">{problem(chat.error)}</div></div>
   if (!c) return null
   const submit = () => {
-    const body = text.trim()
-    if (!body || c.busy) return
-    send.mutate(body, { onSuccess: () => setText('') })
+    const body = text.trim() || (files.length ? 'See the attached files.' : '')
+    if (!body || c.busy || uploading) return
+    send.mutate({ body, upload_ids: files.map((f) => f.id) }, { onSuccess: () => { setText(''); setFiles([]) } })
   }
   return (
     <div className="thread">
@@ -45,18 +56,30 @@ export function Chat() {
       </div>
       <div className="composer-wrap">
         <div className="composer-stack">
-          <div className="composer">
+          <div className="composer" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) void attach(e.dataTransfer.files) }}>
             <textarea rows={2} placeholder="Message" value={text} aria-label="Message" onChange={(e) => setText(e.target.value)}
+              onPaste={(e) => { if (e.clipboardData.files.length) { e.preventDefault(); void attach(e.clipboardData.files) } }}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit() } }} />
+            {(files.length > 0 || uploading > 0) && (
+              <div className="attach-row">
+                {files.map((f) => (
+                  <span key={f.id} className="file-chip"><span className="ext">{f.name.split('.').pop()?.toUpperCase().slice(0, 4)}</span>{f.name}
+                    <button className="link-btn" aria-label={`Remove ${f.name}`} onClick={() => setFiles(files.filter((x) => x.id !== f.id))}>✕</button></span>
+                ))}
+                {uploading > 0 && <span className="sub">Uploading…</span>}
+              </div>
+            )}
             <div className="composer-foot">
+              <button className="btn small ghost" onClick={() => picker.current?.click()} title="Attach files (or paste / drop them)">+ Attach</button>
+              <input ref={picker} type="file" multiple hidden onChange={(e) => { if (e.target.files) void attach(e.target.files); e.target.value = '' }} aria-label="Attach files" />
               <ModelPicker chat={c} />
               <span style={{ flex: 1 }} />
               {c.busy
                 ? <button className="btn small" onClick={() => stop.mutate()}>Stop</button>
-                : <button className="send" onClick={submit} disabled={!text.trim() || send.isPending} title="Send (↵)">↑</button>}
+                : <button className="send" onClick={submit} disabled={(!text.trim() && !files.length) || send.isPending || uploading > 0} title="Send (↵)">↑</button>}
             </div>
           </div>
-          {send.error && <div className="error">{problem(send.error)}</div>}
+          {(send.error || upErr) && <div className="error">{upErr ?? problem(send.error)}</div>}
         </div>
       </div>
     </div>
@@ -64,7 +87,7 @@ export function Chat() {
 }
 
 function ChatHeader({ chat }: { chat: S['Chat'] }) {
-  const [open, setOpen] = useState<'move' | 'ask' | 'pull' | null>(null)
+  const [open, setOpen] = useState<'pull' | null>(null)
   const thread = chat.handed_off_to
   const delivery = useDelivery(thread?.id ?? 0)
   const reply = useReplyNow(thread?.id ?? 0)
@@ -74,8 +97,6 @@ function ChatHeader({ chat }: { chat: S['Chat'] }) {
     <div className="chat-head">
       <span className="chat-title">{chat.title}</span>
       <div className="btns" style={{ position: 'relative' }}>
-        <button className="btn small" onClick={() => setOpen(open === 'move' ? null : 'move')}>Move to the assistant…</button>
-        <button className="btn small" onClick={() => setOpen(open === 'ask' ? null : 'ask')}>Ask the assistant</button>
         <button className="btn small" onClick={() => setOpen(open === 'pull' ? null : 'pull')} title="Give this chat a thread as read-only context">Pull in a thread</button>
         {d?.reply_now_available && (
           <button className="btn small" disabled={reply.isPending} onClick={() => reply.mutate(undefined, { onSuccess: (r) => r && nav(`/runs/${r.id}`) })}>
@@ -85,50 +106,11 @@ function ChatHeader({ chat }: { chat: S['Chat'] }) {
         {open && <>
           <div className="menu-scrim" onClick={() => setOpen(null)} />
           <div className="menu chat-pop">
-            {open === 'move' && <MoveForm chat={chat} done={() => setOpen(null)} />}
-            {open === 'ask' && <AskForm chat={chat} done={() => setOpen(null)} />}
             {open === 'pull' && <PullForm chat={chat} done={() => setOpen(null)} />}
           </div>
         </>}
       </div>
     </div>
-  )
-}
-
-function MoveForm({ chat, done }: { chat: S['Chat']; done: () => void }) {
-  const projects = useProjects()
-  const move = useChatHandoff(chat.id)
-  const [title, setTitle] = useState(chat.title)
-  const [project, setProject] = useState('')
-  return (
-    <form className="stack" style={{ gap: 8, padding: 6 }} onSubmit={(e) => { e.preventDefault(); move.mutate({ title, project: project || null }, { onSuccess: done }) }}>
-      <span className="sub">A new thread for the assistant: a summary of this chat, with the transcript attached.</span>
-      <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Thread title" />
-      <select className="input" value={project} onChange={(e) => setProject(e.target.value)} aria-label="Project">
-        <option value="">General</option>
-        {projects.data?.filter((p) => p.status !== 'archived').map((p) => <option key={p.slug} value={p.slug}>{p.name}</option>)}
-      </select>
-      {move.error && <div className="error">{problem(move.error)}</div>}
-      <div><button className="btn small primary" disabled={!title.trim() || move.isPending}>Move</button></div>
-    </form>
-  )
-}
-
-function AskForm({ chat, done }: { chat: S['Chat']; done: () => void }) {
-  const threads = useThreads()
-  const ask = useChatAsk(chat.id)
-  const [thread, setThread] = useState<number>(chat.handed_off_to?.id ?? 0)
-  const [message, setMessage] = useState('')
-  return (
-    <form className="stack" style={{ gap: 8, padding: 6 }} onSubmit={(e) => { e.preventDefault(); ask.mutate({ thread_id: thread, message }, { onSuccess: done }) }}>
-      <select className="input" value={thread} onChange={(e) => setThread(Number(e.target.value))} aria-label="Thread">
-        <option value={0} disabled>Pick a thread</option>
-        {threads.data?.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
-      </select>
-      <textarea className="input" rows={3} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Your message to the assistant" aria-label="Message to the assistant" />
-      {ask.error && <div className="error">{problem(ask.error)}</div>}
-      <div><button className="btn small primary" disabled={!thread || !message.trim() || ask.isPending}>Send</button></div>
-    </form>
   )
 }
 
@@ -145,24 +127,46 @@ function PullForm({ chat, done }: { chat: S['Chat']; done: () => void }) {
   )
 }
 
+/** Any model from any connected provider: Claude's names on Claude providers, and an opencode
+ * provider's whole catalog (the models enabled for the assistant first). Effort is its own picker. */
 function ModelPicker({ chat }: { chat: S['Chat'] }) {
   const providers = useProviders()
   const patch = usePatchChat(chat.id)
-  const usable = providers.data?.filter((p) => p.enabled) ?? []
-  const mapped = usable.find((p) => p.id === chat.provider)?.models
+  const usable = providers.data?.filter((p) => p.enabled && p.has_credential) ?? []
+  const go = usable.find((p) => p.kind === 'opencode-go')
+  const catalog = useProviderCatalog(go?.id ?? 'opencode-go', !!go)
+  const [model, effort] = splitTier(chat.tier)
+  const groups = usable.map((p) => {
+    if (!p.models) return { p, models: modelChoices(p) }
+    const enabled = modelChoices(p)
+    const rest = (catalog.data ?? []).filter((m) => !m.enabled).map((m) => ({
+      id: m.id, label: m.name, efforts: m.variants ?? [], price: m.input === 0 && m.output === 0 ? 'free' : `$${m.input ?? '?'} / $${m.output ?? '?'} per M`,
+    }))
+    return { p, models: [...enabled, ...rest] }
+  })
+  const cur = groups.find((g) => g.p.id === chat.provider)?.models.find((m) => m.id === model)
+  const efforts = cur?.efforts ?? []
+  const pick = (value: string) => {
+    const [pid, mid] = value.split('|')
+    const m = groups.find((g) => g.p.id === pid)?.models.find((x) => x.id === mid)
+    const e = effort && m?.efforts.includes(effort) ? effort : m?.efforts.includes('medium') ? 'medium' : m?.efforts[0] ?? null
+    patch.mutate({ provider: pid, tier: joinTier(mid, e) })
+  }
   return (
-    <span className="row-start" style={{ gap: 4 }}>
-      {usable.length > 1 && (
-        <select className="model-pick" value={chat.provider} aria-label="Chat provider" onChange={(e) => patch.mutate({ provider: e.target.value })}>
-          {usable.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+    <span className="row-start" style={{ gap: 2 }}>
+      <select className="model-pick" value={`${chat.provider}|${model}`} aria-label="Chat model" onChange={(e) => pick(e.target.value)}>
+        {!cur && <option value={`${chat.provider}|${model}`}>{tierLabel(chat.tier, usable.find((p) => p.id === chat.provider))}</option>}
+        {groups.map(({ p, models }) => (
+          <optgroup key={p.id} label={p.label}>
+            {models.map((m) => <option key={m.id} value={`${p.id}|${m.id}`}>{m.label}{m.price ? ` · ${m.price}` : ''}</option>)}
+          </optgroup>
+        ))}
+      </select>
+      {efforts.length > 0 && (
+        <select className="model-pick" value={effort ?? ''} aria-label="Chat effort" onChange={(e) => patch.mutate({ tier: joinTier(model, e.target.value || null) })}>
+          {efforts.map((e) => <option key={e} value={e}>{e}</option>)}
         </select>
       )}
-      <select className="model-pick" value={chat.tier} aria-label="Chat model" onChange={(e) => patch.mutate({ tier: e.target.value })}>
-        {(TIERS.includes(chat.tier) ? TIERS : [chat.tier, ...TIERS]).map((t) => {
-          const m = mapped?.[t.split('/')[0]]?.model
-          return <option key={t} value={t}>{m ? `${m.replace(/^opencode-go\//, '')} · ${t.split('/')[1]}` : tierLabel(t)}</option>
-        })}
-      </select>
     </span>
   )
 }
@@ -178,7 +182,19 @@ function Items({ chatId, items }: { chatId: number; items: S['ChatMessage'][] })
   for (const m of items) {
     if (m.role === 'tool') { tools.push(m); continue }
     flush()
-    if (m.role === 'owner') out.push(<div key={m.id} className="mine"><div className="bubble">{m.body}</div></div>)
+    if (m.role === 'owner') {
+      const fs = (m.data?.files ?? []) as S['ChatFile'][]
+      out.push(
+        <div key={m.id} className="mine">
+          <div className="bubble">{m.body}</div>
+          {fs.map((f) => (
+            <a key={f.id} className="file-chip" href={`/api/chat-files/${f.id}`} download={f.name}>
+              <span className="ext">{f.name.split('.').pop()?.toUpperCase().slice(0, 4)}</span>{f.name}<span className="size">{bytes(f.size)}</span>
+            </a>
+          ))}
+        </div>,
+      )
+    }
     else if (m.role === 'assistant') { if (m.body.trim()) out.push(<div key={m.id} className="theirs"><Markdown>{m.body}</Markdown></div>) }
     else if (m.role === 'card') out.push(<ChatCard key={m.id} chatId={chatId} m={m} />)
     else out.push(<SystemNote key={m.id} m={m} />)
@@ -224,7 +240,10 @@ function SystemNote({ m }: { m: S['ChatMessage'] }) {
   return <div className="sys">{tid ? <Link to={`/t/${tid}`}>{m.body}</Link> : m.body}</div>
 }
 
-const CARD_TITLE: Record<string, string> = { secret: 'Secure input', wakeup: 'Extra wakeup', level: 'Budget level', egress: 'Network rule' }
+const CARD_TITLE: Record<string, string> = {
+  secret: 'Secure input', wakeup: 'Extra wakeup', level: 'Budget level', egress: 'Network rule', settings: 'Settings change', handoff: 'Hand off to the assistant',
+}
+const HANDOFF_TARGET: Record<string, string> = { new_thread: 'a new thread', new_project: 'a new project', existing_thread: 'an existing thread' }
 
 function ChatCard({ chatId, m }: { chatId: number; m: S['ChatMessage'] }) {
   const decide = useDecideChatCard(chatId)
@@ -248,6 +267,25 @@ function ChatCard({ chatId, m }: { chatId: number; m: S['ChatMessage'] }) {
       </>}
       {kind === 'wakeup' && <div className="card-text">Wake the assistant {d.at ? `at ${new Date(String(d.at)).toLocaleString()}` : 'soon'} with up to {d.budget} pts: {d.reason}</div>}
       {kind === 'level' && <div className="card-text">Switch to the <b>{cap(String(d.level))}</b> level{d.reason ? `: ${d.reason}` : '.'}</div>}
+      {kind === 'settings' && (
+        <div className="stack" style={{ gap: 6 }}>
+          {(m.data?.changes as { label: string; before: string; after: string }[] | undefined)?.map((c, i) => (
+            <div key={i} className="change-line"><span>{c.label}</span><span className="mono"><s>{c.before}</s> → <b>{c.after}</b></span></div>
+          ))}
+          {d.reason && <span className="card-sub">{d.reason}</span>}
+        </div>
+      )}
+      {kind === 'handoff' && (
+        <div className="stack" style={{ gap: 6 }}>
+          <div className="card-text">
+            To {d.target === 'existing_thread' ? <>the thread <b>#{d.thread_title}</b></> : d.target === 'new_project' ? <>a new project <b>{d.project_name}</b>, thread <b>{d.title}</b></> : <>a new thread <b>{d.title}</b>{d.project ? <> in {d.project}</> : null}</>}
+            {' · '}{d.mode === 'transcript' ? 'with this whole chat attached' : 'as a message'}
+          </div>
+          <div className="handoff-msg">{String(d.message ?? '')}</div>
+          {d.state === 'done' && d.thread_id && <Link className="card-sub" to={`/t/${d.thread_id}`}>Open #{d.thread_title ?? d.title} →</Link>}
+          {d.state === 'open' && <span className="card-sub">Goes to {HANDOFF_TARGET[String(d.target)] ?? 'the assistant'}; the assistant picks it up at its next run.</span>}
+        </div>
+      )}
       {kind === 'egress' && <div className="card-text">{d.action === 'block' ? 'Block' : 'Allow'} <code>{d.host}</code> for the assistant{d.reason ? `: ${d.reason}` : '.'}</div>}
       {open && kind !== 'secret' && <div className="btns">
         <button className="btn primary" disabled={decide.isPending} onClick={() => act('approve')}>Approve</button>

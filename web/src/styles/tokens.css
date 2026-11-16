@@ -1,3 +1,8 @@
+/* Arrows and triangles (→ ▸ ▾) aren't in Geist's Latin subset; without this they fall back to
+   system-ui's heavy ones. The mockup's fall back to the browser's default font (Times), so do the same. */
+@font-face { font-family: 'l0w symbols'; src: local('Times New Roman'), local('Times'), local('Liberation Serif'), local('DejaVu Serif');
+  unicode-range: U+2190-21FF, U+25A0-25FF, U+2022, U+2026 }
+
 /* Theme tokens, carried over unchanged from the mockup (design/mockup/src/app.css).
    The theme is set on <html data-theme="light|dark">; "system" follows the OS. */
 :root {
@@ -12,8 +17,8 @@
   --purpleInk:#7a4f8f;--purpleSoft:#fbf8fc;
   --shadow:0 14px 40px rgba(20,19,17,.16);
   --serif:'Source Serif 4 Variable','Source Serif 4',Georgia,serif;
-  --sans:'Geist Variable',Geist,system-ui,sans-serif;
-  --mono:'Geist Mono Variable','Geist Mono',ui-monospace,monospace;
+  --sans:'Geist Variable','l0w symbols',system-ui,sans-serif;  /* not plain Geist: a locally installed copy has heavy arrows */
+  --mono:'Geist Mono Variable','l0w symbols',ui-monospace,monospace;
   color-scheme: light;
 }
 :root[data-theme=dark] {
@@ -34,3 +39,8 @@
 @keyframes fade { from { opacity:0 } to { opacity:1 } }
 @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.35 } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important } }
+@keyframes fadeOut { from { opacity:1 } to { opacity:0 } }
+@keyframes sink { from { opacity:1; transform:none } to { opacity:0; transform:translateY(6px) scale(.98) } }
+@keyframes pop { from { opacity:0; transform:translateY(6px) scale(.98) } to { opacity:1; transform:none } }
+@keyframes slideL { from { opacity:0; transform:translateX(-12px) } to { opacity:1; transform:none } }
+@keyframes slideR { from { opacity:0; transform:translateX(18px) } to { opacity:1; transform:none } }

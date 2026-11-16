@@ -12,7 +12,7 @@ export function Tools() {
   const [params, setParams] = useSearchParams()
   const tab = TABS.find(([k]) => k === params.get('tab'))?.[0] ?? 'secrets'
   return (
-    <div className="page" style={{ maxWidth: 960 }}>
+    <div className="page" style={{ maxWidth: 1016, padding: "28px 28px 40px", gap: 18 }}>
       <h1>Tools &amp; Secrets</h1>
       <div className="tabs">
         {TABS.map(([k, label]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setParams(k === 'secrets' ? {} : { tab: k })}>{label}</button>)}

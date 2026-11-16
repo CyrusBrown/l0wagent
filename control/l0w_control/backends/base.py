@@ -117,6 +117,7 @@ class Backend:
     def providers(self) -> list[s.ProviderInfo]: raise NotImplementedError
     def add_api_provider(self, req: s.ApiProviderCreate) -> s.ProviderInfo: raise NotImplementedError
     def patch_provider(self, provider: str, req: s.ProviderPatch) -> s.ProviderInfo: raise NotImplementedError
+    def provider_catalog(self, provider: str, refresh: bool = False) -> list[s.ProviderModel]: raise NotImplementedError
     def delete_provider(self, provider: str) -> None: raise NotImplementedError
     def roles(self) -> s.Roles: raise NotImplementedError
     def set_roles(self, req: s.Roles) -> s.Roles: raise NotImplementedError
@@ -147,6 +148,8 @@ class Backend:
     def chat_handoff(self, chat_id: int, req: s.ChatHandoff) -> s.Chat: raise NotImplementedError
     def chat_ask(self, chat_id: int, req: s.ChatAsk) -> s.ChatMessage: raise NotImplementedError
     def chat_pull(self, chat_id: int, req: s.ChatPull) -> s.Chat: raise NotImplementedError
+    def upload_chat_file(self, name: str, data: bytes, mime: str | None) -> s.ChatFile: raise NotImplementedError
+    def chat_file(self, file_id: int) -> tuple[bytes, str, str]: raise NotImplementedError
 
     # secrets (write-only)
     def secrets(self) -> list[s.SecretInfo]: raise NotImplementedError

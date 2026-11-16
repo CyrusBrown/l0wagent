@@ -686,6 +686,7 @@ class ProviderBudget(Model):
     reset_day: int | None = Field(None, description="Monthly periods: the day of the month they reset (1–28).")
     caps: BudgetCaps | None = None
     cap_reason: str | None = Field(None, description="Why the caps stop new runs right now, if they do.")
+    model_options: list[str] = Field([], description="What the level's allowed models can list: Claude's tiers, or the provider's enabled models.")
     has_credential: bool
 
 
@@ -731,9 +732,15 @@ class ReserveSettings(Model):
     sweep_ceiling_pct: float | None = None
 
 
-class TierModel(Model):
-    model: str = Field(description="opencode's provider/model id, e.g. opencode-go/glm-5.3.")
-    variants: list[str] = Field(description="The model's reasoning variants, where known; a tier's effort maps to the closest.")
+class ProviderModel(Model):
+    """A model an opencode provider offers (from its catalog), with catalog prices in $ per million tokens."""
+
+    id: str = Field(description="provider/model, e.g. opencode-go/glm-5.3. Roles name it with an effort: opencode-go/glm-5.3/high.")
+    name: str
+    input: float | None = Field(None, description="$ per million input tokens; null when unknown.")
+    output: float | None = None
+    variants: list[str] = Field([], description="Its reasoning efforts, where known; an effort maps to the closest. Empty: the model decides.")
+    enabled: bool = Field(True, description="The assistant may use it.")
 
 
 class ProviderInfo(Model):
@@ -745,7 +752,7 @@ class ProviderInfo(Model):
     usage_source: str
     has_credential: bool
     runtime: str = Field("claude-code", description="The agent CLI that runs sessions on it: claude-code or opencode.")
-    models: dict[str, TierModel] | None = Field(None, description="opencode providers: the model behind each tier name (haiku, sonnet, opus).")
+    models: list[ProviderModel] | None = Field(None, description="opencode providers: the models the assistant may use, in order.")
 
 
 class ApiProviderCreate(Model):
@@ -760,7 +767,7 @@ class ApiProviderCreate(Model):
 class ProviderPatch(Model):
     enabled: bool | None = None
     label: str | None = None
-    models: dict[str, str] | None = Field(None, description="opencode providers: tier name → provider/model.")
+    models: list[str] | None = Field(None, description="opencode providers: the model ids the assistant may use, in order.")
 
 
 RoleName = Literal["worker", "reviewer", "replier", "chat", "utility"]
@@ -1145,13 +1152,23 @@ class ChatMessage(Model):
     chat_id: int
     role: Literal["owner", "assistant", "tool", "card", "system"]
     body: str
-    data: dict[str, Any] = Field({}, description="assistant: {calls}; tool: {name, input, result, is_error}; card: {kind, ..., state}; system: {thread_id?}.")
+    data: dict[str, Any] = Field({}, description="owner: {files: [ChatFile]}; assistant: {calls}; tool: {name, input, result, is_error}; card: {kind, ..., state}; system: {thread_id?}.")
     model: str | None = None
     created_at: datetime
 
 
+class ChatFile(Model):
+    """A file attached to a chat message (kept in control, not the agent's storage)."""
+
+    id: int
+    name: str
+    mime: str
+    size: int
+
+
 class ChatCreate(Model):
     message: str = Field(min_length=1, max_length=100_000)
+    upload_ids: list[int] = Field([], description="Files from POST /api/chat-files to attach to the first message.")
     title: str | None = Field(None, max_length=80)
     provider: str | None = Field(None, description="Defaults to the chat role's provider.")
     tier: str | None = Field(None, description="Defaults to the chat role's tier.")
@@ -1160,6 +1177,7 @@ class ChatCreate(Model):
 
 class ChatMessageCreate(Model):
     body: str = Field(min_length=1, max_length=100_000)
+    upload_ids: list[int] = Field([], description="Files from POST /api/chat-files.")
     idempotency_key: IdempotencyKey
 
 

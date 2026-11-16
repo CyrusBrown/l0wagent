@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from l0w_control.budgets import GO_MODELS, pick_variant, price
+from l0w_control.budgets import GO_DEFAULT_MODELS, pick_variant, price, split_tier
 from l0w_control.runs.runtime import ADAPTERS
 
 from .stack import REPO, Stack
@@ -75,6 +75,12 @@ def test_the_runner_builds_opencodes_config_and_command(tmp_path: Path):
     assert argv[1:] == ["run", "--format", "json", "--auto", "-m", "opencode-go/glm-5.3", "--agent", "l0w", "--variant", "high", "--session", "ses_1"]
 
 
+def test_tiers_split_into_model_and_effort():
+    assert split_tier("sonnet/medium") == ("sonnet", "medium")
+    assert split_tier("opencode-go/glm-5.3/high") == ("opencode-go/glm-5.3", "high")
+    assert split_tier("opencode-go/glm-5.3") == ("opencode-go/glm-5.3", None)
+
+
 def test_efforts_map_to_the_closest_variant():
     assert pick_variant("medium", ["low", "high", "max"]) == "high"   # ties go up
     assert pick_variant("low", ["high", "max"]) == "high"
@@ -102,9 +108,11 @@ def test_a_go_only_instance_runs_wakeups_on_opencode(stack: Stack):
     # Without a Claude login nothing starts (the gate fails closed)…
     assert c.post("/api/runs", json={"budget": 10}).status_code == 409
     info = add_go(c)
-    assert info["runtime"] == "opencode" and info["models"]["sonnet"]["model"] == GO_MODELS["sonnet"]["model"]
+    assert info["runtime"] == "opencode" and [m["id"] for m in info["models"]] == GO_DEFAULT_MODELS
     assert GO_KEY not in json.dumps(info)
-    assert {r["provider"] for r in c.get("/api/roles").json()["roles"]} == {"opencode-go"}
+    roles = c.get("/api/roles").json()["roles"]
+    assert {r["provider"] for r in roles} == {"opencode-go"}
+    assert next(r for r in roles if r["role"] == "reviewer")["tier"] == "opencode-go/glm-5.3/medium"  # opus/medium → the largest enabled model
     # …with Go, a wakeup runs on opencode.
     run_id = c.post("/api/runs", json={"budget": 10}).json()["id"]
     done = stack.wait_for(lambda: (r := stack.run(run_id))["status"] not in ("starting", "running") and r, timeout=90, what="run to end")
@@ -117,10 +125,17 @@ def test_a_go_only_instance_runs_wakeups_on_opencode(stack: Stack):
     assert any(t.startswith("Session finished: IDLE") for t in texts), texts
     budget = next(p for p in c.get("/api/budget").json()["providers"] if p["provider"] == "opencode-go")
     assert budget["used_by_assistant"] > 0 and budget["native"].endswith("this month") and budget["period"] == "month"
-    # The owner can pick other models; they reach the next session.
-    r = c.patch("/api/providers/opencode-go", json={"models": {"sonnet": "opencode-go/beam-free"}})
-    assert r.status_code == 200 and r.json()["models"]["sonnet"]["model"] == "opencode-go/beam-free"
-    assert c.patch("/api/providers/opencode-go", json={"models": {"sonnet": "glm"}}).status_code == 400
+    # The owner picks which models the assistant may use; roles name one directly, with an effort.
+    r = c.patch("/api/providers/opencode-go", json={"models": ["opencode-go/beam-free", "opencode-go/glm-5.3"]})
+    assert r.status_code == 200 and [m["id"] for m in r.json()["models"]] == ["opencode-go/beam-free", "opencode-go/glm-5.3"]
+    assert c.patch("/api/providers/opencode-go", json={"models": ["glm"]}).status_code == 400
+    worker = next(x for x in c.get("/api/roles").json()["roles"] if x["role"] == "worker")
+    assert "opencode-go/beam-free" in worker["allowed"]
+    roles = [{**x, "tier": "opencode-go/beam-free/high"} if x["role"] == "worker" else x for x in c.get("/api/roles").json()["roles"]]
+    assert c.put("/api/roles", json={"roles": roles}).status_code == 200
+    run2 = c.post("/api/runs", json={"budget": 10, "tier": "opencode-go/beam-free/high"}).json()["id"]
+    stack.wait_for(lambda: stack.run(run2)["status"] not in ("starting", "running"), timeout=90, what="second run")
+    assert any(i["text"] == "Model opencode-go/beam-free" for i in stack.timeline(run2))
 
 
 def test_reply_now_on_go_hears_the_answer_mid_run(stack: Stack):

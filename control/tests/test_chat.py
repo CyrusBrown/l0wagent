@@ -146,3 +146,73 @@ def test_histories_for_both_apis():
     o = OpenAICompatClient.history("SYS", ROWS)
     assert [m["role"] for m in o] == ["system", "user", "assistant", "tool", "user"]
     assert o[2]["tool_calls"][0]["function"] == {"name": "status", "arguments": "{}"} and o[3]["tool_call_id"] == "c1"
+
+
+def test_the_chat_proposes_settings_and_the_owner_approves(c):
+    chat = ok(c.post("/api/chats", json={"message": "fake:settings it's a deadline week"}), 201)
+    card = next(m for m in settled(c, chat["id"]) if m["role"] == "card")
+    assert card["data"]["kind"] == "settings"
+    assert [(x["label"].split(" (")[0], x["before"], x["after"]) for x in card["data"]["changes"]] == [("level", "steady", "busy"), ("reply pts", "30.0", "50")]
+    assert ok(c.get("/api/budget"))["providers"][0]["level"] == "steady"   # nothing applied yet
+    ok(c.post(f"/api/chats/{chat['id']}/cards/{card['id']}", json={"decision": "approve"}))
+    b = ok(c.get("/api/budget"))["providers"][0]
+    assert b["level"] == "busy" and b["reply_allowance"] == 50
+    assert "approved the settings changes: level" in json.dumps(ok(c.get(f"/api/chats/{chat['id']}/messages")))
+
+
+def test_the_chat_proposes_a_handoff(c):
+    chat = ok(c.post("/api/chats", json={"message": "fake:propose-handoff water the tomatoes"}), 201)
+    card = next(m for m in settled(c, chat["id"]) if m["role"] == "card")
+    assert card["data"]["kind"] == "handoff" and card["data"]["mode"] == "transcript"
+    done = ok(c.post(f"/api/chats/{chat['id']}/cards/{card['id']}", json={"decision": "approve"}))
+    tid = done["data"]["thread_id"]
+    first = ok(c.get(f"/api/threads/{tid}/items"))["items"][0]["message"]
+    assert first["body"].startswith("Please set up the drip timer") and first["attachments"][0]["name"] == f"chat-{chat['id']}.md"
+    assert ok(c.get(f"/api/chats/{chat['id']}"))["handed_off_to"]["id"] == tid
+
+
+def test_tools_check_settings_and_read_the_guide(be):
+    from l0w_control import tools as T
+    ctx = T.Ctx(be=be)
+    topics, err = T.run(ctx, "help", {})
+    assert not err and "budgets" in topics and "providers-models" in topics
+    assert "1 pt is 0.1%" in T.run(ctx, "help", {"topic": "budgets"})[0]
+    assert "[budgets]" in T.run(ctx, "help", {"query": "reserve weekly"})[0]
+    assert "Unknown setting" in T.run(ctx, "propose_settings", {"changes": [{"setting": "password", "value": "x"}]})[0]
+    assert "Levels are" in T.run(ctx, "propose_settings", {"changes": [{"setting": "level", "value": "huge"}]})[0]
+    assert T.run(ctx, "propose_handoff", {"target": "elsewhere", "mode": "message", "message": "x"})[1]
+
+
+def test_a_chat_may_use_any_model_its_provider_offers(be):
+    be.budgets.add_api_provider("sk-go-test-0123456789abcdefghij", None, "opencode-go")
+    spec = be.budgets.runtime_spec("opencode-go", "opencode-go/kimi-k3/max")  # in Go's catalog, not enabled for the assistant
+    assert spec == {"runtime": "opencode", "model": "opencode-go/kimi-k3", "effort": None}  # no known variants: the model decides
+    assert be.budgets.runtime_spec("opencode-go", "opencode-go/glm-5.3/high")["effort"] == "high"
+
+
+def test_files_in_a_chat_reach_the_model_and_go_along_on_a_handoff(c):
+    up = ok(c.post("/api/chat-files", files={"file": ("notes.txt", b"pump: 2 bar", "text/plain")}), 201)
+    img = ok(c.post("/api/chat-files", files={"file": ("photo.png", b"\x89PNG\r\n\x1a\n" + b"0" * 32, "image/png")}), 201)
+    chat = ok(c.post("/api/chats", json={"message": "what do you think?", "upload_ids": [up["id"], img["id"]]}), 201)
+    msgs = settled(c, chat["id"])
+    assert [f["name"] for f in msgs[0]["data"]["files"]] == ["notes.txt", "photo.png"]
+    assert msgs[1]["body"] == "You said: what do you think? (attached: notes.txt, photo.png)"
+    assert c.get(f"/api/chat-files/{up['id']}").content == b"pump: 2 bar"
+    assert c.post(f"/api/chats/{chat['id']}/messages", json={"body": "again", "upload_ids": [up["id"]]}).status_code == 400  # already sent
+    # On a hand-off the chat's files go to the assistant too.
+    ok(c.post(f"/api/chats/{chat['id']}/messages", json={"body": "fake:propose-handoff"}), 201)
+    card = next(m for m in settled(c, chat["id"]) if m["role"] == "card")
+    done = ok(c.post(f"/api/chats/{chat['id']}/cards/{card['id']}", json={"decision": "approve"}))
+    first = ok(c.get(f"/api/threads/{done['data']['thread_id']}/items"))["items"][0]["message"]
+    assert {a["name"] for a in first["attachments"]} >= {"notes.txt", "photo.png"}
+
+
+def test_history_builders_send_files_to_each_api():
+    f_txt = {"name": "a.txt", "mime": "text/plain", "size": 3, "data": b"abc"}
+    f_png = {"name": "p.png", "mime": "image/png", "size": 4, "data": b"\x89PNG"}
+    f_pdf = {"name": "d.pdf", "mime": "application/pdf", "size": 4, "data": b"%PDF"}
+    row = {"role": "owner", "body": "look", "data": {}, "raw_json": None, "provider": None, "blobs": [f_txt, f_png, f_pdf]}
+    a = AnthropicClient.history([row])[0]["content"]
+    assert [b["type"] for b in a] == ["text", "image", "document", "text"] and "abc" in a[0]["text"]
+    o = OpenAICompatClient.history("S", [row])[1]["content"]
+    assert [p["type"] for p in o] == ["text", "image_url", "text", "text"] and "can't read" in o[2]["text"]

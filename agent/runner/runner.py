@@ -60,6 +60,10 @@ PRE_RUN = WORKSPACE / "system" / "pre-run.sh"
 PRE_RUN_TIMEOUT = 120
 PRE_RUN_MAX_CHARS = 8000
 FOLLOW_POLL_S = 0.2
+# While a session's log is quiet, the stream sends this every HEARTBEAT_S. It's a line that
+# can't occur in the log (JSON lines only), and control doesn't count it in its byte offset.
+HEARTBEAT = b"\x1e\n"
+HEARTBEAT_S = 10.0
 KEEP_LOGS_DAYS = 30
 
 app = FastAPI(docs_url=None, redoc_url=None)
@@ -370,11 +374,13 @@ async def session_log(sid: str, offset: int = 0, follow: bool = True, x_runner_t
     _state(sid)
 
     async def gen():
+        quiet = 0.0
         with open(_log(sid), "rb") as f:
             f.seek(offset)
             while True:
                 chunk = f.read(65536)
                 if chunk:
+                    quiet = 0.0
                     yield chunk
                     continue
                 if not follow or (_meta(sid) or {}).get("state") != "running":
@@ -383,6 +389,10 @@ async def session_log(sid: str, offset: int = 0, follow: bool = True, x_runner_t
                         yield rest
                     return
                 await asyncio.sleep(FOLLOW_POLL_S)
+                quiet += FOLLOW_POLL_S
+                if quiet >= HEARTBEAT_S:  # a quiet session isn't a lost one: tell control we're here
+                    quiet = 0.0
+                    yield HEARTBEAT
 
     return StreamingResponse(gen(), media_type="application/x-ndjson", headers={"X-Session-State": _state(sid)["state"] or ""})
 

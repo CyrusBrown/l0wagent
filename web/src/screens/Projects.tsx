@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import type { S } from '../api/client'
 import {
-  problem, uploadFile, useCreateProject, useCreateChat, useCreateThread, useInbox, useMe, useProject, useProjects, useRuns, useShelf, useStatus, useThreads,
+  problem, uploadChatFile, uploadFile, useCreateProject, useCreateChat, useCreateThread, useInbox, useMe, useProject, useProjects, useRuns, useShelf, useStatus, useThreads,
 } from '../api/queries'
 import { InboxCard } from '../components/Cards'
 import { ago, bytes, duration, usageText } from '../components/format'
@@ -184,19 +184,22 @@ export function NewItem() {
   const [text, setText] = useState('')
   const [chat, setChat] = useState(params.get('chat') === '1' && !project)
   const [files, setFiles] = useState<S['Upload'][]>([])
+  const [chatFiles, setChatFiles] = useState<S['ChatFile'][]>([])
   const [uploading, setUploading] = useState(0)
   const st = status.data
   const attach = async (list: FileList) => {
     for (const f of Array.from(list)) {
       setUploading((n) => n + 1)
-      try { const u = await uploadFile(f, project); setFiles((fs) => [...fs, u]) } finally { setUploading((n) => n - 1) }
+      try {
+        if (chat) { const u = await uploadChatFile(f); setChatFiles((fs) => [...fs, u]) } else { const u = await uploadFile(f, project); setFiles((fs) => [...fs, u]) }
+      } finally { setUploading((n) => n - 1) }
     }
   }
   const submit = () => {
     const body = text.trim()
     if (!body || uploading) return
     if (chat) {
-      newChat.mutate({ message: body }, { onSuccess: (c) => c && nav(`/c/${c.id}`) })
+      newChat.mutate({ message: body, upload_ids: chatFiles.map((f) => f.id) }, { onSuccess: (c) => c && nav(`/c/${c.id}`) })
       return
     }
     create.mutate({ title: body.split('\n')[0].slice(0, 80), project, first_message: body, upload_ids: files.map((f) => f.id) }, { onSuccess: (t) => nav(t ? `/t/${t.id}` : project ? `/p/${project}` : '/') })  // null: queued offline, sent when back online
@@ -209,9 +212,9 @@ export function NewItem() {
         <div className="new-composer">
           <textarea rows={3} autoFocus placeholder={chat ? 'Start a chat. Replies stream right away.' : project ? `Start a thread in ${where}…` : 'What should the assistant work on?'} value={text}
             onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit() }} />
-          {!!files.length && <div className="attach-row">{files.map((f) => <span key={f.id} className="file-chip"><span className="ext">{f.name.split('.').pop()?.toUpperCase().slice(0, 4)}</span>{f.name}<span className="size">{bytes(f.size)}</span></span>)}</div>}
+          {!!(chat ? chatFiles : files).length && <div className="attach-row">{(chat ? chatFiles : files).map((f) => <span key={f.id} className="file-chip"><span className="ext">{f.name.split('.').pop()?.toUpperCase().slice(0, 4)}</span>{f.name}<span className="size">{bytes(f.size)}</span></span>)}</div>}
           <div className="row-start" style={{ gap: 8, flexWrap: 'wrap' }}>
-            {!chat && <button className="btn square" title="Attach files" onClick={() => picker.current?.click()}>+</button>}
+            <button className="btn square" title="Attach files" onClick={() => picker.current?.click()}>+</button>
             <input ref={picker} type="file" multiple hidden onChange={(e) => { if (e.target.files) void attach(e.target.files); e.target.value = '' }} />
             <div className="seg">
               <button className={chat ? 'on' : ''} disabled={!!project} onClick={() => setChat(true)} title="A 1:1 chat with live replies">1:1 chat</button>
@@ -239,6 +242,16 @@ export function NewItem() {
           <span style={{ font: '500 14px var(--sans)' }}>{st?.budget ? <>{st.budget.left} <span style={{ fontWeight: 400, color: 'var(--muted)' }}>of {st.budget.allowance} {st.budget.unit} left</span></> : usageText(st?.usage)}</span>
           <div className="gauge"><div style={{ width: `${Math.min(100, st?.budget ? (1 - st.budget.left / st.budget.allowance) * 100 : st?.usage?.seven_day_pct ?? 0)}%` }} /></div>
         </div>
+        {st?.budget && (
+          <div className="new-chip">
+            <span className="section-label">You vs. assistant</span>
+            <span style={{ font: '500 14px var(--sans)' }}>{Math.round(st.budget.used_by_owner + st.budget.used_by_chat)} <span style={{ fontWeight: 400, color: 'var(--muted)' }}>/ {Math.round(st.budget.used_by_assistant)} pts</span></span>
+            <div className="split-bar2" style={{ height: 4 }}>
+              <div style={{ width: `${(100 * (st.budget.used_by_owner + st.budget.used_by_chat)) / Math.max(1, st.budget.used_by_owner + st.budget.used_by_chat + st.budget.used_by_assistant)}%`, background: 'var(--infoDot)' }} />
+              <div style={{ flex: 1, background: 'var(--accent)' }} />
+            </div>
+          </div>
+        )}
         <Link to="/inbox" className="new-chip">
           <span className="section-label">Waiting on you</span>
           <span style={{ font: '500 14px var(--sans)' }}>{waiting.data?.length ?? 0} <span style={{ fontWeight: 400, color: 'var(--muted)' }}>items</span></span>

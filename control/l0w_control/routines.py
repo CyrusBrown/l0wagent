@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 from .api import schemas as s
 from .auth import parse
 from .backends.base import BadRequest, NotFound
-from .budgets import SUBSCRIPTION, TIERS, Budgets
+from .budgets import SUBSCRIPTION, Budgets
 from .db import Database
 
 if TYPE_CHECKING:
@@ -94,10 +94,11 @@ class Routines:
         return self.model(r)
 
     def _check(self, tier: str, provider: str) -> None:
-        if tier not in TIERS:
-            raise BadRequest("bad_tier", f"Unknown tier {tier}. Known: {', '.join(TIERS)}.")
         if provider not in self.budgets.provider_ids(enabled_only=False):
             raise BadRequest("bad_provider", f"Unknown provider {provider}.")
+        opts = self.budgets.model_options(provider)
+        if not self.budgets.tier_allowed(provider, tier, opts):
+            raise BadRequest("bad_tier", f"Unknown model {tier}. Known: {', '.join(opts)}.")
 
     def create(self, req: s.RoutineCreate, by: str = "owner", status: str = "active", run_id: int | None = None) -> s.Routine:
         provider = req.provider or self.budgets.role("worker").provider

@@ -137,7 +137,7 @@ function GoKey() {
 
 /** Sign the assistant in: the server runs `claude auth login`, you open its link, sign in with
  * the Claude account the assistant should use, and paste back the code Claude shows. */
-function ClaudeLogin() {
+export function ClaudeLogin() {
   const start = useClaudeLoginStart()
   const finish = useClaudeLoginCode()
   const [code, setCode] = useState('')

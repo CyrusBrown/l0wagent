@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import type { S } from '../api/client'
 import { problem, useJobs, useProjects, useRun, useRuns, useStartRun, useStopRun, useTimeline } from '../api/queries'
-import { ago, clock, duration, pts, until } from '../components/format'
+import { ago, clock, duration, pts, stamp, until } from '../components/format'
 
 // Runs and one run, ported from the mockup's RUNS LIST and RUN screens. A run opens as its
 // summary; the status timeline card opens the full (detailed) timeline, with "← Back to summary".
@@ -64,7 +64,7 @@ export function Runs() {
                     <span className="ellipsis">{r.about ?? whyLabel(r)}</span>
                     <span className="sub">{whyLabel(r)}{r.why_detail ? ` · ${r.why_detail}` : ''}</span>
                   </div>
-                  <div className="run-when"><span>{ago(r.started_at)}</span><span>{duration(r.started_at, r.ended_at)}{r.status === 'running' ? ' so far' : ''}</span></div>
+                  <div className="run-when"><span>{stamp(r.started_at)}</span><span>{duration(r.started_at, r.ended_at)}{r.status === 'running' ? ' so far' : ''}</span></div>
                   <div className="run-spend">
                     <span>{pts(r.used)} / {pts(r.budget)} pts</span>
                     <div className="bar"><div style={{ width: `${Math.min(100, (r.used / (r.budget || 1)) * 100)}%` }} /></div>
@@ -184,7 +184,7 @@ function Summary({ d, open }: { d: S['RunDetail']; open: () => void }) {
             {timeline.data?.map((i) => {
               const tag = i.kind === 'ask' ? 'ask' : i.kind === 'control' || i.kind === 'model' || i.kind === 'reviewer' || i.kind === 'shelf' ? 'control' : i.kind === 'error' ? 'error' : 'note'
               return (
-                <div key={i.id} className={`tl-row ${tag}`}>
+                <div key={i.id} className={`tl-row tl-${tag}`}>
                   <span className="t">{clock(i.at)}</span><span className="d" /><span className="x">{i.text}</span><span className="tag">{tag}</span>
                 </div>
               )

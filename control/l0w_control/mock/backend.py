@@ -598,18 +598,19 @@ class MockBackend(Backend):
         return self.budget_overview()
 
     def providers(self) -> list[s.ProviderInfo]:
-        from ..budgets import GO_MODELS
+        from ..budgets import GO_DEFAULT_MODELS
         out = [s.ProviderInfo(id="claude-subscription", kind="claude-subscription", label="Claude subscription", enabled=True, status="Weekly usage 37% (read oauth)",
                               usage_source="oauth", has_credential=True)]
         if self.w.api_key:
             out.append(s.ProviderInfo(id="anthropic-api", kind="anthropic-api", label="Anthropic API", enabled=True, status="API key saved (write-only)",
                                       usage_source="ledger", has_credential=True))
         if getattr(self.w, "go_key", False):
-            models = {**{k: v["model"] for k, v in GO_MODELS.items()}, **getattr(self.w, "go_models", {})}
+            from ..catalog import KNOWN_VARIANTS
+            ids = getattr(self.w, "go_models", None) or list(GO_DEFAULT_MODELS)
             out.append(s.ProviderInfo(id="opencode-go", kind="opencode-go", label="opencode Go", enabled=True, runtime="opencode",
                                       status="Key saved (write-only); runs on opencode, each step's cost reported by opencode. Go's own limits apply too.",
                                       usage_source="ledger", has_credential=True,
-                                      models={k: s.TierModel(model=m, variants=next((v["variants"] for v in GO_MODELS.values() if v["model"] == m), [])) for k, m in models.items()}))
+                                      models=[s.ProviderModel(id=m, name=m.split("/", 1)[1], input=0.5, output=2.0, variants=KNOWN_VARIANTS.get(m, [])) for m in ids]))
         return out
 
     def add_api_provider(self, req: s.ApiProviderCreate) -> s.ProviderInfo:
@@ -625,8 +626,13 @@ class MockBackend(Backend):
 
     def patch_provider(self, provider: str, req: s.ProviderPatch) -> s.ProviderInfo:
         if req.models and provider == "opencode-go":
-            self.w.go_models = {**getattr(self.w, "go_models", {}), **req.models}
+            self.w.go_models = list(req.models)
         return next(p for p in self.providers() if p.id == provider)
+
+    def provider_catalog(self, provider: str, refresh: bool = False) -> list[s.ProviderModel]:
+        from ..catalog import KNOWN_VARIANTS
+        enabled = getattr(self.w, "go_models", None) or ["opencode-go/deepseek-v4.1-flash", "opencode-go/deepseek-v4-pro", "opencode-go/glm-5.3"]
+        return [s.ProviderModel(id=m, name=m.split("/", 1)[1], input=0.5, output=2.0, variants=v, enabled=m in enabled) for m, v in KNOWN_VARIANTS.items()]
 
     def delete_provider(self, provider: str) -> None:
         if provider == "opencode-go":
@@ -823,6 +829,18 @@ class MockBackend(Backend):
         if req.thread_id not in c.context_threads:
             self.w.chats[chat_id] = c.model_copy(update={"context_threads": [*c.context_threads, req.thread_id]})
         return self._chat(chat_id)
+
+    def upload_chat_file(self, name: str, data: bytes, mime: str | None) -> s.ChatFile:
+        files = self.w.__dict__.setdefault("chat_files", {})
+        fid = len(files) + 1
+        files[fid] = (data, name, mime or "application/octet-stream")
+        return s.ChatFile(id=fid, name=name, mime=mime or "application/octet-stream", size=len(data))
+
+    def chat_file(self, file_id: int) -> tuple[bytes, str, str]:
+        f = self.w.__dict__.get("chat_files", {}).get(file_id)
+        if not f:
+            raise NotFound(f"file {file_id}")
+        return f
 
     def secrets(self) -> list[s.SecretInfo]:
         return sorted(self.w.secrets.values(), key=lambda x: x.name)

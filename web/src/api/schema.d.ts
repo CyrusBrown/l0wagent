@@ -877,6 +877,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/providers/{provider}/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Provider Catalog
+         * @description opencode providers: every model the catalog offers (with tool use), prices, and which are enabled.
+         */
+        get: operations["provider_catalog_api_providers__provider__catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/providers/{provider}": {
         parameters: {
             query?: never;
@@ -1194,6 +1214,47 @@ export interface paths {
          * @description Pull a thread into the chat as read-only context.
          */
         post: operations["chat_pull_api_chats__chat_id__context_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Chat File
+         * @description A file for a 1:1 chat message (up to 25 MB). It stays in control, not the agent's storage;
+         *     send it with the message's upload_ids.
+         */
+        post: operations["upload_chat_file_api_chat_files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat-files/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Chat File
+         * @description Download a chat file (always as an attachment, never rendered on this origin).
+         */
+        get: operations["chat_file_api_chat_files__file_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1743,6 +1804,11 @@ export interface components {
             /** Idempotency Key */
             idempotency_key?: string | null;
         };
+        /** Body_upload_chat_file_api_chat_files_post */
+        Body_upload_chat_file_api_chat_files_post: {
+            /** File */
+            file: string;
+        };
         /** Boost */
         Boost: {
             /**
@@ -2065,6 +2131,12 @@ export interface components {
         ChatCreate: {
             /** Message */
             message: string;
+            /**
+             * Upload Ids
+             * @description Files from POST /api/chat-files to attach to the first message.
+             * @default []
+             */
+            upload_ids?: number[];
             /** Title */
             title?: string | null;
             /**
@@ -2082,6 +2154,20 @@ export interface components {
              * @description Client-generated key; repeating a create with the same key returns the first result.
              */
             idempotency_key?: string | null;
+        };
+        /**
+         * ChatFile
+         * @description A file attached to a chat message (kept in control, not the agent's storage).
+         */
+        ChatFile: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Mime */
+            mime: string;
+            /** Size */
+            size: number;
         };
         /**
          * ChatHandoff
@@ -2113,7 +2199,7 @@ export interface components {
             body: string;
             /**
              * Data
-             * @description assistant: {calls}; tool: {name, input, result, is_error}; card: {kind, ..., state}; system: {thread_id?}.
+             * @description owner: {files: [ChatFile]}; assistant: {calls}; tool: {name, input, result, is_error}; card: {kind, ..., state}; system: {thread_id?}.
              * @default {}
              */
             data?: {
@@ -2131,6 +2217,12 @@ export interface components {
         ChatMessageCreate: {
             /** Body */
             body: string;
+            /**
+             * Upload Ids
+             * @description Files from POST /api/chat-files.
+             * @default []
+             */
+            upload_ids?: number[];
             /**
              * Idempotency Key
              * @description Client-generated key; repeating a create with the same key returns the first result.
@@ -2951,6 +3043,12 @@ export interface components {
              * @description Why the caps stop new runs right now, if they do.
              */
             cap_reason?: string | null;
+            /**
+             * Model Options
+             * @description What the level's allowed models can list: Claude's tiers, or the provider's enabled models.
+             * @default []
+             */
+            model_options?: string[];
             /** Has Credential */
             has_credential: boolean;
         };
@@ -2984,11 +3082,41 @@ export interface components {
             runtime?: string;
             /**
              * Models
-             * @description opencode providers: the model behind each tier name (haiku, sonnet, opus).
+             * @description opencode providers: the models the assistant may use, in order.
              */
-            models?: {
-                [key: string]: components["schemas"]["TierModel"];
-            } | null;
+            models?: components["schemas"]["ProviderModel"][] | null;
+        };
+        /**
+         * ProviderModel
+         * @description A model an opencode provider offers (from its catalog), with catalog prices in $ per million tokens.
+         */
+        ProviderModel: {
+            /**
+             * Id
+             * @description provider/model, e.g. opencode-go/glm-5.3. Roles name it with an effort: opencode-go/glm-5.3/high.
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Input
+             * @description $ per million input tokens; null when unknown.
+             */
+            input?: number | null;
+            /** Output */
+            output?: number | null;
+            /**
+             * Variants
+             * @description Its reasoning efforts, where known; an effort maps to the closest. Empty: the model decides.
+             * @default []
+             */
+            variants?: string[];
+            /**
+             * Enabled
+             * @description The assistant may use it.
+             * @default true
+             */
+            enabled?: boolean;
         };
         /** ProviderPatch */
         ProviderPatch: {
@@ -2998,11 +3126,9 @@ export interface components {
             label?: string | null;
             /**
              * Models
-             * @description opencode providers: tier name → provider/model.
+             * @description opencode providers: the model ids the assistant may use, in order.
              */
-            models?: {
-                [key: string]: string;
-            } | null;
+            models?: string[] | null;
         };
         /** PushKey */
         PushKey: {
@@ -3945,19 +4071,6 @@ export interface components {
             id: number;
             /** Title */
             title: string;
-        };
-        /** TierModel */
-        TierModel: {
-            /**
-             * Model
-             * @description opencode's provider/model id, e.g. opencode-go/glm-5.3.
-             */
-            model: string;
-            /**
-             * Variants
-             * @description The model's reasoning variants, where known; a tier's effort maps to the closest.
-             */
-            variants: string[];
         };
         /** TimelineItem */
         TimelineItem: {
@@ -6045,6 +6158,39 @@ export interface operations {
             };
         };
     };
+    provider_catalog_api_providers__provider__catalog_get: {
+        parameters: {
+            query?: {
+                refresh?: boolean;
+            };
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderModel"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_provider_api_providers__provider__delete: {
         parameters: {
             query?: never;
@@ -6876,6 +7022,68 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Chat"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_chat_file_api_chat_files_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_chat_file_api_chat_files_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatFile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_file_api_chat_files__file_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

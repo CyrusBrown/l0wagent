@@ -3112,6 +3112,71 @@
         ]
       }
     },
+    "/api/providers/{provider}/catalog": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Provider Catalog",
+        "description": "opencode providers: every model the catalog offers (with tool use), prices, and which are enabled.",
+        "operationId": "provider_catalog_api_providers__provider__catalog_get",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "refresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Refresh"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProviderModel"
+                  },
+                  "title": "Response Provider Catalog Api Providers  Provider  Catalog Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/providers/{provider}": {
       "patch": {
         "tags": [
@@ -4481,6 +4546,100 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat-files": {
+      "post": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Upload Chat File",
+        "description": "A file for a 1:1 chat message (up to 25 MB). It stays in control, not the agent's storage;\nsend it with the message's upload_ids.",
+        "operationId": "upload_chat_file_api_chat_files_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_chat_file_api_chat_files_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatFile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/chat-files/{file_id}": {
+      "get": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Chat File",
+        "description": "Download a chat file (always as an attachment, never rendered on this origin).",
+        "operationId": "chat_file_api_chat_files__file_id__get",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -6055,6 +6214,20 @@
         ],
         "title": "Body_upload_api_uploads_post"
       },
+      "Body_upload_chat_file_api_chat_files_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_chat_file_api_chat_files_post"
+      },
       "Boost": {
         "properties": {
           "level": {
@@ -6818,6 +6991,15 @@
             "minLength": 1,
             "title": "Message"
           },
+          "upload_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Upload Ids",
+            "description": "Files from POST /api/chat-files to attach to the first message.",
+            "default": []
+          },
           "title": {
             "anyOf": [
               {
@@ -6874,6 +7056,36 @@
           "message"
         ],
         "title": "ChatCreate"
+      },
+      "ChatFile": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "mime": {
+            "type": "string",
+            "title": "Mime"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "mime",
+          "size"
+        ],
+        "title": "ChatFile",
+        "description": "A file attached to a chat message (kept in control, not the agent's storage)."
       },
       "ChatHandoff": {
         "properties": {
@@ -6948,7 +7160,7 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Data",
-            "description": "assistant: {calls}; tool: {name, input, result, is_error}; card: {kind, ..., state}; system: {thread_id?}.",
+            "description": "owner: {files: [ChatFile]}; assistant: {calls}; tool: {name, input, result, is_error}; card: {kind, ..., state}; system: {thread_id?}.",
             "default": {}
           },
           "model": {
@@ -6986,6 +7198,15 @@
             "maxLength": 100000,
             "minLength": 1,
             "title": "Body"
+          },
+          "upload_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Upload Ids",
+            "description": "Files from POST /api/chat-files.",
+            "default": []
           },
           "idempotency_key": {
             "anyOf": [
@@ -9169,6 +9390,15 @@
             "title": "Cap Reason",
             "description": "Why the caps stop new runs right now, if they do."
           },
+          "model_options": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Model Options",
+            "description": "What the level's allowed models can list: Claude's tiers, or the provider's enabled models.",
+            "default": []
+          },
           "has_credential": {
             "type": "boolean",
             "title": "Has Credential"
@@ -9247,17 +9477,17 @@
           "models": {
             "anyOf": [
               {
-                "additionalProperties": {
-                  "$ref": "#/components/schemas/TierModel"
+                "items": {
+                  "$ref": "#/components/schemas/ProviderModel"
                 },
-                "type": "object"
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
             "title": "Models",
-            "description": "opencode providers: the model behind each tier name (haiku, sonnet, opus)."
+            "description": "opencode providers: the models the assistant may use, in order."
           }
         },
         "additionalProperties": false,
@@ -9272,6 +9502,65 @@
           "has_credential"
         ],
         "title": "ProviderInfo"
+      },
+      "ProviderModel": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "provider/model, e.g. opencode-go/glm-5.3. Roles name it with an effort: opencode-go/glm-5.3/high."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "input": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input",
+            "description": "$ per million input tokens; null when unknown."
+          },
+          "output": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output"
+          },
+          "variants": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Variants",
+            "description": "Its reasoning efforts, where known; an effort maps to the closest. Empty: the model decides.",
+            "default": []
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "The assistant may use it.",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ProviderModel",
+        "description": "A model an opencode provider offers (from its catalog), with catalog prices in $ per million tokens."
       },
       "ProviderPatch": {
         "properties": {
@@ -9300,17 +9589,17 @@
           "models": {
             "anyOf": [
               {
-                "additionalProperties": {
+                "items": {
                   "type": "string"
                 },
-                "type": "object"
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
             "title": "Models",
-            "description": "opencode providers: tier name → provider/model."
+            "description": "opencode providers: the model ids the assistant may use, in order."
           }
         },
         "additionalProperties": false,
@@ -11902,30 +12191,6 @@
           "title"
         ],
         "title": "ThreadRef"
-      },
-      "TierModel": {
-        "properties": {
-          "model": {
-            "type": "string",
-            "title": "Model",
-            "description": "opencode's provider/model id, e.g. opencode-go/glm-5.3."
-          },
-          "variants": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Variants",
-            "description": "The model's reasoning variants, where known; a tier's effort maps to the closest."
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "model",
-          "variants"
-        ],
-        "title": "TierModel"
       },
       "TimelineItem": {
         "properties": {

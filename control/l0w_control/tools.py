@@ -241,6 +241,65 @@ def propose_egress_rule(ctx: Ctx, a: dict) -> str:
     return _card(ctx, "egress", host=host, action=action, reason=_str(a, "reason", required=False, max_len=500))
 
 
+# ── help and settings ─────────────────────────────────────────────────────
+GUIDE = __import__("pathlib").Path(__file__).parent / "guide"
+
+
+def help_(ctx: Ctx, a: dict) -> str:
+    """The built-in user guide: list topics, read one, or search."""
+    topics = {p.stem: p.read_text() for p in sorted(GUIDE.glob("*.md"))}
+    topic, query = _str(a, "topic", required=False, max_len=60), _str(a, "query", required=False, max_len=200)
+    if topic:
+        if topic not in topics:
+            return f"No topic {topic}. Topics: {', '.join(topics)}."
+        return topics[topic]
+    if not query:
+        return "Topics (read one with topic=…, or search with query=…):\n" + "\n".join(f"- {k}: {v.splitlines()[0].lstrip('# ')}" for k, v in topics.items())
+    words = [w for w in query.lower().split() if len(w) > 2]
+    hits = []
+    for k, text in topics.items():
+        for para in text.split("\n\n"):
+            score = sum(para.lower().count(w) for w in words)
+            if score:
+                hits.append((score, k, para.strip()))
+    hits.sort(key=lambda h: -h[0])
+    return "\n\n".join(f"[{k}] {para}" for _, k, para in hits[:6]) or f"Nothing in the guide matches “{query}”. Topics: {', '.join(topics)}."
+
+
+def read_settings(ctx: Ctx, a: dict) -> str:
+    from .chat_settings import snapshot
+
+    return _j(snapshot(ctx.be))
+
+
+def propose_settings(ctx: Ctx, a: dict) -> str:
+    from .chat_settings import describe
+
+    changes = describe(ctx.be, a.get("changes"))
+    return _card(ctx, "settings", changes=changes, reason=_str(a, "reason", required=False, max_len=500))
+
+
+def propose_handoff(ctx: Ctx, a: dict) -> str:
+    target = _str(a, "target", max_len=20)
+    mode = _str(a, "mode", max_len=20)
+    if target not in ("new_thread", "existing_thread", "new_project"):
+        raise BadRequest("bad_input", "target is new_thread, existing_thread or new_project")
+    if mode not in ("transcript", "message"):
+        raise BadRequest("bad_input", "mode is transcript (the whole chat goes along) or message (only your hand-off message)")
+    message = _str(a, "message", max_len=20_000)
+    card: dict[str, Any] = {"target": target, "mode": mode, "message": message}
+    if target == "existing_thread":
+        t = ctx.be.thread(_int(a, "thread_id"))
+        card.update(thread_id=t.id, thread_title=t.title)
+    else:
+        card["title"] = _str(a, "title", max_len=200)
+        if target == "new_project":
+            card["project_name"] = _str(a, "project_name", max_len=120)
+        elif a.get("project"):
+            card["project"] = ctx.be.project(_str(a, "project", max_len=100)).slug
+    return _card(ctx, "handoff", **card)
+
+
 P = {"type": "string"}
 N = {"type": "integer"}
 TOOLS: list[Tool] = [
@@ -274,6 +333,26 @@ TOOLS: list[Tool] = [
          propose_wakeup, "proposed a wakeup"),
     Tool("propose_level", "card", "Propose a different budget level (dormant, frugal, steady, busy, max); the owner decides.",
          {"level": P, "reason": P}, ("level",), propose_level, "proposed a level"),
+    Tool("help", "read", "The built-in user guide to l0wagent: the web app's screens, how the assistant works, budgets, providers and models, "
+         "chats, files and tools. No arguments lists the topics; topic=… reads one; query=… searches. Use it before explaining how something works.",
+         {"topic": P, "query": P}, (), help_, "read the guide"),
+    Tool("read_settings", "read", "The owner's settings: budgets per provider (level, limits, what they customized, period, caps, reply budget), "
+         "level presets, the reserve, providers and their models, roles, the reviewer, standing instructions, notification choices. No secrets or keys.",
+         {}, (), read_settings, "read the settings"),
+    Tool("propose_settings", "card", "Propose settings changes; the owner sees each one (before → after) on a card and approves or declines. "
+         "changes: [{setting, value, provider?}] with setting one of: level, allowance, allowed_hours, max_per_day, min_gap_minutes, max_wakeup, "
+         "tiers, fallback, sweep (a level's limits; null resets one), reply_pts, fallback_pts, period (week|month), reset_day, caps ({five_hour, week} "
+         "shares), models (an opencode provider's enabled model ids, in order), role.<worker|reviewer|replier|chat|utility> ({provider, tier}), "
+         "reviewer.<mode|provider|tier|interval_minutes|budget_share|change_tier>, reserve_weekly_pct, reserve_five_hour_pct, instructions "
+         "(full text), notifications.<event> (true/false), notifications.quiet ({start, end} HH:MM or null). provider defaults to the worker's. "
+         "Read the settings first and explain the trade-off.",
+         {"changes": {"type": "array", "items": {"type": "object"}}, "reason": P}, ("changes",), propose_settings, "proposed settings"),
+    Tool("propose_handoff", "card", "Propose handing this chat's work to the assistant (the owner approves). target: new_thread (title, optional "
+         "project slug), new_project (project_name and the first thread's title) or existing_thread (thread_id). mode: transcript (the whole chat "
+         "is attached, with your message on top) or message (only your hand-off message: self-contained, with what to do and what's known). "
+         "Suggest it when the work needs the assistant's computer, time, or memory.",
+         {"target": P, "mode": P, "message": P, "title": P, "project": P, "project_name": P, "thread_id": N}, ("target", "mode", "message"),
+         propose_handoff, "proposed a hand-off"),
     Tool("propose_egress_rule", "card", "Propose allowing (or blocking) a host for the assistant's internet access; the owner decides.",
          {"host": P, "action": P, "reason": P}, ("host",), propose_egress_rule, "proposed a network rule"),
 ]

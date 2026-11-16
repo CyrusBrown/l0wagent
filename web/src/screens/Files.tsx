@@ -3,7 +3,9 @@ import { Link, useSearchParams } from 'react-router'
 import type { S } from '../api/client'
 import { problem, uploadFile, useAddToShelf, useFileDiff, useFileHistory, useListing, useProjects } from '../api/queries'
 import { ago, bytes } from '../components/format'
+import { copyText } from '../components/clipboard'
 import { kindOf, Preview, rawUrl } from '../components/Preview'
+import { Caret } from '../components/Caret'
 
 type Volume = S['Listing']['volume']
 const ROOTS: [Volume | 'shared', string, string][] = [
@@ -78,7 +80,7 @@ function Tree({ volume, dir, depth, current, file, onOpen }: { volume: Volume; d
               if (e.symlink) return
               if (e.dir) { setOpen({ ...open, [p]: !isOpen }); onOpen(p, null) } else onOpen(dir, e.name)
             }}>
-            <span className="caret">{e.dir ? (isOpen ? '▾' : '▸') : ''}</span>
+            <Caret open={isOpen} hidden={!e.dir} />
             <span className="grow" style={{ fontWeight: e.dir ? 500 : 400, color: e.symlink ? 'var(--faint)' : undefined }}>{e.name}{e.symlink ? ' ↗' : ''}</span>
             {!e.dir && <span className="ext-hint">{e.name.includes('.') ? e.name.split('.').pop() : ''}</span>}
           </button>
@@ -155,6 +157,7 @@ function FileActions({ volume, path, git, rev, setRev }: { volume: Volume; path:
     <div className="btns" style={{ position: 'relative' }}>
       {git && <button className={`btn ${menu === 'history' ? 'pressed' : ''}`} onClick={() => setMenu(menu === 'history' ? null : 'history')}>History ▾</button>}
       <button className={`btn ${menu === 'shelf' ? 'pressed' : ''}`} onClick={() => setMenu(menu === 'shelf' ? null : 'shelf')}>Add to shelf ▾</button>
+      <CopyButton volume={volume} path={path} />
       <a className="btn" href={rawUrl({ kind: 'file', volume, path }, true)}>Download</a>
       {menu && <div className="menu-scrim" onClick={() => setMenu(null)} />}
       {menu === 'history' && (
@@ -172,6 +175,37 @@ function FileActions({ volume, path, git, rev, setRev }: { volume: Volume; path:
         </div>
       )}
       {menu === 'shelf' && <ShelfMenu volume={volume} path={path} done={() => setMenu(null)} />}
+    </div>
+  )
+}
+
+/** Copy the file's text (for text files) or its path; the menu says which was copied. */
+function CopyButton({ volume, path }: { volume: Volume; path: string }) {
+  const [open, setOpen] = useState(false)
+  const [done, setDone] = useState<string | null>(null)
+  const textual = kindOf(path) !== 'binary' && !['image', 'pdf', 'audio', 'video', 'model'].includes(kindOf(path))
+  const full = `/${volume}/${path}`.replace(/\/+/g, '/')
+  const flash = (msg: string) => { setDone(msg); setOpen(false); setTimeout(() => setDone(null), 1600) }
+  const copy = async (what: 'contents' | 'path') => {
+    if (what === 'path') return flash((await copyText(full)) ? 'Path copied' : 'Couldn\'t copy')
+    try {
+      const r = await fetch(rawUrl({ kind: 'file', volume, path }), { credentials: 'include' })
+      if (!r.ok) throw new Error(String(r.status))
+      flash((await copyText(await r.text())) ? 'Copied' : 'Couldn\'t copy')
+    } catch { flash('Couldn\'t copy') }
+  }
+  return (
+    <div style={{ position: 'relative' }}>
+      <button className={`btn ${open ? 'pressed' : ''}`} onClick={() => (textual ? setOpen(!open) : copy('path'))} aria-label="Copy">
+        {done ?? (textual ? 'Copy ▾' : 'Copy path')}
+      </button>
+      {open && <>
+        <div className="menu-scrim" onClick={() => setOpen(false)} />
+        <div className="menu" style={{ left: 0, right: 'auto' }}>
+          <button onClick={() => copy('contents')}>Copy contents</button>
+          <button onClick={() => copy('path')}>Copy path <span className="sub mono">{full}</span></button>
+        </div>
+      </>}
     </div>
   )
 }

@@ -168,7 +168,7 @@ class Scheduler:
             at = self._night_slot(eff.limits.allowed_hours, now)
             if not at:
                 continue
-            self._insert(pid, at, budget, self.budgets.role("worker").tier if self.budgets.role("worker").tier in eff.limits.tiers else (eff.limits.tiers or ["sonnet/medium"])[0],
+            self._insert(pid, at, budget, self._worker_tier(pid, eff, 0),
                          "Fallback: nothing was planned for the next two nights", "fallback", "control")
             self._note(f"Nothing was planned for the next two nights, so control planned a fallback wakeup at {self.budgets.local(at):%a %H:%M}. "
                        "Plan your own wakeups with `assistant wake at …` (see `assistant budget`).")
@@ -219,8 +219,15 @@ class Scheduler:
         if not at or at >= win[1]:
             return
         room = (ceiling - u.seven_day_pct) * 10
-        tier = self.budgets.role("worker").tier if self.budgets.role("worker").tier in eff.limits.tiers else (eff.limits.tiers or ["sonnet/medium"])[-1]
+        tier = self._worker_tier(pid, eff, -1)
         self._insert(pid, at, room, tier, f"Sweep: {room:.0f} pts you didn't use this week, before it resets at {self.budgets.local(win[1]):%a %H:%M}", "sweep", "control")
+
+    def _worker_tier(self, pid: str, eff, pick: int) -> str:
+        """The worker role's tier if this level allows it, else the first (or last) allowed one."""
+        tier = self.budgets.role("worker").tier
+        if self.budgets.tier_allowed(pid, tier, eff.limits.tiers):
+            return tier
+        return (eff.limits.tiers or ["sonnet/medium"])[pick]
 
     # ── starting due wakeups ───────────────────────────────────────────────
     async def start_due(self, now: datetime) -> None:

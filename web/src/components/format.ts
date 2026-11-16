@@ -20,7 +20,7 @@ export function until(iso: string, now = Date.now()): string {
   return new Date(iso).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })
 }
 
-export const clock = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+export const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })  // 24-hour, as in the mockup
 
 export function duration(startIso: string, endIso?: string | null): string {
   const m = Math.round(((endIso ? new Date(endIso).getTime() : Date.now()) - new Date(startIso).getTime()) / 60000)
@@ -58,4 +58,15 @@ export function routeFor(link: string): string | null {
     }
     default: return null
   }
+}
+
+/** The mockup's timestamps: "Today 02:00", "Sun 06:00" within the week, else "Nov 9 23:00". */
+export function stamp(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const t = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+  const today = new Date()
+  if (d.toDateString() === today.toDateString()) return `Today ${t}`
+  if (Math.abs(today.getTime() - d.getTime()) < 6.5 * 86400_000) return `${d.toLocaleDateString(undefined, { weekday: 'short' })} ${t}`
+  return `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${t}`
 }

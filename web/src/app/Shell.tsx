@@ -7,9 +7,9 @@ import { pts, until, usageText } from '../components/format'
 import { useOnline } from '../components/online'
 import { useOutbox } from '../api/offline'
 import { Palette } from './Palette'
-import { useTheme } from './theme'
+import { Caret } from '../components/Caret'
 
-const CONVERSATION = /^\/(t|c|p|projects|new)(\/|$)/
+const CONVERSATION = /^\/(t|c|p|projects|general|new)(\/|$)/
 
 export function Shell() {
   const live = useLive(true)
@@ -54,14 +54,16 @@ export function Shell() {
 
 function Header({ onSearch, moreOpen, setMoreOpen }: { onSearch: () => void; moreOpen: boolean; setMoreOpen: (b: boolean) => void }) {
   const counts = useInboxCounts()
-  const { theme, toggle } = useTheme()
   const loc = useLocation()
   const convActive = CONVERSATION.test(loc.pathname)
   const more = [['/calendar', 'Calendar', 'Wakeups, routines, protected hours'], ['/network', 'Network', 'Request log and egress rules'], ['/web', 'Web page', "The assistant's web port"]]
   const moreCur = more.find(([to]) => loc.pathname.startsWith(to))
   return (
     <header className="header">
-      <Link to="/" className="logo" title="Home">l0wagent</Link>
+      <NavLink to="/" end className={({ isActive }) => `logo ${isActive ? 'active' : ''}`} title="Home">
+        <span>l0wagent</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 10.5 12 3.5l8.5 7V20a1 1 0 0 1-1 1H15v-6.5H9V21H4.5a1 1 0 0 1-1-1z" /></svg>
+      </NavLink>
       <Link to="/new" className="new-btn" title="New chat or thread (N)" style={{ textDecoration: 'none' }}>+</Link>
       <span className="vsep" />
       <nav className="nav">
@@ -87,9 +89,8 @@ function Header({ onSearch, moreOpen, setMoreOpen }: { onSearch: () => void; mor
         </div>
       </nav>
       <div className="spacer" />
-      <button className="search-btn" onClick={onSearch} title="Search (⌘K)"><span>Search…</span><kbd>⌘K</kbd></button>
+      <button className="search-btn" onClick={onSearch} title="Search (⌘K)"><span>Search</span><kbd>⌘K</kbd></button>
       <StatusChip />
-      <button className="icon-btn" onClick={toggle} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>{theme === 'dark' ? '☀' : '☾'}</button>
       <NavLink to="/settings" className={({ isActive }) => `icon-btn ${isActive ? 'active' : ''}`} title="Settings">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="17" x2="20" y2="17" /><circle cx="9" cy="7" r="2.4" fill="var(--side)" /><circle cx="15" cy="17" r="2.4" fill="var(--side)" /></svg>
       </NavLink>
@@ -132,8 +133,8 @@ function Sidebar() {
   const currentProject = (threads.data ?? []).find((t) => t.id === currentId)?.project
   return (
     <aside className="side">
-      <div className="side-label">General</div>
-      {general.map((t) => <ThreadLink key={t.id} t={t} indent={false} />)}
+      <div className="side-label"><Link to="/general" className="side-head">General</Link><Link to="/new" title="New thread in General">+</Link></div>
+      <GeneralThreads threads={general} currentId={currentId} />
       <div className="side-label">Projects <Link to="/projects" className="sub">All</Link></div>
       {active.map((p) => {
         const isOpen = open[p.slug] ?? (currentProject === p.slug || loc.pathname === `/p/${p.slug}`)
@@ -142,7 +143,7 @@ function Sidebar() {
           <div key={p.slug}>
             <div style={{ display: 'flex' }}>
               <button className="row" onClick={() => setOpen({ ...open, [p.slug]: !isOpen })} aria-expanded={isOpen}>
-                <span className="caret">{isOpen ? '▾' : '▸'}</span>
+                <Caret open={isOpen} />
                 <span className="grow">{p.name}</span>
                 {p.unread > 0 && <span className="badge">{p.unread}</span>}
               </button>
@@ -155,6 +156,19 @@ function Sidebar() {
       <ChatList />
     </aside>
   )
+}
+
+/** Threads outside any project: the most recent few (plus the open one and any unread); the rest on the General screen. */
+const GENERAL_SHOWN = 3
+function GeneralThreads({ threads, currentId }: { threads: S['Thread'][]; currentId: number }) {
+  const sorted = [...threads].sort((a, b) => Number(b.pinned) - Number(a.pinned) || Date.parse(b.last_activity_at) - Date.parse(a.last_activity_at))
+  const shown = sorted.filter((t, i) => i < GENERAL_SHOWN || t.id === currentId || t.unread > 0)
+  const hidden = sorted.length - shown.length
+  return <>
+    {shown.map((t) => <ThreadLink key={t.id} t={t} indent={false} />)}
+    {!sorted.length && <div className="sub" style={{ padding: '2px 10px' }}>No threads yet.</div>}
+    {hidden > 0 && <Link to="/general" className="side-more" title={`See all ${sorted.length} General threads`} aria-label={`See all ${sorted.length} General threads`}>···</Link>}
+  </>
 }
 
 /** The mockup's Chats list under the assistant's tree: grouped by day, newest first. */
@@ -213,12 +227,12 @@ function UpdateBanner() {
   return (
     <div className="banner" role="status">
       <span style={{ fontWeight: 500 }}>l0wagent {u.latest} is available</span>
-      {summary && <span className="ellipsis" style={{ minWidth: 0 }}>{summary}</span>}
+      {summary && <span className="ellipsis muted-text" style={{ minWidth: 0 }}>{summary}</span>}
       {u.url && <a href={u.url} target="_blank" rel="noreferrer">Release notes</a>}
       <span style={{ flex: 1 }} />
       {how
         ? <span>On the server, in the l0wagent folder: <code>./l0w update</code> (it waits for the current run)</span>
-        : <button className="btn small" onClick={() => setHow(true)}>Update after the current run</button>}
+        : <button className="btn" onClick={() => setHow(true)}>Update after the current run</button>}
       <button className="x" aria-label="Dismiss" onClick={() => { try { localStorage.setItem(key, '1') } catch { /* private mode */ } setHidden(true) }}>✕</button>
     </div>
   )

@@ -185,6 +185,15 @@ export async function uploadFile(file: File, project: string | null): Promise<S[
   return body as S['Upload']
 }
 
+export async function uploadChatFile(file: File): Promise<S['ChatFile']> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await globalThis.fetch('/api/chat-files', { method: 'POST', body: form, credentials: 'include', headers: CLIENT_HEADERS })
+  const body = await res.json().catch(() => null)
+  if (!res.ok) throw new ApiError(res.status, body)
+  return body as S['ChatFile']
+}
+
 export const useSecrets = () => useQuery({ queryKey: ['secrets'], queryFn: () => ok(api.GET('/api/secrets')) })
 export const useSetSecret = () =>
   useInvalidating((a: { name: string } & S['SecretSet']) => ok(api.PUT('/api/secrets/{name}', { params: { path: { name: a.name } }, body: { value: a.value, description: a.description } })), [['secrets']])
@@ -221,6 +230,8 @@ export const useClearBoost = () =>
   useInvalidating((provider: string = P) => ok(api.DELETE('/api/budget/{provider}/boost', { params: { path: { provider } } })), budgetKeys)
 export const usePatchReserve = () => useInvalidating((b: S['ReserveSettings']) => ok(api.PATCH('/api/budget', { body: b })), budgetKeys)
 
+export const useProviderCatalog = (id: string, enabled = true) =>
+  useQuery({ queryKey: ['budget', 'catalog', id], queryFn: () => ok(api.GET('/api/providers/{provider}/catalog', { params: { path: { provider: id } } })), enabled, staleTime: 3600_000 })
 export const useProviders = () => useQuery({ queryKey: ['budget', 'providers'], queryFn: () => ok(api.GET('/api/providers')) })
 export const useAddApiProvider = () => useInvalidating((b: S['ApiProviderCreate']) => ok(api.POST('/api/providers', { body: b })), budgetKeys)
 export const usePatchProvider = () =>
@@ -292,7 +303,10 @@ export const useChatMessages = (id: number) =>
 const chatKeys = [['chats'], ['chat']]
 export const useCreateChat = () => useInvalidating((b: S['ChatCreate']) => ok(api.POST('/api/chats', { body: { ...b, idempotency_key: b.idempotency_key ?? newKey() } })), chatKeys)
 export const useSendChat = (id: number) =>
-  useInvalidating((body: string) => ok(api.POST('/api/chats/{chat_id}/messages', { params: { path: { chat_id: id } }, body: { body, idempotency_key: newKey() } })), chatKeys)
+  useInvalidating((m: string | { body: string; upload_ids: number[] }) => {
+    const { body, upload_ids = [] } = typeof m === 'string' ? { body: m } : m
+    return ok(api.POST('/api/chats/{chat_id}/messages', { params: { path: { chat_id: id } }, body: { body, upload_ids, idempotency_key: newKey() } }))
+  }, chatKeys)
 export const usePatchChat = (id: number) => useInvalidating((b: S['ChatPatch']) => ok(api.PATCH('/api/chats/{chat_id}', { params: { path: { chat_id: id } }, body: b })), chatKeys)
 export const useStopChat = (id: number) => useInvalidating(() => ok(api.POST('/api/chats/{chat_id}/stop', { params: { path: { chat_id: id } } })), chatKeys)
 export const useDecideChatCard = (id: number) =>

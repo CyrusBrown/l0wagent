@@ -24,7 +24,7 @@ const TABS: [slug: string, label: string, later?: string][] = [
 ]
 
 export function Settings() {
-  const tab = useParams().tab ?? 'appearance'
+  const tab = useParams().tab ?? 'budgets'  // the mockup opens Settings on Budgets & levels
   const cur = TABS.find(([slug]) => slug === tab) ?? TABS[0]
   return (
     <div className="settings">
