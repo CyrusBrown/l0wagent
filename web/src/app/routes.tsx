@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useState } from 'react'
 import type { RouteObject } from 'react-router'
 import { ApiError } from '../api/client'
 import { useMe, useMeta } from '../api/queries'
+import { Calendar } from '../screens/Calendar'
 import { Files } from '../screens/Files'
 import { Home } from '../screens/Home'
 import { Inbox } from '../screens/Inbox'
@@ -13,6 +14,7 @@ import { Settings } from '../screens/Settings'
 import { Setup } from '../screens/Setup'
 import { Thread } from '../screens/Thread'
 import { Tools } from '../screens/Tools'
+import { WebPage } from '../screens/WebPage'
 import { Shell } from './Shell'
 
 /** The setup wizard on a fresh server (kept open until its last step), then the login
@@ -43,10 +45,10 @@ export const routes: RouteObject[] = [
       { path: 'runs', element: <Runs /> },
       { path: 'runs/:id', element: <Run /> },
       { path: 'files', element: <Files /> },
-      { path: 'calendar', element: <NotPorted name="Calendar" milestone="M4" /> },
+      { path: 'calendar', element: <Calendar /> },
       { path: 'tools', element: <Tools /> },
       { path: 'network', element: <NotPorted name="Network" milestone="M6" /> },
-      { path: 'web', element: <NotPorted name="The assistant's web page" milestone="M3" /> },
+      { path: 'web', element: <WebPage /> },
       { path: 'settings', element: <Settings /> },
       { path: 'settings/:tab', element: <Settings /> },
       { path: '*', element: <NotPorted name="Not found" /> },

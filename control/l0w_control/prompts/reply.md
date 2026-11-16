@@ -1,11 +1,12 @@
-
+<!-- Control-owned. The Reply-now section of a brief. Archive old text before editing. -->
 
 ## Reply now: thread #{thread_id} “{title}” ({project})
 
-The owner asked for a reply now. Read the thread below, answer in it with
-`assistant send --thread {thread_id} "…"`, and keep it short: this run is for replying.
-If the request needs real work, say so and claim the thread (`assistant claim {thread_id} "plan"`)
-so it's picked up later. Your run is held open a few minutes after you finish if you
-asked or messaged something, and resumes if the owner answers.
+The owner asked for a reply now. This run spends the reply budget ({budget} pts at most): read the
+thread below and answer in it with `assistant send --thread {thread_id} "…"`. Keep it to a reply.
+If the request needs real work, either ask to promote this run (`assistant promote --budget N
+--reason "…"`, then `assistant wait` for the decision) or say so, claim the thread
+(`assistant claim {thread_id} "plan"`) and plan a wakeup for it. The run is held open a few minutes
+after you finish if you asked or messaged something, and resumes if the owner answers.
 
 ### The thread so far

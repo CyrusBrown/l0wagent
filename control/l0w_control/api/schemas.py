@@ -316,7 +316,7 @@ class QuestionAnswer(Model):
 
 
 class PermissionAction(Model):
-    kind: Literal["egress_rule", "secret", "setting"]
+    kind: Literal["egress_rule", "secret", "setting", "routine"]
     summary: str
     payload: dict[str, Any]
 
@@ -543,10 +543,17 @@ class Run(Model):
     started_at: datetime
     ended_at: datetime | None
     projects: list[str]
+    bucket: Literal["allowance", "reply", "sweep"] = Field(
+        "allowance", description="Which budget it spends: the allowance, the reply budget, or (sweep) what the owner left unused before the reset.")
+    level: str | None = None
+    reviewer_mode: Literal["off", "advisor", "monitor", "gate"] = "off"
+    wakeup_id: int | None = None
+    routine_id: int | None = None
+    end_reason: str | None = None
 
 
 class RunStart(Model):
-    budget: float | None = None
+    budget: float | None = Field(None, description="Points; default MANUAL_RUN_PTS.")
     tier: str | None = None
     reason: str = "manual"
 
@@ -594,11 +601,268 @@ class Job(Model):
     run_id: int | None
     label: str
     progress: str | None
+    note: str | None = None
     expected_end: datetime | None
     dont_interrupt: bool
     status: Literal["running", "done", "failed", "lost"]
     started_at: datetime
     log_tail: str
+
+
+# ── Budgets, providers, roles, the reviewer ────────────────────────────────
+LevelName = Literal["dormant", "frugal", "steady", "busy", "max"]
+
+
+class AllowedWindow(Model):
+    days: list[int] = Field(description="Days the window starts on, Monday = 0.")
+    start: str = Field(description="HH:MM, the owner's time zone.")
+    end: str = Field(description="HH:MM; at or before start means it runs past midnight (00:00–00:00 = all day).")
+
+
+class BudgetLimits(Model):
+    allowance: float = Field(description="Points a week the assistant may plan with.")
+    allowed_hours: list[AllowedWindow]
+    max_per_day: int
+    min_gap_minutes: int
+    max_wakeup: float = Field(description="Most points one wakeup may have.")
+    tiers: list[str] = Field(description="Models/efforts the worker may use, e.g. 'sonnet/medium'.")
+    sweep: bool
+    fallback: bool
+
+
+class BudgetLimitsPatch(Model):
+    """Overrides on top of the level's limits; null removes an override."""
+
+    allowance: float | None = None
+    allowed_hours: list[AllowedWindow] | None = None
+    max_per_day: int | None = None
+    min_gap_minutes: int | None = None
+    max_wakeup: float | None = None
+    tiers: list[str] | None = None
+    sweep: bool | None = None
+    fallback: bool | None = None
+
+
+class Boost(Model):
+    level: LevelName
+    until: datetime
+
+
+class ProviderBudget(Model):
+    provider: str
+    kind: str
+    label: str
+    enabled: bool
+    unit: str = Field(description="'pts': 0.1% of a Claude subscription's week, or $0.10 on an API key.")
+    level: LevelName = Field(description="The owner's level.")
+    effective_level: LevelName = Field(description="The level in force (a Boost's while one runs).")
+    boost: Boost | None
+    limits: BudgetLimits = Field(description="Effective limits: the level's, with the owner's overrides.")
+    custom: list[str] = Field(description="Limits the owner overrode.")
+    allowance: float
+    left: float = Field(description="Allowance left this week, capped by the room below the owner's weekly reserve.")
+    used_by_assistant: float
+    used_by_owner: float = Field(description="The owner's own use outside l0wagent (subscription: the weekly meter minus the rest).")
+    used_by_chat: float
+    room_below_reserve: float | None = Field(description="Subscription: points left before the weekly reserve.")
+    reply_allowance: float
+    reply_left: float
+    scheduled: float = Field(description="Points in planned wakeups for the rest of this week.")
+    week_start: datetime
+    resets_at: datetime
+    pace: str
+    native: str = Field(description="The provider's own unit, e.g. '46% of the week used' or '$3.10 this week'.")
+    pts_per_usd: float = Field(description="Subscription: the learned calibration from API-priced tokens to points.")
+    fallback_pts: float
+    has_credential: bool
+
+
+class LevelPreset(Model):
+    name: LevelName
+    text: str
+    limits: BudgetLimits
+
+
+class BudgetOverview(Model):
+    providers: list[ProviderBudget]
+    levels: list[LevelPreset]
+    tiers: list[str]
+    reserve_weekly_pct: float
+    reserve_five_hour_pct: float
+    sweep_window_hours: float
+    sweep_ceiling_pct: float
+
+
+class BudgetPatch(Model):
+    """Online only (budget changes are never queued offline). Setting a level clears overrides."""
+
+    level: LevelName | None = None
+    overrides: BudgetLimitsPatch | None = None
+    reply_pts: float | None = None
+    fallback_pts: float | None = None
+
+
+class BoostRequest(Model):
+    level: LevelName
+    hours: float | None = Field(None, description="Boost for this many hours (default 24).")
+    until: datetime | None = None
+    until_reset: bool = False
+
+
+class ReserveSettings(Model):
+    reserve_weekly_pct: float | None = None
+    reserve_five_hour_pct: float | None = None
+    sweep_window_hours: float | None = None
+    sweep_ceiling_pct: float | None = None
+
+
+class ProviderInfo(Model):
+    id: str
+    kind: str
+    label: str
+    enabled: bool
+    status: str = Field(description="One line: logged in / key saved / usage source.")
+    usage_source: str
+    has_credential: bool
+
+
+class ApiProviderCreate(Model):
+    """Online only. The key is write-only: stored encrypted, given only to sessions on this provider."""
+
+    key: str = Field(min_length=20, max_length=400)
+    label: str | None = None
+
+
+class ProviderPatch(Model):
+    enabled: bool | None = None
+    label: str | None = None
+
+
+RoleName = Literal["worker", "reviewer", "replier", "chat", "utility"]
+
+
+class RoleConfig(Model):
+    role: RoleName
+    provider: str
+    tier: str = Field(description="model/effort, e.g. 'sonnet/medium'.")
+    allowed: list[str] = Field(description="Tiers it may use (the worker's come from the level).")
+    note: str | None = None
+
+
+class Roles(Model):
+    roles: list[RoleConfig]
+
+
+ReviewerMode = Literal["off", "advisor", "monitor", "gate"]
+
+
+class ReviewerConfig(Model):
+    mode: ReviewerMode = "monitor"
+    provider: str = "claude-subscription"
+    tier: str = "opus/medium"
+    interval_minutes: float = Field(10, description="Monitor/gate: how often it reads new notes.")
+    budget_share: float = Field(0.25, description="At most this share of a wakeup's budget.")
+    change_tier: bool = True
+    tier_choices: list[str] = Field(default_factory=lambda: ["sonnet/medium", "sonnet/high", "opus/medium", "opus/high"])
+    max_tier_changes: int = 3
+    continuity: Literal["day", "wakeup"] = "day"
+
+
+class StandingInstructions(Model):
+    text: str = Field(max_length=8000)
+    updated_at: datetime | None = None
+
+
+# ── Wakeups, the calendar, routines ────────────────────────────────────────
+WakeupKind = Literal["planned", "fallback", "sweep", "routine", "owner"]
+
+
+class Wakeup(Model):
+    id: int
+    provider: str
+    at: datetime
+    budget: float
+    tier: str
+    reason: str
+    kind: WakeupKind
+    created_by: Literal["assistant", "owner", "control"]
+    routine_id: int | None
+    status: Literal["planned", "running", "done", "missed", "skipped", "cancelled"]
+    status_reason: str | None
+    run_id: int | None
+    used: float | None = Field(description="Points the wakeup's run used, once it ran.")
+
+
+class WakeupCreate(Model):
+    """Online only."""
+
+    at: datetime
+    budget: float = Field(gt=0)
+    tier: str | None = None
+    reason: str = Field("Added by you", max_length=500)
+    provider: str | None = None
+
+
+class WakeupPatch(Model):
+    at: datetime | None = None
+    budget: float | None = Field(None, gt=0)
+    tier: str | None = None
+    reason: str | None = Field(None, max_length=500)
+
+
+class CalendarWindow(Model):
+    kind: Literal["allowed", "sweep"]
+    start: datetime
+    end: datetime
+
+
+class Calendar(Model):
+    start: datetime
+    end: datetime
+    timezone: str
+    wakeups: list[Wakeup]
+    windows: list[CalendarWindow] = Field(description="Allowed hours (the rest is protected for the owner) and the sweep window.")
+    budget: ProviderBudget
+    runs: list[Run] = Field(description="Runs started in the range (replies and manual runs too).")
+
+
+RoutineSchedule = dict[str, Any]
+
+
+class Routine(Model):
+    id: int
+    name: str
+    prompt: str
+    schedule: RoutineSchedule = Field(description='{"kind": "weekly", "day": 0-6, "time": "HH:MM"} | {"kind": "daily", "time": "HH:MM"} | {"kind": "before_reset", "hours": 6}')
+    schedule_text: str
+    provider: str
+    tier: str
+    budget: float
+    enabled: bool
+    builtin: str | None
+    status: Literal["active", "proposed", "declined"]
+    created_by: Literal["owner", "assistant", "control"]
+    next_at: datetime | None
+    last_run_at: datetime | None
+
+
+class RoutineCreate(Model):
+    name: str = Field(min_length=1, max_length=120)
+    prompt: str = Field(min_length=1, max_length=8000)
+    schedule: RoutineSchedule
+    tier: str = "sonnet/medium"
+    budget: float = Field(gt=0)
+    provider: str | None = None
+    enabled: bool = True
+
+
+class RoutinePatch(Model):
+    name: str | None = Field(None, max_length=120)
+    prompt: str | None = Field(None, max_length=8000)
+    schedule: RoutineSchedule | None = None
+    tier: str | None = None
+    budget: float | None = Field(None, gt=0)
+    enabled: bool | None = None
 
 
 # ── Files ──────────────────────────────────────────────────────────────────
@@ -609,13 +873,38 @@ class FileEntry(Model):
     modified_at: datetime | None
     last_run_id: int | None = Field(description="Run that last changed it, if known.")
     from_owner: bool = Field(False, description="An upload from the owner.")
+    symlink: bool = Field(False, description="A symlink: shown, never followed.")
 
 
 class Listing(Model):
     volume: Volume
     path: str
     git: bool
+    branch: str | None = None
     entries: list[FileEntry]
+
+
+class FileDiff(Model):
+    rev: str
+    parent: str | None
+    at: datetime
+    message: str
+    run_id: int | None
+    added: int
+    removed: int
+    patch: str = Field(description="Unified diff of this file (or a note for binary files).")
+
+
+class PreviewUrl(Model):
+    """A short-lived link on the files origin, for frames and media elements."""
+
+    url: str
+    expires_at: datetime
+
+
+class WebPage(Model):
+    url: str = Field(description="Where the browser reaches the assistant's port 8787 (through agent-web).")
+    reachable: bool = Field(description="Something is listening on the assistant's port.")
 
 
 class FileHistoryEntry(Model):
@@ -741,7 +1030,7 @@ class LiveEvent(Model):
     type: Literal[
         "hello", "heartbeat", "status", "message", "thread", "project", "card", "claim",
         "timeline", "run", "inbox_counts", "unread", "job", "shelf", "upload", "question", "permission",
-        "task", "suggestion", "promote", "security",
+        "task", "suggestion", "promote", "security", "budget", "calendar",
     ]
     cursor: str | None = Field(None, description="Sync cursor after this event, when it changed cached data.")
     data: dict[str, Any] = {}

@@ -48,6 +48,7 @@ class Vault:
                 path.write_bytes(Fernet.generate_key())
                 path.chmod(0o600)
             key = path.read_bytes().strip()
+        self.key = key
         self.fernet = Fernet(key)
         self._lock = threading.Lock()
         self._values: list[tuple[str, str]] | None = None  # (value, name), longest first

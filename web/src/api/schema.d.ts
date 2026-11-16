@@ -733,6 +733,277 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/budget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Budget Overview
+         * @description Per provider: level, Boost, limits, allowance left, you vs. the assistant, the reply budget.
+         */
+        get: operations["budget_overview_api_budget_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Reserve
+         * @description The owner's reserve and the sweep's window and ceiling.
+         */
+        patch: operations["patch_reserve_api_budget_patch"];
+        trace?: never;
+    };
+    "/api/budget/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Budget
+         * @description Set the level (clears overrides) or override single limits.
+         */
+        patch: operations["patch_budget_api_budget__provider__patch"];
+        trace?: never;
+    };
+    "/api/budget/{provider}/boost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Boost */
+        post: operations["boost_api_budget__provider__boost_post"];
+        /** Clear Boost */
+        delete: operations["clear_boost_api_budget__provider__boost_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Providers */
+        get: operations["list_providers_api_providers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/anthropic-api": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Api Provider
+         * @description Save an Anthropic API key (write-only; only sessions on this provider get it).
+         */
+        post: operations["add_api_provider_api_providers_anthropic_api_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Provider */
+        delete: operations["delete_provider_api_providers__provider__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Provider */
+        patch: operations["patch_provider_api_providers__provider__patch"];
+        trace?: never;
+    };
+    "/api/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Roles */
+        get: operations["get_roles_api_roles_get"];
+        /** Set Roles */
+        put: operations["set_roles_api_roles_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reviewer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Reviewer */
+        get: operations["get_reviewer_api_reviewer_get"];
+        /** Set Reviewer */
+        put: operations["set_reviewer_api_reviewer_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/instructions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Instructions
+         * @description Standing instructions: included in every brief.
+         */
+        get: operations["get_instructions_api_instructions_get"];
+        /** Set Instructions */
+        put: operations["set_instructions_api_instructions_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Calendar
+         * @description Planned wakeups, routine occurrences, allowed hours and the sweep window (default: this week, Monday 00:00 local).
+         */
+        get: operations["calendar_api_calendar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wakeups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Wakeup
+         * @description Your own wakeup. Online only.
+         */
+        post: operations["create_wakeup_api_wakeups_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wakeups/{wakeup_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cancel Wakeup */
+        delete: operations["cancel_wakeup_api_wakeups__wakeup_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Wakeup
+         * @description Move or resize a planned wakeup (the assistant hears about changes to its own).
+         */
+        patch: operations["patch_wakeup_api_wakeups__wakeup_id__patch"];
+        trace?: never;
+    };
+    "/api/routines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Routines */
+        get: operations["list_routines_api_routines_get"];
+        put?: never;
+        /** Create Routine */
+        post: operations["create_routine_api_routines_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/routines/{routine_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Routine */
+        delete: operations["delete_routine_api_routines__routine_id__delete"];
+        options?: never;
+        head?: never;
+        /** Patch Routine */
+        patch: operations["patch_routine_api_routines__routine_id__patch"];
+        trace?: never;
+    };
     "/api/secrets": {
         parameters: {
             query?: never;
@@ -837,10 +1108,67 @@ export interface paths {
         };
         /**
          * Read File
-         * @description File bytes. Agent-made HTML/SVG is never rendered from this origin: previews load it
-         *     from the separate files origin in a sandboxed frame (M3).
+         * @description File bytes, for downloads and client-side previewers (text, CSV, notebooks, 3D).
          */
         get: operations["read_file_api_files_raw_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/files/zip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Zip Dir
+         * @description A folder as a zip (symlinks skipped).
+         */
+        get: operations["zip_dir_api_files_zip_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/files/preview-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * File Preview Url
+         * @description A link on the files origin for showing this file in a frame or media element. HTML
+         *     gets a link scoped to its folder, so its relative assets load.
+         */
+        get: operations["file_preview_url_api_files_preview_url_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/files/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** File Diff */
+        get: operations["file_diff_api_files_diff_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -918,6 +1246,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/shelf/{item_id}/raw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Shelf Raw
+         * @description A shelf item's bytes: a kept version, the snapshot, or the live file.
+         */
+        get: operations["shelf_raw_api_shelf__item_id__raw_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/shelf/{item_id}/preview-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Shelf Preview Url */
+        get: operations["shelf_preview_url_api_shelf__item_id__preview_url_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/web": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Web Page
+         * @description The assistant's web page (its port 8787, through agent-web).
+         */
+        get: operations["web_page_api_web_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/uploads": {
         parameters: {
             query?: never;
@@ -942,6 +1327,34 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AllowedWindow */
+        AllowedWindow: {
+            /**
+             * Days
+             * @description Days the window starts on, Monday = 0.
+             */
+            days: number[];
+            /**
+             * Start
+             * @description HH:MM, the owner's time zone.
+             */
+            start: string;
+            /**
+             * End
+             * @description HH:MM; at or before start means it runs past midnight (00:00–00:00 = all day).
+             */
+            end: string;
+        };
+        /**
+         * ApiProviderCreate
+         * @description Online only. The key is write-only: stored encrypted, given only to sessions on this provider.
+         */
+        ApiProviderCreate: {
+            /** Key */
+            key: string;
+            /** Label */
+            label?: string | null;
+        };
         /** Attachment */
         Attachment: {
             /** Name */
@@ -996,6 +1409,119 @@ export interface components {
             /** Idempotency Key */
             idempotency_key?: string | null;
         };
+        /** Boost */
+        Boost: {
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "dormant" | "frugal" | "steady" | "busy" | "max";
+            /**
+             * Until
+             * Format: date-time
+             */
+            until: string;
+        };
+        /** BoostRequest */
+        BoostRequest: {
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "dormant" | "frugal" | "steady" | "busy" | "max";
+            /**
+             * Hours
+             * @description Boost for this many hours (default 24).
+             */
+            hours?: number | null;
+            /** Until */
+            until?: string | null;
+            /**
+             * Until Reset
+             * @default false
+             */
+            until_reset?: boolean;
+        };
+        /** BudgetLimits */
+        BudgetLimits: {
+            /**
+             * Allowance
+             * @description Points a week the assistant may plan with.
+             */
+            allowance: number;
+            /** Allowed Hours */
+            allowed_hours: components["schemas"]["AllowedWindow"][];
+            /** Max Per Day */
+            max_per_day: number;
+            /** Min Gap Minutes */
+            min_gap_minutes: number;
+            /**
+             * Max Wakeup
+             * @description Most points one wakeup may have.
+             */
+            max_wakeup: number;
+            /**
+             * Tiers
+             * @description Models/efforts the worker may use, e.g. 'sonnet/medium'.
+             */
+            tiers: string[];
+            /** Sweep */
+            sweep: boolean;
+            /** Fallback */
+            fallback: boolean;
+        };
+        /**
+         * BudgetLimitsPatch
+         * @description Overrides on top of the level's limits; null removes an override.
+         */
+        BudgetLimitsPatch: {
+            /** Allowance */
+            allowance?: number | null;
+            /** Allowed Hours */
+            allowed_hours?: components["schemas"]["AllowedWindow"][] | null;
+            /** Max Per Day */
+            max_per_day?: number | null;
+            /** Min Gap Minutes */
+            min_gap_minutes?: number | null;
+            /** Max Wakeup */
+            max_wakeup?: number | null;
+            /** Tiers */
+            tiers?: string[] | null;
+            /** Sweep */
+            sweep?: boolean | null;
+            /** Fallback */
+            fallback?: boolean | null;
+        };
+        /** BudgetOverview */
+        BudgetOverview: {
+            /** Providers */
+            providers: components["schemas"]["ProviderBudget"][];
+            /** Levels */
+            levels: components["schemas"]["LevelPreset"][];
+            /** Tiers */
+            tiers: string[];
+            /** Reserve Weekly Pct */
+            reserve_weekly_pct: number;
+            /** Reserve Five Hour Pct */
+            reserve_five_hour_pct: number;
+            /** Sweep Window Hours */
+            sweep_window_hours: number;
+            /** Sweep Ceiling Pct */
+            sweep_ceiling_pct: number;
+        };
+        /**
+         * BudgetPatch
+         * @description Online only (budget changes are never queued offline). Setting a level clears overrides.
+         */
+        BudgetPatch: {
+            /** Level */
+            level?: ("dormant" | "frugal" | "steady" | "busy" | "max") | null;
+            overrides?: components["schemas"]["BudgetLimitsPatch"] | null;
+            /** Reply Pts */
+            reply_pts?: number | null;
+            /** Fallback Pts */
+            fallback_pts?: number | null;
+        };
         /** BudgetSummary */
         BudgetSummary: {
             /**
@@ -1021,6 +1547,52 @@ export interface components {
             used_by_chat: number;
             /** Resets At */
             resets_at?: string | null;
+        };
+        /** Calendar */
+        Calendar: {
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Timezone */
+            timezone: string;
+            /** Wakeups */
+            wakeups: components["schemas"]["Wakeup"][];
+            /**
+             * Windows
+             * @description Allowed hours (the rest is protected for the owner) and the sweep window.
+             */
+            windows: components["schemas"]["CalendarWindow"][];
+            budget: components["schemas"]["ProviderBudget"];
+            /**
+             * Runs
+             * @description Runs started in the range (replies and manual runs too).
+             */
+            runs: components["schemas"]["Run"][];
+        };
+        /** CalendarWindow */
+        CalendarWindow: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "allowed" | "sweep";
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
         };
         /** Capabilities */
         Capabilities: {
@@ -1133,6 +1705,31 @@ export interface components {
             /** Removed */
             removed: number | null;
         };
+        /** FileDiff */
+        FileDiff: {
+            /** Rev */
+            rev: string;
+            /** Parent */
+            parent: string | null;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Message */
+            message: string;
+            /** Run Id */
+            run_id: number | null;
+            /** Added */
+            added: number;
+            /** Removed */
+            removed: number;
+            /**
+             * Patch
+             * @description Unified diff of this file (or a note for binary files).
+             */
+            patch: string;
+        };
         /** FileEntry */
         FileEntry: {
             /** Name */
@@ -1154,6 +1751,12 @@ export interface components {
              * @default false
              */
             from_owner?: boolean;
+            /**
+             * Symlink
+             * @description A symlink: shown, never followed.
+             * @default false
+             */
+            symlink?: boolean;
         };
         /** FileHistoryEntry */
         FileHistoryEntry: {
@@ -1234,6 +1837,8 @@ export interface components {
             label: string;
             /** Progress */
             progress: string | null;
+            /** Note */
+            note?: string | null;
             /** Expected End */
             expected_end: string | null;
             /** Dont Interrupt */
@@ -1251,6 +1856,17 @@ export interface components {
             /** Log Tail */
             log_tail: string;
         };
+        /** LevelPreset */
+        LevelPreset: {
+            /**
+             * Name
+             * @enum {string}
+             */
+            name: "dormant" | "frugal" | "steady" | "busy" | "max";
+            /** Text */
+            text: string;
+            limits: components["schemas"]["BudgetLimits"];
+        };
         /** Listing */
         Listing: {
             /**
@@ -1262,6 +1878,8 @@ export interface components {
             path: string;
             /** Git */
             git: boolean;
+            /** Branch */
+            branch?: string | null;
             /** Entries */
             entries: components["schemas"]["FileEntry"][];
         };
@@ -1465,7 +2083,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "egress_rule" | "secret" | "setting";
+            kind: "egress_rule" | "secret" | "setting" | "routine";
             /** Summary */
             summary: string;
             /** Payload */
@@ -1501,6 +2119,19 @@ export interface components {
              */
             at: string;
             permission: components["schemas"]["Permission"];
+        };
+        /**
+         * PreviewUrl
+         * @description A short-lived link on the files origin, for frames and media elements.
+         */
+        PreviewUrl: {
+            /** Url */
+            url: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
         };
         /** Project */
         Project: {
@@ -1628,6 +2259,125 @@ export interface components {
             /** Decided At */
             decided_at: string | null;
         };
+        /** ProviderBudget */
+        ProviderBudget: {
+            /** Provider */
+            provider: string;
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Unit
+             * @description 'pts': 0.1% of a Claude subscription's week, or $0.10 on an API key.
+             */
+            unit: string;
+            /**
+             * Level
+             * @description The owner's level.
+             * @enum {string}
+             */
+            level: "dormant" | "frugal" | "steady" | "busy" | "max";
+            /**
+             * Effective Level
+             * @description The level in force (a Boost's while one runs).
+             * @enum {string}
+             */
+            effective_level: "dormant" | "frugal" | "steady" | "busy" | "max";
+            boost: components["schemas"]["Boost"] | null;
+            /** @description Effective limits: the level's, with the owner's overrides. */
+            limits: components["schemas"]["BudgetLimits"];
+            /**
+             * Custom
+             * @description Limits the owner overrode.
+             */
+            custom: string[];
+            /** Allowance */
+            allowance: number;
+            /**
+             * Left
+             * @description Allowance left this week, capped by the room below the owner's weekly reserve.
+             */
+            left: number;
+            /** Used By Assistant */
+            used_by_assistant: number;
+            /**
+             * Used By Owner
+             * @description The owner's own use outside l0wagent (subscription: the weekly meter minus the rest).
+             */
+            used_by_owner: number;
+            /** Used By Chat */
+            used_by_chat: number;
+            /**
+             * Room Below Reserve
+             * @description Subscription: points left before the weekly reserve.
+             */
+            room_below_reserve: number | null;
+            /** Reply Allowance */
+            reply_allowance: number;
+            /** Reply Left */
+            reply_left: number;
+            /**
+             * Scheduled
+             * @description Points in planned wakeups for the rest of this week.
+             */
+            scheduled: number;
+            /**
+             * Week Start
+             * Format: date-time
+             */
+            week_start: string;
+            /**
+             * Resets At
+             * Format: date-time
+             */
+            resets_at: string;
+            /** Pace */
+            pace: string;
+            /**
+             * Native
+             * @description The provider's own unit, e.g. '46% of the week used' or '$3.10 this week'.
+             */
+            native: string;
+            /**
+             * Pts Per Usd
+             * @description Subscription: the learned calibration from API-priced tokens to points.
+             */
+            pts_per_usd: number;
+            /** Fallback Pts */
+            fallback_pts: number;
+            /** Has Credential */
+            has_credential: boolean;
+        };
+        /** ProviderInfo */
+        ProviderInfo: {
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Label */
+            label: string;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Status
+             * @description One line: logged in / key saved / usage source.
+             */
+            status: string;
+            /** Usage Source */
+            usage_source: string;
+            /** Has Credential */
+            has_credential: boolean;
+        };
+        /** ProviderPatch */
+        ProviderPatch: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Label */
+            label?: string | null;
+        };
         /** Question */
         Question: {
             /** Id */
@@ -1709,6 +2459,177 @@ export interface components {
             /** Project */
             project: string | null;
         };
+        /** ReserveSettings */
+        ReserveSettings: {
+            /** Reserve Weekly Pct */
+            reserve_weekly_pct?: number | null;
+            /** Reserve Five Hour Pct */
+            reserve_five_hour_pct?: number | null;
+            /** Sweep Window Hours */
+            sweep_window_hours?: number | null;
+            /** Sweep Ceiling Pct */
+            sweep_ceiling_pct?: number | null;
+        };
+        /** ReviewerConfig */
+        ReviewerConfig: {
+            /**
+             * Mode
+             * @default monitor
+             * @enum {string}
+             */
+            mode?: "off" | "advisor" | "monitor" | "gate";
+            /**
+             * Provider
+             * @default claude-subscription
+             */
+            provider?: string;
+            /**
+             * Tier
+             * @default opus/medium
+             */
+            tier?: string;
+            /**
+             * Interval Minutes
+             * @description Monitor/gate: how often it reads new notes.
+             * @default 10
+             */
+            interval_minutes?: number;
+            /**
+             * Budget Share
+             * @description At most this share of a wakeup's budget.
+             * @default 0.25
+             */
+            budget_share?: number;
+            /**
+             * Change Tier
+             * @default true
+             */
+            change_tier?: boolean;
+            /** Tier Choices */
+            tier_choices?: string[];
+            /**
+             * Max Tier Changes
+             * @default 3
+             */
+            max_tier_changes?: number;
+            /**
+             * Continuity
+             * @default day
+             * @enum {string}
+             */
+            continuity?: "day" | "wakeup";
+        };
+        /** RoleConfig */
+        RoleConfig: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "worker" | "reviewer" | "replier" | "chat" | "utility";
+            /** Provider */
+            provider: string;
+            /**
+             * Tier
+             * @description model/effort, e.g. 'sonnet/medium'.
+             */
+            tier: string;
+            /**
+             * Allowed
+             * @description Tiers it may use (the worker's come from the level).
+             */
+            allowed: string[];
+            /** Note */
+            note?: string | null;
+        };
+        /** Roles */
+        Roles: {
+            /** Roles */
+            roles: components["schemas"]["RoleConfig"][];
+        };
+        /** Routine */
+        Routine: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Prompt */
+            prompt: string;
+            /**
+             * Schedule
+             * @description {"kind": "weekly", "day": 0-6, "time": "HH:MM"} | {"kind": "daily", "time": "HH:MM"} | {"kind": "before_reset", "hours": 6}
+             */
+            schedule: {
+                [key: string]: unknown;
+            };
+            /** Schedule Text */
+            schedule_text: string;
+            /** Provider */
+            provider: string;
+            /** Tier */
+            tier: string;
+            /** Budget */
+            budget: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Builtin */
+            builtin: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "active" | "proposed" | "declined";
+            /**
+             * Created By
+             * @enum {string}
+             */
+            created_by: "owner" | "assistant" | "control";
+            /** Next At */
+            next_at: string | null;
+            /** Last Run At */
+            last_run_at: string | null;
+        };
+        /** RoutineCreate */
+        RoutineCreate: {
+            /** Name */
+            name: string;
+            /** Prompt */
+            prompt: string;
+            /** Schedule */
+            schedule: {
+                [key: string]: unknown;
+            };
+            /**
+             * Tier
+             * @default sonnet/medium
+             */
+            tier?: string;
+            /** Budget */
+            budget: number;
+            /** Provider */
+            provider?: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled?: boolean;
+        };
+        /** RoutinePatch */
+        RoutinePatch: {
+            /** Name */
+            name?: string | null;
+            /** Prompt */
+            prompt?: string | null;
+            /** Schedule */
+            schedule?: {
+                [key: string]: unknown;
+            } | null;
+            /** Tier */
+            tier?: string | null;
+            /** Budget */
+            budget?: number | null;
+            /** Enabled */
+            enabled?: boolean | null;
+        };
         /** Run */
         Run: {
             /** Id */
@@ -1756,6 +2677,27 @@ export interface components {
             ended_at: string | null;
             /** Projects */
             projects: string[];
+            /**
+             * Bucket
+             * @description Which budget it spends: the allowance, the reply budget, or (sweep) what the owner left unused before the reset.
+             * @default allowance
+             * @enum {string}
+             */
+            bucket?: "allowance" | "reply" | "sweep";
+            /** Level */
+            level?: string | null;
+            /**
+             * Reviewer Mode
+             * @default off
+             * @enum {string}
+             */
+            reviewer_mode?: "off" | "advisor" | "monitor" | "gate";
+            /** Wakeup Id */
+            wakeup_id?: number | null;
+            /** Routine Id */
+            routine_id?: number | null;
+            /** End Reason */
+            end_reason?: string | null;
         };
         /** RunChanges */
         RunChanges: {
@@ -1786,7 +2728,10 @@ export interface components {
         };
         /** RunStart */
         RunStart: {
-            /** Budget */
+            /**
+             * Budget
+             * @description Points; default MANUAL_RUN_PTS.
+             */
             budget?: number | null;
             /** Tier */
             tier?: string | null;
@@ -2037,6 +2982,13 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /** StandingInstructions */
+        StandingInstructions: {
+            /** Text */
+            text: string;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /** Status */
         Status: {
@@ -2440,6 +3392,96 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** Wakeup */
+        Wakeup: {
+            /** Id */
+            id: number;
+            /** Provider */
+            provider: string;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Budget */
+            budget: number;
+            /** Tier */
+            tier: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "planned" | "fallback" | "sweep" | "routine" | "owner";
+            /**
+             * Created By
+             * @enum {string}
+             */
+            created_by: "assistant" | "owner" | "control";
+            /** Routine Id */
+            routine_id: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "planned" | "running" | "done" | "missed" | "skipped" | "cancelled";
+            /** Status Reason */
+            status_reason: string | null;
+            /** Run Id */
+            run_id: number | null;
+            /**
+             * Used
+             * @description Points the wakeup's run used, once it ran.
+             */
+            used: number | null;
+        };
+        /**
+         * WakeupCreate
+         * @description Online only.
+         */
+        WakeupCreate: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Budget */
+            budget: number;
+            /** Tier */
+            tier?: string | null;
+            /**
+             * Reason
+             * @default Added by you
+             */
+            reason?: string;
+            /** Provider */
+            provider?: string | null;
+        };
+        /** WakeupPatch */
+        WakeupPatch: {
+            /** At */
+            at?: string | null;
+            /** Budget */
+            budget?: number | null;
+            /** Tier */
+            tier?: string | null;
+            /** Reason */
+            reason?: string | null;
+        };
+        /** WebPage */
+        WebPage: {
+            /**
+             * Url
+             * @description Where the browser reaches the assistant's port 8787 (through agent-web).
+             */
+            url: string;
+            /**
+             * Reachable
+             * @description Something is listening on the assistant's port.
+             */
+            reachable: boolean;
+        };
         /**
          * LiveEvent
          * @description One line of GET /api/events (newline-delimited JSON).
@@ -2449,7 +3491,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "hello" | "heartbeat" | "status" | "message" | "thread" | "project" | "card" | "claim" | "timeline" | "run" | "inbox_counts" | "unread" | "job" | "shelf" | "upload" | "question" | "permission" | "task" | "suggestion" | "promote" | "security";
+            type: "hello" | "heartbeat" | "status" | "message" | "thread" | "project" | "card" | "claim" | "timeline" | "run" | "inbox_counts" | "unread" | "job" | "shelf" | "upload" | "question" | "permission" | "task" | "suggestion" | "promote" | "security" | "budget" | "calendar";
             /**
              * Cursor
              * @description Sync cursor after this event, when it changed cached data.
@@ -3976,6 +5018,688 @@ export interface operations {
             };
         };
     };
+    budget_overview_api_budget_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetOverview"];
+                };
+            };
+        };
+    };
+    patch_reserve_api_budget_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReserveSettings"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BudgetOverview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_budget_api_budget__provider__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BudgetPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderBudget"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    boost_api_budget__provider__boost_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoostRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderBudget"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_boost_api_budget__provider__boost_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderBudget"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_providers_api_providers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderInfo"][];
+                };
+            };
+        };
+    };
+    add_api_provider_api_providers_anthropic_api_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiProviderCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_provider_api_providers__provider__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_provider_api_providers__provider__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_roles_api_roles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Roles"];
+                };
+            };
+        };
+    };
+    set_roles_api_roles_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Roles"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Roles"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_reviewer_api_reviewer_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewerConfig"];
+                };
+            };
+        };
+    };
+    set_reviewer_api_reviewer_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewerConfig"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewerConfig"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_instructions_api_instructions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StandingInstructions"];
+                };
+            };
+        };
+    };
+    set_instructions_api_instructions_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StandingInstructions"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StandingInstructions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    calendar_api_calendar_get: {
+        parameters: {
+            query?: {
+                start?: string | null;
+                end?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Calendar"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_wakeup_api_wakeups_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WakeupCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Wakeup"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_wakeup_api_wakeups__wakeup_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wakeup_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Wakeup"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_wakeup_api_wakeups__wakeup_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wakeup_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WakeupPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Wakeup"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_routines_api_routines_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Routine"][];
+                };
+            };
+        };
+    };
+    create_routine_api_routines_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutineCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Routine"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_routine_api_routines__routine_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                routine_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_routine_api_routines__routine_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                routine_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutinePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Routine"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_secrets_api_secrets_get: {
         parameters: {
             query?: never;
@@ -4148,6 +5872,7 @@ export interface operations {
             query: {
                 volume: "workspace" | "work";
                 path: string;
+                download?: boolean;
             };
             header?: never;
             path?: never;
@@ -4162,6 +5887,103 @@ export interface operations {
                 };
                 content: {
                     "application/octet-stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    zip_dir_api_files_zip_get: {
+        parameters: {
+            query: {
+                volume: "workspace" | "work";
+                path?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    file_preview_url_api_files_preview_url_get: {
+        parameters: {
+            query: {
+                volume: "workspace" | "work";
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewUrl"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    file_diff_api_files_diff_get: {
+        parameters: {
+            query: {
+                volume: "workspace" | "work";
+                path: string;
+                rev: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileDiff"];
                 };
             };
             /** @description Validation Error */
@@ -4331,6 +6153,93 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shelf_raw_api_shelf__item_id__raw_get: {
+        parameters: {
+            query?: {
+                version?: number | null;
+                download?: boolean;
+            };
+            header?: never;
+            path: {
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    shelf_preview_url_api_shelf__item_id__preview_url_get: {
+        parameters: {
+            query?: {
+                version?: number | null;
+            };
+            header?: never;
+            path: {
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewUrl"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    web_page_api_web_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebPage"];
                 };
             };
         };

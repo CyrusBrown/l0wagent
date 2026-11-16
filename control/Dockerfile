@@ -13,5 +13,5 @@ RUN useradd -u 1000 -m control && mkdir -p /data && chown control:control /data
 USER control
 ENV PATH=/venv/bin:$PATH L0W_BACKEND=sqlite L0W_DATA_DIR=/data
 VOLUME /data
-EXPOSE 8000
+EXPOSE 8000 8001
 CMD ["uvicorn", "l0w_control.app:app", "--host", "0.0.0.0", "--port", "8000"]

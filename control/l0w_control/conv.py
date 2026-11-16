@@ -52,6 +52,8 @@ class Conversations:
         # Set by the backend: applies an egress-rule action through the egress admin API.
         self.add_egress_rule: Callable[[str, str, str], int] | None = None
         self.delete_egress_rule: Callable[[int], None] | None = None
+        # Set by the backend: routine proposals (validate, apply on approval, revert).
+        self.routines: Any = None
         live.getters.update(
             project=lambda i: self.project(i), thread=lambda i: self.thread(int(i)), message=lambda i: self.message(int(i)),
             question=lambda i: self.question(int(i)), permission=lambda i: self.permission(int(i)), task=lambda i: self.task(int(i)),
@@ -386,7 +388,7 @@ class Conversations:
         return self.question(qid)
 
     def file_permission(self, run_id: int | None, thread_id: int | None, text: str, reason: str | None, actions: list[dict]) -> s.Permission:
-        checked = [_check_action(a) for a in actions]
+        checked = [self._check_routine(a) if a.get("kind") == "routine" else _check_action(a) for a in actions]
         with self.db.tx() as db:
             pid = db.ex("INSERT INTO permissions(thread_id, run_id, text, reason, created_at) VALUES(?,?,?,?,?)",
                         (self._ask_thread(thread_id), run_id, self.r(text), self.r(reason), db.now()))
@@ -394,6 +396,17 @@ class Conversations:
                 db.ex("INSERT INTO permission_actions(permission_id, kind, payload_json) VALUES(?,?,?)", (pid, kind, json.dumps(payload)))
         self._card("permission", pid, thread_id)
         return self.permission(pid)
+
+    def _check_routine(self, a: dict) -> tuple[str, dict]:
+        if self.routines is None:
+            raise BadRequest("action", "Routines aren't available.")
+        p = a.get("payload") if isinstance(a.get("payload"), dict) else a
+        try:
+            req = s.RoutineCreate(name=p.get("name", ""), prompt=p.get("prompt", ""), schedule=p.get("schedule") or {}, tier=p.get("tier", "sonnet/medium"),
+                                  budget=float(p.get("budget", 0)), provider=p.get("provider"))
+        except (ValueError, TypeError) as e:
+            raise BadRequest("action", f"Bad routine: {e}") from None
+        return "routine", self.routines.propose_payload(req)
 
     def file_task(self, run_id: int | None, thread_id: int | None, text: str, detail: str | None) -> s.Task:
         tid = self.db.ex("INSERT INTO tasks(thread_id, run_id, text, detail, created_at) VALUES(?,?,?,?,?)",
@@ -459,6 +472,8 @@ class Conversations:
                 if self.add_egress_rule is None:
                     raise RuntimeError("egress isn't configured")
                 result["rule_id"] = self.add_egress_rule(payload["pattern"], payload.get("mode", "allow_ro"), f"permission #{a['permission_id']}")
+            elif a["kind"] == "routine":
+                result = self.routines.apply(payload, (self.db.q1("SELECT run_id FROM permissions WHERE id=?", (a["permission_id"],)) or {}).get("run_id"))
             elif a["kind"] == "setting":
                 old = self.db.q1("SELECT value_json FROM settings WHERE key=?", (payload["key"],))
                 result["previous"] = old["value_json"] if old else None
@@ -487,6 +502,8 @@ class Conversations:
                         self.settings.set(payload["key"], json.loads(result["previous"]))
                 elif a["kind"] == "secret" and self.vault.exists(payload["name"]):
                     self.vault.delete(payload["name"])
+                elif a["kind"] == "routine" and self.routines:
+                    self.routines.revert(result)
             except Exception as e:  # noqa: BLE001
                 self.db.ex("UPDATE permission_actions SET error=? WHERE id=?", (f"revert failed: {e}"[:500], a["id"]))
                 continue
@@ -502,6 +519,21 @@ class Conversations:
             return self.task(tid)
 
         return self.once(req.idempotency_key, f"task:{tid}", s.Task, make)
+
+    def file_promote(self, run_id: int, thread_id: int | None, reason: str, budget: float) -> s.PromoteRequest:
+        if self.db.q1("SELECT 1 FROM promote_requests WHERE run_id=? AND status='open'", (run_id,)):
+            raise Conflict("already_open", "This run already has a promote request waiting for the owner.")
+        pid = self.db.ex("INSERT INTO promote_requests(run_id, thread_id, reason, budget, created_at) VALUES(?,?,?,?,?)",
+                         (run_id, thread_id, self.r(reason), budget, self.db.now()))
+        self._card("promote", pid, thread_id)
+        return self.promote(pid)
+
+    def expire_promotes(self, run_id: int | None = None, older_than: str | None = None) -> None:
+        rows = self.db.q("SELECT id, thread_id FROM promote_requests WHERE status='open' AND (? IS NULL OR run_id=?) AND (? IS NULL OR created_at<?)",
+                         (run_id, run_id, older_than, older_than))
+        for r in rows:
+            self.db.ex("UPDATE promote_requests SET status='expired', decided_at=? WHERE id=?", (self.db.now(), r["id"]))
+            self._card("promote", r["id"], r["thread_id"])
 
     def decide_promote(self, pid: int, req: s.PromoteDecision) -> s.PromoteRequest:
         row = self._open_row("promote_requests", pid, "promote request")
@@ -719,6 +751,16 @@ class Conversations:
         ss = self.db.q("SELECT * FROM suggestions WHERE delivered_at IS NULL AND status IN ('accepted','dismissed') ORDER BY id")
         for x in ss:
             add(x["target_id"] if x["target_kind"] == "thread" else None, f"- Your suggestion #{x['id']} ({x['kind']}): {x['status']}.", "suggestions")
+        prs = self.db.q("SELECT * FROM promote_requests WHERE delivered_at IS NULL AND status IN ('approved','denied','expired') ORDER BY id")
+        for pr in prs:
+            note = f" Note: {pr['note']}" if pr["note"] else ""
+            how = {"approved": f"approved: carry on as a full run on the main allowance (+{pr['budget']:g} pts)",
+                   "denied": "denied: finish the reply, claim the thread and plan the work for a later wakeup",
+                   "expired": "not answered in time: finish the reply, claim the thread and plan the work for a later wakeup"}[pr["status"]]
+            add(pr["thread_id"], f"- Promote request #{pr['id']} “{pr['reason']}”: {how}.{note}", "decisions")
+        rvs = self.db.q("SELECT * FROM reviewer_messages WHERE sender='reviewer' AND kind='reply' AND delivered_at IS NULL ORDER BY id")
+        for rv in rvs:
+            add(None, f"- The reviewer: {rv['body']}", "reviewer")
         secrets = self.db.q("SELECT id, name, description FROM secrets WHERE announced_at IS NULL ORDER BY name")
         for sec in secrets:
             desc = f" ({sec['description']})" if sec["description"] else ""
@@ -729,7 +771,8 @@ class Conversations:
 
         if not peek:
             with self.db.tx() as db:
-                for table, rows in (("questions", qs), ("permissions", ps), ("tasks", ts), ("suggestions", ss), ("agent_notifications", notes)):
+                for table, rows in (("questions", qs), ("permissions", ps), ("tasks", ts), ("suggestions", ss), ("agent_notifications", notes),
+                                    ("promote_requests", prs), ("reviewer_messages", rvs)):
                     for row in rows:
                         db.ex(f"UPDATE {table} SET delivered_at=? WHERE id=?", (now, row["id"]))
                 for m in msgs:
@@ -744,7 +787,12 @@ class Conversations:
     def thread_history(self, thread_id: int, limit: int = 30) -> str:
         rows = self.db.q("SELECT * FROM (SELECT * FROM messages WHERE thread_id=? ORDER BY id DESC LIMIT ?) ORDER BY id", (thread_id, limit))
         who = {"owner": "Owner", "assistant": "You", "chat": "Owner (via chat)", "system": "System"}
-        return "\n\n".join(f"#{m['id']} {who.get(m['sender'], m['sender'])} ({m['created_at']}):\n{m['body'].strip()}" for m in rows) or "(no messages yet)"
+
+        def attached(m: Any) -> str:
+            atts = self.db.q("SELECT path FROM attachments WHERE message_id=? ORDER BY id", (m["id"],))
+            return f"\n(attached: {', '.join('/work/' + a['path'] for a in atts)})" if atts else ""
+
+        return "\n\n".join(f"#{m['id']} {who.get(m['sender'], m['sender'])} ({m['created_at']}):\n{m['body'].strip()}{attached(m)}" for m in rows) or "(no messages yet)"
 
     # ── search ─────────────────────────────────────────────────────────────
     def search(self, q: str, kind: str | None, project: str | None, since: str | None) -> list[s.SearchHit]:
@@ -803,6 +851,8 @@ def _action_summary(kind: str, p: dict) -> str:
         return f"allow {'read-only (GET over plain HTTP)' if p.get('mode') == 'allow_ro' else 'full'} access to {p.get('pattern')}"
     if kind == "secret":
         return f"you enter the secret {p.get('name')}" + (f" ({p['description']})" if p.get("description") else "")
+    if kind == "routine":
+        return f"add the routine “{p.get('name')}”: {p.get('schedule_text')}, {p.get('tier')}, {p.get('budget', 0):g} pts each time"
     if kind == "setting":
         v = p.get("value")
         return f"set {p.get('key')} to {v:g}" if isinstance(v, float) else f"set {p.get('key')} to {v}"

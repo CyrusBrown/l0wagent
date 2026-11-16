@@ -103,6 +103,14 @@ Code is reused from the old repo where it fits: egress, the agent-web forwarder,
 
 **Done when:** the assistant shelves a script's output, it updates in the project's Files tab when the script reruns, and an uploaded file reaches the assistant.
 
+**Status (2026-11-15): built, without a logged-in Claude account.** The fake runtime reads an uploaded CSV, shelves a script's output live with `--keep 3`, and reruns the script; the done-when flow is the browser test `web/e2e/m3.spec.ts`, with `control/tests/test_files.py` covering the browser, git history, the files origin and the shelf. Decisions along the way:
+- **Shelf copies live in control's data dir** (`shelf/<item>/<n>`), never in the agent's storage. Control watches live items and stores a version when one changes (if the item keeps versions); a missing file marks the item missing, not removed.
+- **Reading the agent's storage is symlink-safe:** every path is opened one component at a time with `O_NOFOLLOW`, and special files are refused. Git history comes from dulwich (pure Python), so control never runs `git` on the agent's repos.
+- **The files origin** is a second port of control (`L0W_FILES_PORT`, 8001 in compose). The UI sends HTML, SVG, PDFs, images and media there through short-lived signed links scoped to one file, folder or shelf item; no cookies are used, every response carries a `sandbox` CSP (except PDFs, which browsers won't render sandboxed), and frames add their own `sandbox`.
+- **3D previews:** STL and 3MF with three.js; STEP converted in the browser by occt-import-js (WebAssembly), loaded only when needed.
+- **Attachments in thread history:** a reply run's brief and `assistant messages` list each message's attachments, so an upload still reaches the agent when an earlier run already delivered the message.
+- **Not yet checked in Docker** in this pass: `compose.dev.yaml` now publishes the files origin; run the stack and `dev/isolation-test.sh` before calling M3 reviewed.
+
 ## M4: Budgets, wakeups and runs
 **Goal:** the assistant runs itself within the budgets you set. This replaces nightly, review and turbo.
 - **Providers and roles** (Claude subscription and Anthropic API; opencode waits for a key, see M8), the **usage ledger** with you-vs-assistant attribution.
@@ -116,6 +124,19 @@ Code is reused from the old repo where it fits: egress, the agent-web forwarder,
 - **UI**: Calendar, Settings → budgets and levels / providers / roles / reviewer / standing instructions, both run views, long jobs.
 
 **Done when:** a test instance runs unattended for a week within its budget, schedules a timed wakeup for a real event, and its runs read clearly in both views.
+
+**Status (2026-11-16): built, without a logged-in Claude account.** The browser test `web/e2e/m4.spec.ts` picks a level, sets a standing instruction and wakes the assistant: the fake runtime checks its budget, asks the reviewer, registers a long job and plans its next wakeup, which shows on the Calendar. `control/tests/test_budgets.py` covers points, levels, Boost, the ledger, wakeup validation, the fallback, the sweep, routines, jobs, the reviewer's gate and tier changes, and **a simulated two weeks** in which a planning agent stays within its allowance; `test_m4_integration.py` covers a wakeup with the reviewer, a promoted reply and a run stopped at its budget. Decisions along the way:
+- **Points** (owner): 1 pt = 0.1% of a Claude subscription's week, $0.10 on an API key. Levels Dormant 0 / Frugal 50 / Steady 150 / Busy 400 / Max 850 pts a week; each level also sets allowed hours, wakeups per day, gap, points per wakeup, tiers, sweep and fallback (`budgets.py`). The owner can override any of them; choosing a level clears the overrides; a Boost uses its level's limits as they are.
+- **Measuring the assistant's use:** each model message's tokens are priced at API rates as they arrive (live `used`, so the monitor stops a run at its budget), then replaced by the runtime's own `total_cost_usd`. On a subscription, dollars become points through a calibration learned from how far the weekly meter moved during runs (starts at 2 pts/$). The owner's own use is the weekly meter minus the assistant's and chat use. **Unverified with a real account**: the calibration's starting value and how fast it settles.
+- **Buckets:** Reply-now runs spend the reply budget (at most `REPLY_RUN_MAX_PTS`, 6, each); an approved promote moves the rest of the run onto the allowance; sweep runs spend only room below the sweep ceiling, on top of the allowance. Owner-started runs (Wake now) default to `MANUAL_RUN_PTS` (20) and aren't capped by the allowance; neither are wakeups the owner adds on the Calendar.
+- **Fallback:** if nothing is planned in the next 48 hours, control plans one at 03:00 (owner's time, moved into the allowed hours) for 10% of the allowance (Steady: 15 pts) and tells the agent; any wakeup the agent plans replaces it.
+- **Missed wakeups:** one run at a time; a wakeup that can't start within `WAKEUP_LATE_MINUTES` (30) is marked missed and the agent hears about it.
+- **Routines** are owner-created or agent-proposed (a permission card whose action is the routine), plus the built-in weekly review 6 hours before the weekly reset. They keep their own schedule (not bound by allowed hours) but spend the allowance. Dormant skips them.
+- **The reviewer** runs through the runner's new `/consult` (a second, read-only `claude -p`; no hook, secrets or agent token) and is ported from the old turbo reviewer: Monitor by default, watching every 10 minutes only when something new happened, at most 25% of a wakeup's budget, one conversation per day. Gate mode holds back `IDLE` (up to 3 rounds) and `claim done`. `LEVEL:` lines switch the worker's tier by interrupting and resuming the session. **Unverified with a real model**: how often it interjects and whether the tier switch's resume is smooth.
+- **Jobs:** `assistant job start|progress|done`; logs must live under `/work` or `/workspace` and are tailed through the symlink-safe reader; the runner's `/procs` tells control when a job's process is gone (marked lost, the agent is told). "Don't interrupt" is recorded for M5's updates.
+- **Prompts:** core, brief, reply, reviewer and the weekly review rewritten (placeholders archived in `prompts/archive/`); harness news announces the new commands. The workspace seed now has the full layout and a real manual.
+- **Not done:** the planner model and the adaptive reserve (both "Later"); the utility role (stored, not used yet); the "now" sentence fallback; detecting detached processes as jobs.
+- **UI additions not in the mockup** (see `design/mockup/REVIEW.md` #32–36).
 
 ## M5: Installable and shareable (first friends release)
 **Goal:** a friend can install it from the README and keep it updated.

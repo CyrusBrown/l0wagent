@@ -28,6 +28,9 @@ def test_run_survives_a_control_restart(stack: Stack):
     # Live: the agent's own reports arrive while it works.
     stack.wait_for(lambda: stack.run(run_id)["status"] == "running", what="running")
     stack.wait_for(lambda: len(tools(stack.timeline(run_id))) >= 3, what="three tool calls")
+    # The agent's note (step 2) must land before control goes down: a CLI call made while
+    # control is down fails, by design.
+    stack.wait_for(lambda: any(i["kind"] == "note" for i in stack.timeline(run_id)), what="the agent's note")
     assert stack.lease_active()
 
     stack.kill("control")
@@ -178,3 +181,35 @@ def test_permission_egress_rule_applies_through_egress(stack: Stack):
     rules = httpx.get(f"http://127.0.0.1:{stack.ports['admin']}/rules", headers={"X-Egress-Token": TOKENS["egress"]}).json()
     assert [(r["pattern"], r["action"]) for r in rules] == [("api.weather.example", "allow_ro")]
 
+
+# ── M3 ──────────────────────────────────────────────────────────────────────
+def test_upload_reaches_the_agent_and_its_live_shelf_item_updates(stack: Stack):
+    """M3's done-when: an uploaded file reaches the assistant; it shelves a script's output,
+    and the item updates on the project's Files tab when the script reruns."""
+    assert stack.client.post("/api/projects", json={"name": "Garden"}).status_code == 201
+    up = stack.client.post("/api/uploads", files={"file": ("readings.csv", b"sensor,moisture\na,30\nb,42\n")}, data={"project": "garden"}).json()
+    assert up["path"] == "_inbox/garden/readings.csv"
+    t = stack.client.post("/api/threads", json={"title": "Readings", "project": "garden", "first_message": "Summarize these, please.",
+                                                "upload_ids": [up["id"]]}).json()
+    run_id = stack.client.post(f"/api/threads/{t['id']}/reply-now").json()["id"]
+
+    item = stack.wait_for(lambda: next(iter(stack.client.get("/api/projects/garden/shelf").json()), None), what="the shelf item")
+    assert item["mode"] == "live" and item["added_by"] == "assistant" and item["keep_versions"] == 3 and item["run_id"] == run_id
+    assert stack.client.get(f"/api/shelf/{item['id']}/raw").text == "first pass: 2 readings, total 72\n"
+    stack.wait_for(lambda: stack.client.get(f"/api/shelf/{item['id']}/raw").text.startswith("second pass"), what="the rerun's output")
+    versions = stack.wait_for(lambda: (v := stack.client.get(f"/api/shelf/{item['id']}/versions").json()) and len(v) == 2 and v, what="two versions")
+    assert versions[0]["run_id"] == run_id
+    stack.wait_for(lambda: stack.run(run_id)["status"] == "done", timeout=60, what="run to end")
+    # The agent read the upload (its content is in the run's timeline).
+    tools = [i for i in stack.timeline(run_id) if i["kind"] == "tool"]
+    assert any("sensor,moisture" in (i["data"].get("result") or "") for i in tools)
+    assert "Re-ran the script; the summary on the shelf is updated." in bodies(stack, t["id"])
+    # And it's browsable, with the shelf item's bytes on the files origin.
+    listing = stack.client.get("/api/files/list", params={"volume": "work", "path": "garden/out"}).json()
+    assert [e["name"] for e in listing["entries"]] == ["summary.txt"]
+    url = stack.client.get(f"/api/shelf/{item['id']}/preview-url").json()["url"]
+    import httpx
+
+    assert url.startswith(f"http://127.0.0.1:{stack.ports['files']}/f/")
+    r = httpx.get(url)
+    assert r.status_code == 200 and r.text.startswith("second pass")

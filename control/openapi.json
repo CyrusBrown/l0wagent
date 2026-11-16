@@ -2654,6 +2654,1094 @@
         }
       }
     },
+    "/api/budget": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Budget Overview",
+        "description": "Per provider: level, Boost, limits, allowance left, you vs. the assistant, the reply budget.",
+        "operationId": "budget_overview_api_budget_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetOverview"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Patch Reserve",
+        "description": "The owner's reserve and the sweep's window and ceiling.",
+        "operationId": "patch_reserve_api_budget_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReserveSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetOverview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/budget/{provider}": {
+      "patch": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Patch Budget",
+        "description": "Set the level (clears overrides) or override single limits.",
+        "operationId": "patch_budget_api_budget__provider__patch",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BudgetPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderBudget"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/budget/{provider}/boost": {
+      "post": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Boost",
+        "operationId": "boost_api_budget__provider__boost_post",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BoostRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderBudget"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Clear Boost",
+        "operationId": "clear_boost_api_budget__provider__boost_delete",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderBudget"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/providers": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "List Providers",
+        "operationId": "list_providers_api_providers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProviderInfo"
+                  },
+                  "type": "array",
+                  "title": "Response List Providers Api Providers Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/providers/anthropic-api": {
+      "post": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Add Api Provider",
+        "description": "Save an Anthropic API key (write-only; only sessions on this provider get it).",
+        "operationId": "add_api_provider_api_providers_anthropic_api_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiProviderCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/providers/{provider}": {
+      "patch": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Patch Provider",
+        "operationId": "patch_provider_api_providers__provider__patch",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Delete Provider",
+        "operationId": "delete_provider_api_providers__provider__delete",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/roles": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Get Roles",
+        "operationId": "get_roles_api_roles_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Roles"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Set Roles",
+        "operationId": "set_roles_api_roles_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Roles"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Roles"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/reviewer": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Get Reviewer",
+        "operationId": "get_reviewer_api_reviewer_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewerConfig"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Set Reviewer",
+        "operationId": "set_reviewer_api_reviewer_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewerConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewerConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/instructions": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Get Instructions",
+        "description": "Standing instructions: included in every brief.",
+        "operationId": "get_instructions_api_instructions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StandingInstructions"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Set Instructions",
+        "operationId": "set_instructions_api_instructions_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StandingInstructions"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StandingInstructions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/calendar": {
+      "get": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "Calendar",
+        "description": "Planned wakeups, routine occurrences, allowed hours and the sweep window (default: this week, Monday 00:00 local).",
+        "operationId": "calendar_api_calendar_get",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Calendar"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/wakeups": {
+      "post": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "Create Wakeup",
+        "description": "Your own wakeup. Online only.",
+        "operationId": "create_wakeup_api_wakeups_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WakeupCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Wakeup"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/wakeups/{wakeup_id}": {
+      "patch": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "Patch Wakeup",
+        "description": "Move or resize a planned wakeup (the assistant hears about changes to its own).",
+        "operationId": "patch_wakeup_api_wakeups__wakeup_id__patch",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "wakeup_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Wakeup Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WakeupPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Wakeup"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "Cancel Wakeup",
+        "operationId": "cancel_wakeup_api_wakeups__wakeup_id__delete",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "wakeup_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Wakeup Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Wakeup"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/routines": {
+      "get": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "List Routines",
+        "operationId": "list_routines_api_routines_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Routine"
+                  },
+                  "type": "array",
+                  "title": "Response List Routines Api Routines Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "Create Routine",
+        "operationId": "create_routine_api_routines_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoutineCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Routine"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/routines/{routine_id}": {
+      "patch": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "Patch Routine",
+        "operationId": "patch_routine_api_routines__routine_id__patch",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "routine_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Routine Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoutinePatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Routine"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "calendar"
+        ],
+        "summary": "Delete Routine",
+        "operationId": "delete_routine_api_routines__routine_id__delete",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "routine_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Routine Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/secrets": {
       "get": {
         "tags": [
@@ -2936,8 +4024,139 @@
           "files"
         ],
         "summary": "Read File",
-        "description": "File bytes. Agent-made HTML/SVG is never rendered from this origin: previews load it\nfrom the separate files origin in a sandboxed frame (M3).",
+        "description": "File bytes, for downloads and client-side previewers (text, CSV, notebooks, 3D).",
         "operationId": "read_file_api_files_raw_get",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "volume",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "workspace",
+                "work"
+              ],
+              "type": "string",
+              "title": "Volume"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          },
+          {
+            "name": "download",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Download"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/octet-stream": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/files/zip": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Zip Dir",
+        "description": "A folder as a zip (symlinks skipped).",
+        "operationId": "zip_dir_api_files_zip_get",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "volume",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "workspace",
+                "work"
+              ],
+              "type": "string",
+              "title": "Volume"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/zip": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/files/preview-url": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "File Preview Url",
+        "description": "A link on the files origin for showing this file in a frame or media element. HTML\ngets a link scoped to its folder, so its relative assets load.",
+        "operationId": "file_preview_url_api_files_preview_url_get",
         "security": [
           {
             "session": []
@@ -2974,7 +4193,83 @@
           "200": {
             "description": "Successful Response",
             "content": {
-              "application/octet-stream": {}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewUrl"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/files/diff": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "File Diff",
+        "operationId": "file_diff_api_files_diff_get",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "volume",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "workspace",
+                "work"
+              ],
+              "type": "string",
+              "title": "Volume"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Path"
+            }
+          },
+          {
+            "name": "rev",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rev"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileDiff"
+                }
+              }
             }
           },
           "422": {
@@ -3273,6 +4568,175 @@
         }
       }
     },
+    "/api/shelf/{item_id}/raw": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Shelf Raw",
+        "description": "A shelf item's bytes: a kept version, the snapshot, or the live file.",
+        "operationId": "shelf_raw_api_shelf__item_id__raw_get",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            }
+          },
+          {
+            "name": "download",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Download"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/octet-stream": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/shelf/{item_id}/preview-url": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Shelf Preview Url",
+        "operationId": "shelf_preview_url_api_shelf__item_id__preview_url_get",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewUrl"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/web": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Web Page",
+        "description": "The assistant's web page (its port 8787, through agent-web).",
+        "operationId": "web_page_api_web_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebPage"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
     "/api/uploads": {
       "post": {
         "tags": [
@@ -3326,6 +4790,64 @@
   },
   "components": {
     "schemas": {
+      "AllowedWindow": {
+        "properties": {
+          "days": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Days",
+            "description": "Days the window starts on, Monday = 0."
+          },
+          "start": {
+            "type": "string",
+            "title": "Start",
+            "description": "HH:MM, the owner's time zone."
+          },
+          "end": {
+            "type": "string",
+            "title": "End",
+            "description": "HH:MM; at or before start means it runs past midnight (00:00–00:00 = all day)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "days",
+          "start",
+          "end"
+        ],
+        "title": "AllowedWindow"
+      },
+      "ApiProviderCreate": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 400,
+            "minLength": 20,
+            "title": "Key"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "title": "ApiProviderCreate",
+        "description": "Online only. The key is write-only: stored encrypted, given only to sessions on this provider."
+      },
       "Attachment": {
         "properties": {
           "name": {
@@ -3472,6 +4994,354 @@
         ],
         "title": "Body_upload_api_uploads_post"
       },
+      "Boost": {
+        "properties": {
+          "level": {
+            "type": "string",
+            "enum": [
+              "dormant",
+              "frugal",
+              "steady",
+              "busy",
+              "max"
+            ],
+            "title": "Level"
+          },
+          "until": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Until"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "level",
+          "until"
+        ],
+        "title": "Boost"
+      },
+      "BoostRequest": {
+        "properties": {
+          "level": {
+            "type": "string",
+            "enum": [
+              "dormant",
+              "frugal",
+              "steady",
+              "busy",
+              "max"
+            ],
+            "title": "Level"
+          },
+          "hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hours",
+            "description": "Boost for this many hours (default 24)."
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          },
+          "until_reset": {
+            "type": "boolean",
+            "title": "Until Reset",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "level"
+        ],
+        "title": "BoostRequest"
+      },
+      "BudgetLimits": {
+        "properties": {
+          "allowance": {
+            "type": "number",
+            "title": "Allowance",
+            "description": "Points a week the assistant may plan with."
+          },
+          "allowed_hours": {
+            "items": {
+              "$ref": "#/components/schemas/AllowedWindow"
+            },
+            "type": "array",
+            "title": "Allowed Hours"
+          },
+          "max_per_day": {
+            "type": "integer",
+            "title": "Max Per Day"
+          },
+          "min_gap_minutes": {
+            "type": "integer",
+            "title": "Min Gap Minutes"
+          },
+          "max_wakeup": {
+            "type": "number",
+            "title": "Max Wakeup",
+            "description": "Most points one wakeup may have."
+          },
+          "tiers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tiers",
+            "description": "Models/efforts the worker may use, e.g. 'sonnet/medium'."
+          },
+          "sweep": {
+            "type": "boolean",
+            "title": "Sweep"
+          },
+          "fallback": {
+            "type": "boolean",
+            "title": "Fallback"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "allowance",
+          "allowed_hours",
+          "max_per_day",
+          "min_gap_minutes",
+          "max_wakeup",
+          "tiers",
+          "sweep",
+          "fallback"
+        ],
+        "title": "BudgetLimits"
+      },
+      "BudgetLimitsPatch": {
+        "properties": {
+          "allowance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowance"
+          },
+          "allowed_hours": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AllowedWindow"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Hours"
+          },
+          "max_per_day": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Per Day"
+          },
+          "min_gap_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Gap Minutes"
+          },
+          "max_wakeup": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Wakeup"
+          },
+          "tiers": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tiers"
+          },
+          "sweep": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sweep"
+          },
+          "fallback": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "BudgetLimitsPatch",
+        "description": "Overrides on top of the level's limits; null removes an override."
+      },
+      "BudgetOverview": {
+        "properties": {
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderBudget"
+            },
+            "type": "array",
+            "title": "Providers"
+          },
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/LevelPreset"
+            },
+            "type": "array",
+            "title": "Levels"
+          },
+          "tiers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tiers"
+          },
+          "reserve_weekly_pct": {
+            "type": "number",
+            "title": "Reserve Weekly Pct"
+          },
+          "reserve_five_hour_pct": {
+            "type": "number",
+            "title": "Reserve Five Hour Pct"
+          },
+          "sweep_window_hours": {
+            "type": "number",
+            "title": "Sweep Window Hours"
+          },
+          "sweep_ceiling_pct": {
+            "type": "number",
+            "title": "Sweep Ceiling Pct"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "providers",
+          "levels",
+          "tiers",
+          "reserve_weekly_pct",
+          "reserve_five_hour_pct",
+          "sweep_window_hours",
+          "sweep_ceiling_pct"
+        ],
+        "title": "BudgetOverview"
+      },
+      "BudgetPatch": {
+        "properties": {
+          "level": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "dormant",
+                  "frugal",
+                  "steady",
+                  "busy",
+                  "max"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "overrides": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BudgetLimitsPatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reply_pts": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Pts"
+          },
+          "fallback_pts": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Pts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "BudgetPatch",
+        "description": "Online only (budget changes are never queued offline). Setting a level clears overrides."
+      },
       "BudgetSummary": {
         "properties": {
           "unit": {
@@ -3525,6 +5395,92 @@
           "used_by_chat"
         ],
         "title": "BudgetSummary"
+      },
+      "Calendar": {
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          },
+          "wakeups": {
+            "items": {
+              "$ref": "#/components/schemas/Wakeup"
+            },
+            "type": "array",
+            "title": "Wakeups"
+          },
+          "windows": {
+            "items": {
+              "$ref": "#/components/schemas/CalendarWindow"
+            },
+            "type": "array",
+            "title": "Windows",
+            "description": "Allowed hours (the rest is protected for the owner) and the sweep window."
+          },
+          "budget": {
+            "$ref": "#/components/schemas/ProviderBudget"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/Run"
+            },
+            "type": "array",
+            "title": "Runs",
+            "description": "Runs started in the range (replies and manual runs too)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "timezone",
+          "wakeups",
+          "windows",
+          "budget",
+          "runs"
+        ],
+        "title": "Calendar"
+      },
+      "CalendarWindow": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "allowed",
+              "sweep"
+            ],
+            "title": "Kind"
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "End"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "start",
+          "end"
+        ],
+        "title": "CalendarWindow"
       },
       "Capabilities": {
         "properties": {
@@ -3797,6 +5753,71 @@
         ],
         "title": "FileChange"
       },
+      "FileDiff": {
+        "properties": {
+          "rev": {
+            "type": "string",
+            "title": "Rev"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "added": {
+            "type": "integer",
+            "title": "Added"
+          },
+          "removed": {
+            "type": "integer",
+            "title": "Removed"
+          },
+          "patch": {
+            "type": "string",
+            "title": "Patch",
+            "description": "Unified diff of this file (or a note for binary files)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "rev",
+          "parent",
+          "at",
+          "message",
+          "run_id",
+          "added",
+          "removed",
+          "patch"
+        ],
+        "title": "FileDiff"
+      },
       "FileEntry": {
         "properties": {
           "name": {
@@ -3846,6 +5867,12 @@
             "type": "boolean",
             "title": "From Owner",
             "description": "An upload from the owner.",
+            "default": false
+          },
+          "symlink": {
+            "type": "boolean",
+            "title": "Symlink",
+            "description": "A symlink: shown, never followed.",
             "default": false
           }
         },
@@ -4139,6 +6166,17 @@
             ],
             "title": "Progress"
           },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
           "expected_end": {
             "anyOf": [
               {
@@ -4190,6 +6228,36 @@
         ],
         "title": "Job"
       },
+      "LevelPreset": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": [
+              "dormant",
+              "frugal",
+              "steady",
+              "busy",
+              "max"
+            ],
+            "title": "Name"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/BudgetLimits"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "text",
+          "limits"
+        ],
+        "title": "LevelPreset"
+      },
       "Listing": {
         "properties": {
           "volume": {
@@ -4207,6 +6275,17 @@
           "git": {
             "type": "boolean",
             "title": "Git"
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
           },
           "entries": {
             "items": {
@@ -4764,7 +6843,8 @@
             "enum": [
               "egress_rule",
               "secret",
-              "setting"
+              "setting",
+              "routine"
             ],
             "title": "Kind"
           },
@@ -4857,6 +6937,27 @@
           "permission"
         ],
         "title": "PermissionItem"
+      },
+      "PreviewUrl": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "url",
+          "expires_at"
+        ],
+        "title": "PreviewUrl",
+        "description": "A short-lived link on the files origin, for frames and media elements."
       },
       "Project": {
         "properties": {
@@ -5197,6 +7298,261 @@
         ],
         "title": "PromoteRequest"
       },
+      "ProviderBudget": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit",
+            "description": "'pts': 0.1% of a Claude subscription's week, or $0.10 on an API key."
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "dormant",
+              "frugal",
+              "steady",
+              "busy",
+              "max"
+            ],
+            "title": "Level",
+            "description": "The owner's level."
+          },
+          "effective_level": {
+            "type": "string",
+            "enum": [
+              "dormant",
+              "frugal",
+              "steady",
+              "busy",
+              "max"
+            ],
+            "title": "Effective Level",
+            "description": "The level in force (a Boost's while one runs)."
+          },
+          "boost": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Boost"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limits": {
+            "$ref": "#/components/schemas/BudgetLimits",
+            "description": "Effective limits: the level's, with the owner's overrides."
+          },
+          "custom": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Custom",
+            "description": "Limits the owner overrode."
+          },
+          "allowance": {
+            "type": "number",
+            "title": "Allowance"
+          },
+          "left": {
+            "type": "number",
+            "title": "Left",
+            "description": "Allowance left this week, capped by the room below the owner's weekly reserve."
+          },
+          "used_by_assistant": {
+            "type": "number",
+            "title": "Used By Assistant"
+          },
+          "used_by_owner": {
+            "type": "number",
+            "title": "Used By Owner",
+            "description": "The owner's own use outside l0wagent (subscription: the weekly meter minus the rest)."
+          },
+          "used_by_chat": {
+            "type": "number",
+            "title": "Used By Chat"
+          },
+          "room_below_reserve": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room Below Reserve",
+            "description": "Subscription: points left before the weekly reserve."
+          },
+          "reply_allowance": {
+            "type": "number",
+            "title": "Reply Allowance"
+          },
+          "reply_left": {
+            "type": "number",
+            "title": "Reply Left"
+          },
+          "scheduled": {
+            "type": "number",
+            "title": "Scheduled",
+            "description": "Points in planned wakeups for the rest of this week."
+          },
+          "week_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Week Start"
+          },
+          "resets_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Resets At"
+          },
+          "pace": {
+            "type": "string",
+            "title": "Pace"
+          },
+          "native": {
+            "type": "string",
+            "title": "Native",
+            "description": "The provider's own unit, e.g. '46% of the week used' or '$3.10 this week'."
+          },
+          "pts_per_usd": {
+            "type": "number",
+            "title": "Pts Per Usd",
+            "description": "Subscription: the learned calibration from API-priced tokens to points."
+          },
+          "fallback_pts": {
+            "type": "number",
+            "title": "Fallback Pts"
+          },
+          "has_credential": {
+            "type": "boolean",
+            "title": "Has Credential"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "provider",
+          "kind",
+          "label",
+          "enabled",
+          "unit",
+          "level",
+          "effective_level",
+          "boost",
+          "limits",
+          "custom",
+          "allowance",
+          "left",
+          "used_by_assistant",
+          "used_by_owner",
+          "used_by_chat",
+          "room_below_reserve",
+          "reply_allowance",
+          "reply_left",
+          "scheduled",
+          "week_start",
+          "resets_at",
+          "pace",
+          "native",
+          "pts_per_usd",
+          "fallback_pts",
+          "has_credential"
+        ],
+        "title": "ProviderBudget"
+      },
+      "ProviderInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "One line: logged in / key saved / usage source."
+          },
+          "usage_source": {
+            "type": "string",
+            "title": "Usage Source"
+          },
+          "has_credential": {
+            "type": "boolean",
+            "title": "Has Credential"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "label",
+          "enabled",
+          "status",
+          "usage_source",
+          "has_credential"
+        ],
+        "title": "ProviderInfo"
+      },
+      "ProviderPatch": {
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ProviderPatch"
+      },
       "Question": {
         "properties": {
           "id": {
@@ -5419,6 +7775,439 @@
         ],
         "title": "RecentMessage"
       },
+      "ReserveSettings": {
+        "properties": {
+          "reserve_weekly_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reserve Weekly Pct"
+          },
+          "reserve_five_hour_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reserve Five Hour Pct"
+          },
+          "sweep_window_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sweep Window Hours"
+          },
+          "sweep_ceiling_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sweep Ceiling Pct"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ReserveSettings"
+      },
+      "ReviewerConfig": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "advisor",
+              "monitor",
+              "gate"
+            ],
+            "title": "Mode",
+            "default": "monitor"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "default": "claude-subscription"
+          },
+          "tier": {
+            "type": "string",
+            "title": "Tier",
+            "default": "opus/medium"
+          },
+          "interval_minutes": {
+            "type": "number",
+            "title": "Interval Minutes",
+            "description": "Monitor/gate: how often it reads new notes.",
+            "default": 10
+          },
+          "budget_share": {
+            "type": "number",
+            "title": "Budget Share",
+            "description": "At most this share of a wakeup's budget.",
+            "default": 0.25
+          },
+          "change_tier": {
+            "type": "boolean",
+            "title": "Change Tier",
+            "default": true
+          },
+          "tier_choices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tier Choices"
+          },
+          "max_tier_changes": {
+            "type": "integer",
+            "title": "Max Tier Changes",
+            "default": 3
+          },
+          "continuity": {
+            "type": "string",
+            "enum": [
+              "day",
+              "wakeup"
+            ],
+            "title": "Continuity",
+            "default": "day"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ReviewerConfig"
+      },
+      "RoleConfig": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "worker",
+              "reviewer",
+              "replier",
+              "chat",
+              "utility"
+            ],
+            "title": "Role"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "tier": {
+            "type": "string",
+            "title": "Tier",
+            "description": "model/effort, e.g. 'sonnet/medium'."
+          },
+          "allowed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed",
+            "description": "Tiers it may use (the worker's come from the level)."
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "role",
+          "provider",
+          "tier",
+          "allowed"
+        ],
+        "title": "RoleConfig"
+      },
+      "Roles": {
+        "properties": {
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleConfig"
+            },
+            "type": "array",
+            "title": "Roles"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "roles"
+        ],
+        "title": "Roles"
+      },
+      "Routine": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt"
+          },
+          "schedule": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Schedule",
+            "description": "{\"kind\": \"weekly\", \"day\": 0-6, \"time\": \"HH:MM\"} | {\"kind\": \"daily\", \"time\": \"HH:MM\"} | {\"kind\": \"before_reset\", \"hours\": 6}"
+          },
+          "schedule_text": {
+            "type": "string",
+            "title": "Schedule Text"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "tier": {
+            "type": "string",
+            "title": "Tier"
+          },
+          "budget": {
+            "type": "number",
+            "title": "Budget"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "builtin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Builtin"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "proposed",
+              "declined"
+            ],
+            "title": "Status"
+          },
+          "created_by": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "assistant",
+              "control"
+            ],
+            "title": "Created By"
+          },
+          "next_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next At"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "prompt",
+          "schedule",
+          "schedule_text",
+          "provider",
+          "tier",
+          "budget",
+          "enabled",
+          "builtin",
+          "status",
+          "created_by",
+          "next_at",
+          "last_run_at"
+        ],
+        "title": "Routine"
+      },
+      "RoutineCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Prompt"
+          },
+          "schedule": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Schedule"
+          },
+          "tier": {
+            "type": "string",
+            "title": "Tier",
+            "default": "sonnet/medium"
+          },
+          "budget": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Budget"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "prompt",
+          "schedule",
+          "budget"
+        ],
+        "title": "RoutineCreate"
+      },
+      "RoutinePatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 8000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule"
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier"
+          },
+          "budget": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RoutinePatch"
+      },
       "Run": {
         "properties": {
           "id": {
@@ -5558,6 +8347,72 @@
             },
             "type": "array",
             "title": "Projects"
+          },
+          "bucket": {
+            "type": "string",
+            "enum": [
+              "allowance",
+              "reply",
+              "sweep"
+            ],
+            "title": "Bucket",
+            "description": "Which budget it spends: the allowance, the reply budget, or (sweep) what the owner left unused before the reset.",
+            "default": "allowance"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "reviewer_mode": {
+            "type": "string",
+            "enum": [
+              "off",
+              "advisor",
+              "monitor",
+              "gate"
+            ],
+            "title": "Reviewer Mode",
+            "default": "off"
+          },
+          "wakeup_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wakeup Id"
+          },
+          "routine_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routine Id"
+          },
+          "end_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Reason"
           }
         },
         "additionalProperties": false,
@@ -5689,7 +8544,8 @@
                 "type": "null"
               }
             ],
-            "title": "Budget"
+            "title": "Budget",
+            "description": "Points; default MANUAL_RUN_PTS."
           },
           "tier": {
             "anyOf": [
@@ -6317,6 +9173,33 @@
           "created_at"
         ],
         "title": "ShelfVersion"
+      },
+      "StandingInstructions": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 8000,
+            "title": "Text"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "StandingInstructions"
       },
       "Status": {
         "properties": {
@@ -7462,6 +10345,255 @@
         ],
         "title": "ValidationError"
       },
+      "Wakeup": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "budget": {
+            "type": "number",
+            "title": "Budget"
+          },
+          "tier": {
+            "type": "string",
+            "title": "Tier"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "planned",
+              "fallback",
+              "sweep",
+              "routine",
+              "owner"
+            ],
+            "title": "Kind"
+          },
+          "created_by": {
+            "type": "string",
+            "enum": [
+              "assistant",
+              "owner",
+              "control"
+            ],
+            "title": "Created By"
+          },
+          "routine_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routine Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "planned",
+              "running",
+              "done",
+              "missed",
+              "skipped",
+              "cancelled"
+            ],
+            "title": "Status"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "used": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Used",
+            "description": "Points the wakeup's run used, once it ran."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "provider",
+          "at",
+          "budget",
+          "tier",
+          "reason",
+          "kind",
+          "created_by",
+          "routine_id",
+          "status",
+          "status_reason",
+          "run_id",
+          "used"
+        ],
+        "title": "Wakeup"
+      },
+      "WakeupCreate": {
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "budget": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Budget"
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Reason",
+            "default": "Added by you"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "at",
+          "budget"
+        ],
+        "title": "WakeupCreate",
+        "description": "Online only."
+      },
+      "WakeupPatch": {
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "budget": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget"
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "WakeupPatch"
+      },
+      "WebPage": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "Where the browser reaches the assistant's port 8787 (through agent-web)."
+          },
+          "reachable": {
+            "type": "boolean",
+            "title": "Reachable",
+            "description": "Something is listening on the assistant's port."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "url",
+          "reachable"
+        ],
+        "title": "WebPage"
+      },
       "LiveEvent": {
         "additionalProperties": false,
         "description": "One line of GET /api/events (newline-delimited JSON).",
@@ -7488,7 +10620,9 @@
               "task",
               "suggestion",
               "promote",
-              "security"
+              "security",
+              "budget",
+              "calendar"
             ],
             "title": "Type",
             "type": "string"

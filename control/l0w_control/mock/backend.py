@@ -73,7 +73,7 @@ class MockBackend(Backend):
             state="working" if running else "asleep", now=running.now if running else None, run_id=running.id if running else None,
             run_used=running.used if running else None, run_budget=running.budget if running else None,
             next_wakeup_at=_now().replace(hour=2, minute=0, second=0) + timedelta(days=1),
-            budget=s.BudgetSummary(unit="pts", left=42, allowance=120, used_by_assistant=48, used_by_owner=22, used_by_chat=8, resets_at=_now() + timedelta(days=3)),
+            budget=s.BudgetSummary(unit="pts", left=102, allowance=150, used_by_assistant=48, used_by_owner=300, used_by_chat=22, resets_at=_now() + timedelta(days=3)),
             usage=self._usage(), inbox_waiting=self.inbox_counts().waiting, reply_budget_left=14,
         )
 
@@ -460,7 +460,7 @@ class MockBackend(Backend):
                 shelved=["scheduler.py · live"], asks=["Flash the fix?", "Write access"], threads=["Suggested: split calibration"],
             )
         return s.RunDetail(run=r, claims=[c for c in self.w.claims.values() if c.run_id == run_id], changes=changes,
-                           reviewer_mode="monitor", level="Steady")
+                           reviewer_mode="monitor", level="steady")
 
     def timeline(self, run_id: int, view: str, kinds: list[str] | None, after: int | None) -> list[s.TimelineItem]:
         self.run(run_id)
@@ -489,6 +489,206 @@ class MockBackend(Backend):
 
     def jobs(self, include_done: bool) -> list[s.Job]:
         return [j for j in self.w.jobs.values() if include_done or j.status == "running"]
+
+    # ── budgets, providers, roles, the reviewer (M4) ───────────────────────
+    def _limits(self) -> tuple[str, s.BudgetLimits, list[str]]:
+        from dataclasses import asdict
+
+        from ..budgets import LEVELS
+        b = self.w.budget
+        boost = b.get("boost")
+        if boost and boost.until <= _now():
+            boost = b["boost"] = None
+        level = boost.level if boost else b["level"]
+        lim = asdict(LEVELS[level][1])
+        custom = []
+        if not boost:
+            for k, v in b["overrides"].items():
+                lim[k] = v
+                custom.append(k)
+        return level, s.BudgetLimits(**lim), custom
+
+    def _summary(self) -> s.ProviderBudget:
+        level, lim, custom = self._limits()
+        used = 48.0
+        scheduled = sum(w.budget for w in self.w.wakeups.values() if w.status == "planned" and w.kind != "sweep")
+        left = max(0.0, lim.allowance - used)
+        reset = (_now() + timedelta(days=3)).replace(hour=0, minute=0, second=0)
+        days = (reset - _now()).total_seconds() / 86400
+        return s.ProviderBudget(
+            provider="claude-subscription", kind="claude-subscription", label="Claude subscription", enabled=True, unit="pts", level=self.w.budget["level"],
+            effective_level=level, boost=self.w.budget.get("boost"), limits=lim, custom=custom, allowance=lim.allowance, left=left, used_by_assistant=used,  # type: ignore[arg-type]
+            used_by_owner=300.0, used_by_chat=22.0, room_below_reserve=430.0, reply_allowance=self.w.budget["reply_pts"], reply_left=min(14.0, self.w.budget["reply_pts"]),
+            scheduled=scheduled, week_start=reset - timedelta(days=7), resets_at=reset,
+            pace=f"{left - scheduled:.0f} pts unscheduled, {days:.1f} days left: ~{max(0, left - scheduled) / days:.0f}/day" if lim.allowance else "Dormant: no scheduled wakeups",
+            native="37% of the week used", pts_per_usd=2.4, fallback_pts=self.w.budget.get("fallback_pts") or 15.0, has_credential=True)
+
+    def budget_overview(self) -> s.BudgetOverview:
+        from dataclasses import asdict
+
+        from ..budgets import LEVELS, TIERS
+        return s.BudgetOverview(providers=[self._summary()], levels=[s.LevelPreset(name=n, text=t, limits=s.BudgetLimits(**asdict(lim))) for n, (t, lim) in LEVELS.items()],  # type: ignore[arg-type]
+                                tiers=list(TIERS), reserve_weekly_pct=80, reserve_five_hour_pct=70, sweep_window_hours=5, sweep_ceiling_pct=95)
+
+    def patch_budget(self, provider: str, req: s.BudgetPatch) -> s.ProviderBudget:
+        b = self.w.budget
+        if req.level is not None:
+            b["level"], b["overrides"] = req.level, {}
+        if req.overrides is not None:
+            for k, v in req.overrides.model_dump(exclude_unset=True).items():
+                if v is None:
+                    b["overrides"].pop(k, None)
+                else:
+                    b["overrides"][k] = v
+        if req.reply_pts is not None:
+            b["reply_pts"] = req.reply_pts
+        if req.fallback_pts is not None:
+            b["fallback_pts"] = req.fallback_pts
+        self._emit(s.LiveEvent(type="budget"))
+        return self._summary()
+
+    def boost(self, provider: str, req: s.BoostRequest) -> s.ProviderBudget:
+        until = req.until or (_now() + timedelta(hours=req.hours or 24))
+        self.w.budget["boost"] = s.Boost(level=req.level, until=until)
+        self._emit(s.LiveEvent(type="budget"))
+        return self._summary()
+
+    def clear_boost(self, provider: str) -> s.ProviderBudget:
+        self.w.budget["boost"] = None
+        self._emit(s.LiveEvent(type="budget"))
+        return self._summary()
+
+    def patch_reserve(self, req: s.ReserveSettings) -> s.BudgetOverview:
+        return self.budget_overview()
+
+    def providers(self) -> list[s.ProviderInfo]:
+        out = [s.ProviderInfo(id="claude-subscription", kind="claude-subscription", label="Claude subscription", enabled=True, status="Weekly usage 37% (read oauth)",
+                              usage_source="oauth", has_credential=True)]
+        if self.w.api_key:
+            out.append(s.ProviderInfo(id="anthropic-api", kind="anthropic-api", label="Anthropic API", enabled=True, status="API key saved (write-only)",
+                                      usage_source="ledger", has_credential=True))
+        return out
+
+    def add_api_provider(self, req: s.ApiProviderCreate) -> s.ProviderInfo:
+        if not req.key.startswith("sk-ant-"):
+            raise BadRequest("bad_key", "That doesn't look like an Anthropic API key (they start with sk-ant-).")
+        self.w.api_key = True
+        return self.providers()[-1]
+
+    def patch_provider(self, provider: str, req: s.ProviderPatch) -> s.ProviderInfo:
+        return next(p for p in self.providers() if p.id == provider)
+
+    def delete_provider(self, provider: str) -> None:
+        self.w.api_key = False
+
+    def roles(self) -> s.Roles:
+        from ..budgets import TIERS, Budgets
+        _, lim, _ = self._limits()
+        return s.Roles(roles=[s.RoleConfig(role=name, provider=p, tier=t, allowed=lim.tiers if name == "worker" else list(TIERS), note=Budgets.ROLE_NOTES[name])  # type: ignore[arg-type]
+                              for name, (p, t) in self.w.roles.items()])
+
+    def set_roles(self, req: s.Roles) -> s.Roles:
+        for r in req.roles:
+            self.w.roles[r.role] = (r.provider, r.tier)
+        return self.roles()
+
+    def reviewer_config(self) -> s.ReviewerConfig:
+        return self.w.reviewer
+
+    def set_reviewer_config(self, req: s.ReviewerConfig) -> s.ReviewerConfig:
+        self.w.reviewer = req
+        return req
+
+    def instructions(self) -> s.StandingInstructions:
+        return s.StandingInstructions(text=self.w.instructions, updated_at=self.w.now - timedelta(days=2))
+
+    def set_instructions(self, req: s.StandingInstructions) -> s.StandingInstructions:
+        self.w.instructions = req.text
+        return s.StandingInstructions(text=req.text, updated_at=_now())
+
+    # ── the calendar, wakeups, routines ────────────────────────────────────
+    def calendar(self, start: str | None, end: str | None) -> s.Calendar:
+        from ..budgets import in_hours
+        now = _now()
+        a = datetime.fromisoformat(start.replace("Z", "+00:00")) if start else (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+        b = datetime.fromisoformat(end.replace("Z", "+00:00")) if end else a + timedelta(days=7)
+        _, lim, _ = self._limits()
+        windows, t, cur = [], a, None
+        hours = [w.model_dump() for w in lim.allowed_hours]
+        while t < b:
+            inside = in_hours(hours, t)
+            if inside and cur is None:
+                cur = t
+            if not inside and cur is not None:
+                windows.append(s.CalendarWindow(kind="allowed", start=cur, end=t))
+                cur = None
+            t += timedelta(minutes=30)
+        if cur is not None:
+            windows.append(s.CalendarWindow(kind="allowed", start=cur, end=b))
+        summary = self._summary()
+        if lim.sweep:
+            windows.append(s.CalendarWindow(kind="sweep", start=summary.resets_at - timedelta(hours=5), end=summary.resets_at))
+        return s.Calendar(start=a, end=b, timezone=self.owner.timezone, wakeups=sorted((w for w in self.w.wakeups.values() if a <= w.at < b and w.status != "cancelled"), key=lambda w: w.at),
+                          windows=windows, budget=summary, runs=[r for r in self.w.runs.values() if a <= r.started_at < b])
+
+    def create_wakeup(self, req: s.WakeupCreate) -> s.Wakeup:
+        wid = max(self.w.wakeups, default=0) + 1
+        w = s.Wakeup(id=wid, provider="claude-subscription", at=req.at, budget=req.budget, tier=req.tier or "sonnet/medium", reason=req.reason, kind="owner",
+                     created_by="owner", routine_id=None, status="planned", status_reason=None, run_id=None, used=None)
+        self.w.wakeups[wid] = w
+        self._emit(s.LiveEvent(type="calendar", data={"id": wid}))
+        return w
+
+    def patch_wakeup(self, wakeup_id: int, req: s.WakeupPatch) -> s.Wakeup:
+        w = self.w.wakeups.get(wakeup_id)
+        if not w:
+            raise NotFound(f"wakeup {wakeup_id}")
+        if w.status != "planned":
+            raise BadRequest("not_planned", f"Wakeup #{wakeup_id} is {w.status}, not planned.")
+        self.w.wakeups[wakeup_id] = w = w.model_copy(update={k: v for k, v in req.model_dump(exclude_unset=True).items() if v is not None})
+        self._emit(s.LiveEvent(type="calendar", data={"id": wakeup_id}))
+        return w
+
+    def cancel_wakeup(self, wakeup_id: int) -> s.Wakeup:
+        w = self.w.wakeups.get(wakeup_id)
+        if not w:
+            raise NotFound(f"wakeup {wakeup_id}")
+        self.w.wakeups[wakeup_id] = w = w.model_copy(update={"status": "cancelled", "status_reason": "cancelled by you"})
+        self._emit(s.LiveEvent(type="calendar", data={"id": wakeup_id}))
+        return w
+
+    def routines_list(self) -> list[s.Routine]:
+        return [r for r in self.w.routines.values() if r.status != "declined"]
+
+    def create_routine(self, req: s.RoutineCreate) -> s.Routine:
+        from ..routines import check_schedule
+        from ..scheduler import schedule_text
+        sch = check_schedule(req.schedule)
+        rid = max(self.w.routines, default=0) + 1
+        self.w.routines[rid] = r = s.Routine(id=rid, name=req.name, prompt=req.prompt, schedule=sch, schedule_text=schedule_text(sch), provider="claude-subscription",
+                                             tier=req.tier, budget=req.budget, enabled=req.enabled, builtin=None, status="active", created_by="owner", next_at=None, last_run_at=None)
+        return r
+
+    def patch_routine(self, routine_id: int, req: s.RoutinePatch) -> s.Routine:
+        from ..routines import check_schedule
+        from ..scheduler import schedule_text
+        r = self.w.routines.get(routine_id)
+        if not r:
+            raise NotFound(f"routine {routine_id}")
+        upd = {k: v for k, v in req.model_dump(exclude_unset=True).items() if v is not None}
+        if "schedule" in upd:
+            upd["schedule"] = check_schedule(upd["schedule"])
+            upd["schedule_text"] = schedule_text(upd["schedule"])
+        self.w.routines[routine_id] = r = r.model_copy(update=upd)
+        return r
+
+    def delete_routine(self, routine_id: int) -> None:
+        r = self.w.routines.get(routine_id)
+        if not r:
+            raise NotFound(f"routine {routine_id}")
+        if r.builtin:
+            raise BadRequest("builtin", "The built-in weekly review can be paused, not deleted.")
+        del self.w.routines[routine_id]
 
     # ── files ──────────────────────────────────────────────────────────────
     def _node(self, volume: str, path: str) -> tuple[Any, bool]:
@@ -596,7 +796,45 @@ class MockBackend(Backend):
 
         return self._once(req.idempotency_key, make)
 
-    def remove_from_shelf(self, item_id: int) -> None:
+    def file_diff(self, volume: str, path: str, rev: str) -> s.FileDiff:
+        h = next((x for x in self.file_history(volume, path) if x.rev == rev), None)
+        if h is None:
+            raise NotFound(f"revision {rev}")
+        patch = f"--- a/{path}\n+++ b/{path}\n@@ -1,3 +1,4 @@\n # Notes\n-Pump runs at 06:00 local.\n+Pump runs at 06:00 UTC (DST-safe).\n+Debounce: 10 min.\n"
+        return s.FileDiff(rev=h.rev, parent=None, at=h.at, message=h.message, run_id=h.run_id, added=h.added, removed=h.removed, patch=patch)
+
+    def zip_dir(self, volume: str, path: str):
+        import io
+        import zipfile
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("README.txt", "(mock zip)")
+        buf.seek(0)
+        return buf
+
+    def preview_url(self, volume: str, path: str, files_origin: str) -> s.PreviewUrl:
+        from urllib.parse import quote
+
+        self._node(volume, path)
+        return s.PreviewUrl(url=f"/api/files/raw?volume={volume}&path={quote(path)}", expires_at=_now() + timedelta(hours=1))
+
+    def shelf_raw(self, item_id: int, version: int | None) -> tuple[bytes, str, str]:
+        item = self.w.shelf.get(item_id)
+        if item is None:
+            raise NotFound(f"shelf item {item_id}")
+        data, mime = self.read_file(item.volume, item.path)
+        return data, mime, item.path.rsplit("/", 1)[-1]
+
+    def shelf_preview_url(self, item_id: int, version: int | None, files_origin: str) -> s.PreviewUrl:
+        if item_id not in self.w.shelf:
+            raise NotFound(f"shelf item {item_id}")
+        return s.PreviewUrl(url=f"/api/shelf/{item_id}/raw", expires_at=_now() + timedelta(hours=1))
+
+    def web_page(self, url: str) -> s.WebPage:
+        return s.WebPage(url=url, reachable=True)
+
+    def remove_from_shelf(self, item_id: int, by: str = "owner") -> None:
         if self.w.shelf.pop(item_id, None) is None:
             raise NotFound(f"shelf item {item_id}")
         self._changed("shelf", item_id, None)

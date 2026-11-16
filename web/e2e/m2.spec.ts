@@ -10,7 +10,7 @@ test('message, Reply now, and answer its question in place', async ({ page, requ
   await page.getByPlaceholder('What should the assistant work on?').fill('Can you run the pump test this weekend?')
   await page.getByTitle('Start the thread (⌘↵)').click()
   await expect(page.getByRole('heading', { name: 'Can you run the pump test this weekend?' })).toBeVisible()
-  await expect(page.getByText('Queued for the assistant\'s next run')).toBeVisible()
+  await expect(page.getByText(/^Queued for the (next wakeup|assistant's next run)/)).toBeVisible()
 
   await page.getByRole('button', { name: 'Reply now' }).click()
   await expect(page.getByText('On it. One question first, so I schedule it right.')).toBeVisible({ timeout: 30_000 })

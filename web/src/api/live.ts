@@ -51,6 +51,10 @@ export function invalidateFor(qc: QueryClient, e: S['LiveEvent']) {
       return inv(['runs'], ['run'], ['status'], ['system'])
     case 'job':
       return inv(['jobs'])
+    case 'budget':
+    case 'calendar':
+      qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === 'thread' && q.queryKey[2] === 'delivery' })
+      return inv(['budget'], ['calendar'], ['status'])
     case 'shelf':
     case 'upload':
       return inv(['shelf'], ['files'])

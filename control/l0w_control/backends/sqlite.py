@@ -2,7 +2,10 @@
 
 M1: accounts, meta/status/sync/events, runs and timelines, jobs, the system page and
 self-test. M2: projects, threads, messages, asks, claims, suggestions, the inbox, Reply
-now, search, uploads into _inbox/ and write-only secrets. Files and the shelf are M3 (501).
+now, search, uploads into _inbox/ and write-only secrets. M3: the file browser (symlink-safe,
+git history via dulwich), the shelf and its watcher, and the files origin for previews.
+M4: providers, budgets and the usage ledger, the wakeup plan and its scheduler (fallback,
+sweep, routines), roles, the reviewer, promote requests and the job registry.
 """
 
 from __future__ import annotations
@@ -13,18 +16,28 @@ import json
 import mimetypes
 import os
 from collections.abc import AsyncIterator, Coroutine
+from pathlib import Path
 from typing import Any, TypeVar
 
 from .. import __version__
 from ..api import schemas as s
-from ..auth import Auth, parse, utcnow
+from ..auth import Auth, iso, parse, utcnow
+from ..budgets import LEVELS, SUBSCRIPTION, TIERS, Budgets
 from ..config import Env, Settings
 from ..conv import Conversations
 from ..db import Database
+from ..files import Storage, guess_mime
+from ..files_origin import Signer
+from ..files_origin import make_app as files_app
+from ..jobs import Jobs
 from ..live import Live
+from ..reviewer import Reviewer
+from ..routines import Routines
 from ..runs.clients import EgressClient, RunnerClient, RunnerError
 from ..runs.manager import RunManager, run_model
 from ..runs.usage import Usage
+from ..scheduler import Scheduler, wakeup_model
+from ..shelf import Shelf
 from ..vault import Vault
 from .base import Backend, BadRequest, Conflict, NotFound
 
@@ -52,8 +65,27 @@ class SqliteBackend(Backend):
         self.conv = Conversations(self.db, self.live, self.vault, self.settings)
         self.conv.add_egress_rule = lambda pattern, mode, note: self._await(self.egress.add_rule(pattern, mode, note))
         self.conv.delete_egress_rule = lambda rule_id: self._await(self.egress.delete_rule(rule_id))
-        self.runs_mgr = RunManager(self.env, self.db, self.settings, self.live, self.runner, self.egress, self.usage, self.conv, self.vault)
+        self.budgets = Budgets(self.db, self.settings, self.usage, self.vault.fernet)
+        self.budgets.ensure_defaults()
+        self.routines = Routines(self.db, self.budgets)
+        self.routines.ensure_builtin()
+        self.conv.routines = self.routines
+        self.runs_mgr = RunManager(self.env, self.db, self.settings, self.live, self.runner, self.egress, self.usage, self.conv, self.vault, self.budgets)
+        self.scheduler = Scheduler(self.db, self.settings, self.budgets, self.runs_mgr, self.live)
+        self.routines.scheduler = self.scheduler
+        self.scheduler.housekeeping.append(self._housekeeping)
+        self.reviewer = Reviewer(self.db, self.settings, self.budgets, self.runner, self.live, self.vault.redact)
+        self.reviewer.runs = self.runs_mgr
+        self.runs_mgr.reviewer = self.reviewer
+        self.runs_mgr.brief_extra = self._brief_extra
+        self._last_jobs_check = 0.0
         self.inbox_dir = os.environ.get("L0W_INBOX_DIR", "/work/_inbox")
+        self.storage = Storage({"workspace": Path(os.environ.get("L0W_WORKSPACE_DIR", "/workspace")), "work": Path(os.environ.get("L0W_WORK_DIR", "/work"))})
+        self.shelf_ = Shelf(self.db, self.live, self.storage, self.env.data_dir / "shelf")
+        self.jobs_ = Jobs(self.db, self.live, self.storage, self.vault.redact)
+        self.signer = Signer(self.vault.key)
+        self.files_app = files_app(self.storage, self.signer, self.shelf_.raw)
+        self._files_server = None
         self._seed_news()
         self.loop: asyncio.AbstractEventLoop | None = None
         self.live.getters.update(run=lambda i: self.runs_mgr.run(int(i)), security_alert=lambda i: self._alert(int(i)))
@@ -70,8 +102,25 @@ class SqliteBackend(Backend):
         self.loop = asyncio.get_running_loop()
         self.live.bind(self.loop)
         await self.runs_mgr.startup()
+        self._watcher = asyncio.create_task(self.shelf_.watch(self.runs_mgr.active_run_id))
+        self._scheduler = asyncio.create_task(self.scheduler.loop()) if os.environ.get("L0W_SCHEDULER", "1") != "0" else None
+        self._reviewer = asyncio.create_task(self.reviewer.loop())
+        port = os.environ.get("L0W_FILES_PORT")
+        if port:  # the files origin: a second port served by this process
+            import uvicorn
+
+            self._files_server = uvicorn.Server(uvicorn.Config(self.files_app, host=os.environ.get("L0W_FILES_HOST", "0.0.0.0"), port=int(port),
+                                                               lifespan="off", log_level="warning"))
+            self._files_task = asyncio.create_task(self._files_server.serve())
 
     async def shutdown(self) -> None:
+        self._watcher.cancel()
+        if self._scheduler:
+            self._scheduler.cancel()
+        self._reviewer.cancel()
+        if self._files_server:
+            self._files_server.should_exit = True
+            await asyncio.gather(self._files_task, return_exceptions=True)
         await self.runs_mgr.shutdown()
 
     def _await(self, coro: Coroutine[Any, Any, T], timeout: float = 60) -> T:
@@ -89,10 +138,13 @@ class SqliteBackend(Backend):
     def status(self) -> s.Status:
         run_id = self.runs_mgr.active_run_id()
         run = self.runs_mgr.run(run_id) if run_id else None
+        pid = self.budgets.role("worker").provider
+        nxt = self.scheduler.next_wakeup()
+        state = "working" if run else "asleep" if nxt else "dormant"
         return s.Status(
-            state="working" if run else "dormant", now=run.now if run else None, run_id=run_id, run_used=run.used if run else None,
-            run_budget=run.budget if run else None, next_wakeup_at=None, budget=None, usage=self.usage.cached(),
-            inbox_waiting=self.inbox_counts().waiting, reply_budget_left=None,
+            state=state, now=run.now if run else None, run_id=run_id, run_used=run.used if run else None,  # type: ignore[arg-type]
+            run_budget=run.budget if run else None, next_wakeup_at=nxt.at if nxt else None, budget=self.budgets.budget_summary(pid), usage=self.usage.cached(),
+            inbox_waiting=self.inbox_counts().waiting, reply_budget_left=self.budgets.reply_left(self.budgets.role("replier").provider),
         )
 
     def sync(self, since: str | None) -> s.SyncResponse:
@@ -225,7 +277,10 @@ class SqliteBackend(Backend):
         return self.conv.accept_all()
 
     def decide_promote(self, pid, req):
-        return self.conv.decide_promote(pid, req)
+        pr = self.conv.decide_promote(pid, req)
+        if pr.status == "approved" and not self.runs_mgr.promote(pr.run_id, pr.budget):
+            self.db.ex("UPDATE promote_requests SET note=COALESCE(note || ' ', '') || ? WHERE id=?", ("(the run had already ended)", pid))
+        return self.conv.promote(pid)
 
     def claims(self, active: bool) -> list[s.Claim]:
         return self.conv.claims(active)
@@ -274,9 +329,20 @@ class SqliteBackend(Backend):
             run = self.db.q1("SELECT waiting_until FROM runs WHERE id=?", (run_id,))
             text = "Waiting for your reply · sees it right away" if run and run["waiting_until"] else "Working now · sees it after its next step"
             return s.Delivery(state="working", text=text, next_wakeup_at=None, reply_now_available=False, reply_now_cost=None, reply_budget_left=None)
-        gate = self.usage.gate(self.usage.cached())
-        return s.Delivery(state="queued", text="Queued for the assistant's next run", next_wakeup_at=None,
-                          reply_now_available=gate.open, reply_now_cost=None, reply_budget_left=None)
+        replier = self.budgets.role("replier").provider
+        left = self.budgets.reply_left(replier)
+        gate_open = self.usage.gate(self.usage.cached()).open if replier == SUBSCRIPTION else bool(self.budgets.credential(replier))
+        nxt = self.scheduler.next_wakeup()
+        if nxt:
+            text = f"Queued for the next wakeup ({self.budgets.local(nxt.at):%a %H:%M})"
+        elif self.budgets.effective(self.budgets.role("worker").provider).limits.allowance <= 0:
+            return s.Delivery(state="dormant", text="Dormant: no wakeups planned. Reply now still works." if left > 0 else "Dormant, and the reply budget is used up",
+                              next_wakeup_at=None, reply_now_available=gate_open and left > 0, reply_now_cost=min(self.settings.get("REPLY_RUN_MAX_PTS"), left) if left > 0 else None,
+                              reply_budget_left=round(left, 1))
+        else:
+            text = "Queued for the assistant's next run"
+        return s.Delivery(state="queued", text=text, next_wakeup_at=nxt.at if nxt else None, reply_now_available=gate_open and left > 0,
+                          reply_now_cost=min(self.settings.get("REPLY_RUN_MAX_PTS"), left) if left > 0 else None, reply_budget_left=round(left, 1))
 
     def reply_now(self, thread_id: int) -> s.Run:
         t = self.conv.thread(thread_id)
@@ -347,6 +413,108 @@ class SqliteBackend(Backend):
         finally:
             os.close(root)
 
+    # ── files ──────────────────────────────────────────────────────────────
+    def _run_at(self, t: float) -> int | None:
+        """The run that was going at a time (for commits the agent made itself)."""
+        from datetime import UTC, datetime
+
+        from ..auth import iso
+
+        at = iso(datetime.fromtimestamp(t, UTC))
+        row = self.db.q1("SELECT id FROM runs WHERE started_at<=? AND (ended_at IS NULL OR ended_at>=?) ORDER BY id DESC LIMIT 1", (at, at))
+        return row["id"] if row else None
+
+    def list_dir(self, volume: str, path: str) -> s.Listing:
+        from datetime import UTC, datetime
+
+        path = "/".join(p for p in path.split("/") if p)
+        entries = self.storage.list(volume, path)
+        changes = self.storage.last_changes(volume, path)
+        repo = self.storage.repo_for(volume, path)
+        branch = None
+        if repo:
+            branch = self.storage.branch(repo[0])
+            repo[0].close()
+        inbox = volume == "work" and (path == "_inbox" or path.startswith("_inbox/"))
+        out = []
+        for e in entries:
+            run = None
+            if not e.dir and e.name in changes:
+                run, t = changes[e.name]
+                run = run or self._run_at(t)
+            out.append(s.FileEntry(name=e.name, dir=e.dir, size=e.size, modified_at=datetime.fromtimestamp(e.mtime, UTC) if e.mtime else None,
+                                   last_run_id=run, from_owner=inbox or (volume == "work" and not path and e.name == "_inbox"), symlink=e.symlink))
+        return s.Listing(volume=volume, path=path, git=repo is not None, branch=branch, entries=out)  # type: ignore[arg-type]
+
+    def read_file(self, volume: str, path: str) -> tuple[bytes, str]:
+        return self.storage.read(volume, path, 200 * 1024 * 1024), guess_mime(path)
+
+    def file_history(self, volume: str, path: str) -> list[s.FileHistoryEntry]:
+        return [s.FileHistoryEntry(rev=h["rev"], run_id=h["run_id"] or self._run_at(h["time"]), at=h["at"], added=h["added"], removed=h["removed"], message=h["message"])
+                for h in self.storage.history(volume, path)]
+
+    def file_diff(self, volume: str, path: str, rev: str) -> s.FileDiff:
+        d = self.storage.diff(volume, path, rev)
+        return s.FileDiff(rev=d["rev"], parent=d["parent"], at=d["at"], message=d["message"], run_id=d["run_id"] or self._run_at(d["time"]),
+                          added=d["added"], removed=d["removed"], patch=d["patch"])
+
+    def zip_dir(self, volume: str, path: str):
+        return self.storage.zip(volume, path)
+
+    def _signed(self, scope: dict, name: str, origin: str) -> s.PreviewUrl:
+        from datetime import UTC, datetime, timedelta
+        from urllib.parse import quote
+
+        from ..files_origin import TTL_S
+
+        token = self.signer.sign(scope)
+        return s.PreviewUrl(url=f"{origin}/f/{token}/{quote(name)}", expires_at=datetime.now(UTC) + timedelta(seconds=TTL_S))
+
+    def preview_url(self, volume: str, path: str, files_origin: str) -> s.PreviewUrl:
+        self.storage.stat(volume, path)
+        folder, _, name = path.rpartition("/")
+        if guess_mime(name) in ("text/html", "application/xhtml+xml"):
+            return self._signed({"k": "dir", "v": volume, "p": folder}, name, files_origin)
+        return self._signed({"k": "file", "v": volume, "p": path}, name, files_origin)
+
+    def shelf(self, project: str) -> list[s.ShelfItem]:
+        return self.shelf_.items(self.conv._project_row(project)["id"])
+
+    def add_to_shelf(self, project: str, req: s.ShelfCreate, by: str, run_id: int | None = None) -> s.ShelfItem:
+        pid = self.conv._project_row(project)["id"]
+        path = "/".join(p for p in req.path.split("/") if p)
+        item = self.conv.once(req.idempotency_key, "shelf", s.ShelfItem,
+                              lambda: self.shelf_.add(pid, req.volume, path, req.label, req.mode, req.keep_versions, by, run_id))
+        self.live.changed("project", project)
+        return item
+
+    def remove_from_shelf(self, item_id: int, by: str = "owner") -> None:
+        self.shelf_.remove(item_id, by)
+
+    def shelf_versions(self, item_id: int) -> list[s.ShelfVersion]:
+        return self.shelf_.versions(item_id)
+
+    def shelf_raw(self, item_id: int, version: int | None) -> tuple[bytes, str, str]:
+        return self.shelf_.raw(item_id, version)
+
+    def shelf_preview_url(self, item_id: int, version: int | None, files_origin: str) -> s.PreviewUrl:
+        it = self.shelf_.item(item_id)
+        if it.mode == "live" and version is None and guess_mime(it.path) in ("text/html", "application/xhtml+xml"):
+            folder, _, name = it.path.rpartition("/")
+            return self._signed({"k": "dir", "v": it.volume, "p": folder}, name, files_origin)
+        return self._signed({"k": "shelf", "i": item_id, "n": version}, it.path.rsplit("/", 1)[-1], files_origin)
+
+    def web_page(self, url: str) -> s.WebPage:
+        import socket
+
+        host, _, port = os.environ.get("L0W_AGENT_WEB_TARGET", "agent:8787").rpartition(":")
+        try:
+            with socket.create_connection((host, int(port)), timeout=1):
+                reachable = True
+        except OSError:
+            reachable = False
+        return s.WebPage(url=url, reachable=reachable)
+
     # ── secrets ────────────────────────────────────────────────────────────
     def _secret(self, name: str) -> s.SecretInfo:
         r = next((x for x in self.vault.listing() if x["name"] == name.upper()), None)
@@ -385,7 +553,13 @@ class SqliteBackend(Backend):
             data = json.loads(item["data_json"])
             if data.get("volume") == "workspace":
                 memory += [s.FileChange(path=f["path"], added=f.get("added"), removed=f.get("removed")) for f in data.get("files", [])]
-        return s.RunDetail(run=run, claims=claims, changes=s.RunChanges(memory=memory, work=[], shelved=[], asks=asks, threads=threads), reviewer_mode="off", level=None)
+        work = _work_changes(self.db.q("SELECT data_json FROM timeline_items WHERE run_id=? AND kind='tool' ORDER BY id", (run_id,)))
+        shelved = [f"{r['label']} ({r['mode']})" for r in self.db.q("SELECT label, mode FROM shelf_items WHERE run_id=? ORDER BY id", (run_id,))]
+        asks += [f"Promote: {r['reason']} ({r['status']})" for r in self.db.q("SELECT reason, status FROM promote_requests WHERE run_id=?", (run_id,))]
+        threads += [f"Planned a wakeup: {r['reason']}" for r in self.db.q("SELECT reason FROM wakeups WHERE created_by='assistant' AND created_at>=? AND created_at<=? ORDER BY id",
+                                                                           (iso(run.started_at), iso(run.ended_at or utcnow())))]
+        return s.RunDetail(run=run, claims=claims, changes=s.RunChanges(memory=memory, work=work, shelved=shelved, asks=asks, threads=threads),
+                           reviewer_mode=run.reviewer_mode, level=run.level)
 
     def timeline(self, run_id: int, view: str, kinds: list[str] | None, after: int | None) -> list[s.TimelineItem]:
         self.runs_mgr.run(run_id)
@@ -409,9 +583,202 @@ class SqliteBackend(Backend):
         return self._await(self.runs_mgr.stop(run_id))
 
     def jobs(self, include_done: bool) -> list[s.Job]:
-        rows = self.db.q("SELECT * FROM jobs WHERE (? OR status='running') ORDER BY id DESC LIMIT 100", (int(include_done),))
-        return [s.Job(id=r["id"], run_id=r["run_id"], label=r["label"], progress=r["progress"], expected_end=parse(r["expected_end"]), dont_interrupt=bool(r["dont_interrupt"]),
-                      status=r["status"], started_at=parse(r["started_at"]), log_tail="") for r in rows]  # type: ignore[arg-type]
+        return self.jobs_.list(include_done)
+
+    def _brief_extra(self, run: dict) -> str:
+        parts = []
+        jobs = self.jobs_.brief_text()
+        if jobs:
+            parts.append("## Long jobs still running\n\n" + jobs)
+        routines = self.routines.occurrences_text(self.budgets.now())
+        if routines:
+            parts.append("## Routines\n\n" + routines)
+        projects = [p for p in self.conv.projects(None) if p.status != "archived"]
+        if projects:
+            parts.append("## Projects\n\n" + "\n".join(f"- {p.slug}: {p.name} ({p.status})" + (f" · {p.summary}" if p.summary else "") for p in projects))
+        return "\n\n".join(parts)
+
+    async def _housekeeping(self, now) -> None:
+        from datetime import timedelta
+        self.conv.expire_promotes(older_than=iso(now - timedelta(minutes=self.settings.get("PROMOTE_WAIT_MINUTES"))))
+        pids = self.jobs_.running_pids()
+        if pids and now.timestamp() - self._last_jobs_check >= 60:
+            self._last_jobs_check = now.timestamp()
+            try:
+                alive = await self.runner.procs(pids)
+            except RunnerError:
+                return
+            self.jobs_.mark_lost(alive)
+
+    # ── budgets and providers ──────────────────────────────────────────────
+    def budget_overview(self) -> s.BudgetOverview:
+        return s.BudgetOverview(
+            providers=[self.budgets.summary(p) for p in self.budgets.provider_ids()],
+            levels=[s.LevelPreset(name=n, text=t, limits=s.BudgetLimits(**vars(lim))) for n, (t, lim) in LEVELS.items()],  # type: ignore[arg-type]
+            tiers=list(TIERS), reserve_weekly_pct=self.settings.get("RESERVE_WEEKLY_PCT"), reserve_five_hour_pct=self.settings.get("RESERVE_FIVE_HOUR_PCT"),
+            sweep_window_hours=self.settings.get("SWEEP_WINDOW_HOURS"), sweep_ceiling_pct=self.settings.get("SWEEP_CEILING_PCT"),
+        )
+
+    def _budget_changed(self) -> None:
+        self.live.emit("budget")
+        self.live.emit("status")
+        self.live.emit("calendar")
+
+    def patch_budget(self, provider: str, req: s.BudgetPatch) -> s.ProviderBudget:
+        self.budgets.set_budget(provider, req)
+        self._budget_changed()
+        return self.budgets.summary(provider)
+
+    def boost(self, provider: str, req: s.BoostRequest) -> s.ProviderBudget:
+        self.budgets.set_boost(provider, req)
+        self._budget_changed()
+        return self.budgets.summary(provider)
+
+    def clear_boost(self, provider: str) -> s.ProviderBudget:
+        self.budgets.clear_boost(provider)
+        self._budget_changed()
+        return self.budgets.summary(provider)
+
+    def patch_reserve(self, req: s.ReserveSettings) -> s.BudgetOverview:
+        for key, v, lo, hi in (("RESERVE_WEEKLY_PCT", req.reserve_weekly_pct, 0, 100), ("RESERVE_FIVE_HOUR_PCT", req.reserve_five_hour_pct, 0, 100),
+                               ("SWEEP_WINDOW_HOURS", req.sweep_window_hours, 0, 48), ("SWEEP_CEILING_PCT", req.sweep_ceiling_pct, 0, 100)):
+            if v is not None:
+                if not lo <= v <= hi:
+                    raise BadRequest("out_of_range", f"{key} must be between {lo} and {hi}.")
+                self.settings.set(key, v)
+        self._budget_changed()
+        return self.budget_overview()
+
+    def _provider_info(self, pid: str) -> s.ProviderInfo:
+        r = self.db.q1("SELECT * FROM providers WHERE id=?", (pid,))
+        if not r:
+            raise NotFound(f"provider {pid}")
+        if r["kind"] == SUBSCRIPTION:
+            u = self.usage.cached()
+            source = u.source if u else "none"
+            status = (f"Weekly usage {u.seven_day_pct:.0f}% (read {u.source})" if u and u.seven_day_pct is not None
+                      else f"Usage unknown: {(u and u.error) or 'not read yet'}. The agent logs in to Claude on its own computer (see System).")
+        else:
+            source = "ledger"
+            status = "API key saved (write-only); usage priced from the runtime's reported cost" if r["credential_enc"] else "No API key saved"
+        return s.ProviderInfo(id=r["id"], kind=r["kind"], label=r["label"], enabled=bool(r["enabled"]), status=status, usage_source=source,
+                              has_credential=bool(r["credential_enc"]) or r["kind"] == SUBSCRIPTION)
+
+    def providers(self) -> list[s.ProviderInfo]:
+        return [self._provider_info(p) for p in self.budgets.provider_ids(enabled_only=False)]
+
+    def add_api_provider(self, req: s.ApiProviderCreate) -> s.ProviderInfo:
+        self.budgets.add_api_provider(req.key, req.label)
+        self._budget_changed()
+        return self._provider_info("anthropic-api")
+
+    def patch_provider(self, provider: str, req: s.ProviderPatch) -> s.ProviderInfo:
+        self._provider_info(provider)
+        if req.enabled is False and provider == self.budgets.role("worker").provider and len(self.budgets.provider_ids()) <= 1:
+            raise BadRequest("last_provider", "That's the only provider the assistant can use; add another before turning it off.")
+        if req.enabled is not None:
+            self.db.ex("UPDATE providers SET enabled=?, updated_at=? WHERE id=?", (int(req.enabled), self.db.now(), provider))
+        if req.label:
+            self.db.ex("UPDATE providers SET label=?, updated_at=? WHERE id=?", (req.label.strip()[:60], self.db.now(), provider))
+        self._budget_changed()
+        return self._provider_info(provider)
+
+    def delete_provider(self, provider: str) -> None:
+        if provider == SUBSCRIPTION:
+            raise BadRequest("builtin", "The Claude subscription can be turned off, not removed.")
+        self._provider_info(provider)
+        if any(r.provider == provider for r in self.budgets.roles()):
+            self.db.ex("DELETE FROM kv WHERE key='roles'")  # roles fall back to the subscription
+        self.db.ex("DELETE FROM providers WHERE id=?", (provider,))
+        self._budget_changed()
+
+    def roles(self) -> s.Roles:
+        return s.Roles(roles=self.budgets.roles())
+
+    def set_roles(self, req: s.Roles) -> s.Roles:
+        self.budgets.set_roles(req.roles)
+        self._budget_changed()
+        return self.roles()
+
+    def reviewer_config(self) -> s.ReviewerConfig:
+        return self.budgets.reviewer_config()
+
+    def set_reviewer_config(self, req: s.ReviewerConfig) -> s.ReviewerConfig:
+        self.budgets.set_reviewer_config(req)
+        return self.budgets.reviewer_config()
+
+    def instructions(self) -> s.StandingInstructions:
+        return self.budgets.instructions()
+
+    def set_instructions(self, req: s.StandingInstructions) -> s.StandingInstructions:
+        old = self.budgets.instructions().text
+        self.budgets.set_instructions(self.vault.redact(req.text) or "")
+        if old.strip() != req.text.strip():
+            self.db.ex("INSERT INTO agent_notifications(run_id, body, created_at) VALUES(NULL, ?, ?)",
+                       ("[control] The owner updated your standing instructions; they're in your next brief.", self.db.now()))
+        return self.budgets.instructions()
+
+    # ── the calendar and wakeups ───────────────────────────────────────────
+    def calendar(self, start: str | None, end: str | None) -> s.Calendar:
+        from datetime import timedelta
+
+        from ..budgets import in_hours
+        pid = self.budgets.role("worker").provider
+        tz = self.budgets.tz()
+        now = self.budgets.now()
+        loc = now.astimezone(tz)
+        a = parse(start) if start else (loc - timedelta(days=loc.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+        b = parse(end) if end else a + timedelta(days=7)  # type: ignore[operator]
+        if (b - a).days > 42:  # type: ignore[operator]
+            raise BadRequest("range", "Ask for at most six weeks at a time.")
+        rows = self.db.q("SELECT * FROM wakeups WHERE at>=? AND at<? AND status != 'cancelled' ORDER BY at", (iso(a), iso(b)))  # type: ignore[arg-type]
+        windows: list[s.CalendarWindow] = []
+        hours = self.budgets.effective(pid, now).limits.allowed_hours
+        t, cur = a, None
+        while t < b:  # type: ignore[operator]
+            inside = in_hours(hours, t.astimezone(tz))  # type: ignore[union-attr]
+            if inside and cur is None:
+                cur = t
+            if not inside and cur is not None:
+                windows.append(s.CalendarWindow(kind="allowed", start=cur, end=t))  # type: ignore[arg-type]
+                cur = None
+            t += timedelta(minutes=30)  # type: ignore[operator]
+        if cur is not None:
+            windows.append(s.CalendarWindow(kind="allowed", start=cur, end=b))  # type: ignore[arg-type]
+        sw = self.scheduler.sweep_window(pid, now)
+        if sw and self.budgets.effective(pid, now).limits.sweep and sw[1] > a and sw[0] < b:  # type: ignore[operator]
+            windows.append(s.CalendarWindow(kind="sweep", start=sw[0], end=sw[1]))
+        runs = [run_model(self.db, r) for r in self.db.q("SELECT * FROM runs WHERE started_at>=? AND started_at<? ORDER BY id", (iso(a), iso(b)))]  # type: ignore[arg-type]
+        return s.Calendar(start=a, end=b, timezone=str(tz), wakeups=[wakeup_model(self.db, r) for r in rows], windows=windows,  # type: ignore[arg-type]
+                          budget=self.budgets.summary(pid, now), runs=runs)
+
+    def create_wakeup(self, req: s.WakeupCreate) -> s.Wakeup:
+        pid = req.provider or self.budgets.role("worker").provider
+        return self.scheduler.plan(pid, req.at, req.budget, req.tier, req.reason or "Added by you", by="owner")
+
+    def patch_wakeup(self, wakeup_id: int, req: s.WakeupPatch) -> s.Wakeup:
+        return self.scheduler.owner_edit(wakeup_id, req)
+
+    def cancel_wakeup(self, wakeup_id: int) -> s.Wakeup:
+        return self.scheduler.cancel(wakeup_id, by="owner")
+
+    # ── routines ───────────────────────────────────────────────────────────
+    def routines_list(self) -> list[s.Routine]:
+        return self.routines.list()
+
+    def create_routine(self, req: s.RoutineCreate) -> s.Routine:
+        r = self.routines.create(req, by="owner")
+        self.live.emit("calendar")
+        return r
+
+    def patch_routine(self, routine_id: int, req: s.RoutinePatch) -> s.Routine:
+        r = self.routines.patch(routine_id, req)
+        self.live.emit("calendar")
+        return r
+
+    def delete_routine(self, routine_id: int) -> None:
+        self.routines.delete(routine_id)
+        self.live.emit("calendar")
 
     # ── system ─────────────────────────────────────────────────────────────
     async def _system(self) -> s.SystemStatus:
@@ -474,3 +841,32 @@ class SqliteBackend(Backend):
 
     def selftest(self) -> s.SelfTestResult:
         return self._await(self._selftest(), timeout=120)
+
+
+def _work_changes(tool_items: list[dict]) -> list[s.FileChange]:
+    """Work-file changes from the run's Write/Edit tool calls under /work (line counts are
+    approximate: tool inputs are stored clipped)."""
+    tally: dict[str, list[int]] = {}
+
+    def lines(v) -> int:
+        return len(str(v).splitlines()) if v else 0
+
+    for item in tool_items:
+        d = json.loads(item["data_json"])
+        name, inp = d.get("name"), d.get("input") or {}
+        path = str(inp.get("file_path") or inp.get("notebook_path") or "")
+        if not path.startswith("/work/") or path.startswith("/work/_inbox/") or d.get("is_error"):
+            continue
+        t = tally.setdefault(path[len("/work/"):], [0, 0])
+        if name == "Write":
+            t[0] += lines(inp.get("content"))
+        elif name == "Edit":
+            t[0] += lines(inp.get("new_string"))
+            t[1] += lines(inp.get("old_string"))
+        elif name == "MultiEdit":
+            for e in inp.get("edits") or []:
+                t[0] += lines(e.get("new_string"))
+                t[1] += lines(e.get("old_string"))
+        elif name == "NotebookEdit":
+            t[0] += lines(inp.get("new_source"))
+    return [s.FileChange(path=p, added=a, removed=r) for p, (a, r) in sorted(tally.items())]

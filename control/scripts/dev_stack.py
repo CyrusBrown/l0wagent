@@ -30,7 +30,7 @@ def main() -> None:
     if a.dir and tmp.exists():
         shutil.rmtree(tmp)
     tmp.mkdir(parents=True, exist_ok=True)
-    stack = Stack(tmp, steps=a.steps, delay=a.delay, own_groups=False, hold_minutes=a.hold)
+    stack = Stack(tmp, steps=a.steps, delay=a.delay, own_groups=False, hold_minutes=a.hold, control_env={"L0W_SCHEDULER": "1"})
     stack.ports["control"] = a.port
     stack.url = f"http://127.0.0.1:{a.port}"
     stack.client.base_url = stack.url

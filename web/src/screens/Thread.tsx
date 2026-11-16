@@ -6,6 +6,7 @@ import { ClaimCard, PermissionCard, PromoteCard, QuestionCard, SuggestionCard, T
 import { bytes, pts } from '../components/format'
 import { useLinkPicker } from '../components/LinkPicker'
 import { Markdown } from '../components/Markdown'
+import { ShelfView } from '../components/ShelfView'
 import { useOnline } from '../components/online'
 import { api } from '../api/client'
 
@@ -23,22 +24,35 @@ export function Thread() {
     if (thread.data?.unread) api.POST('/api/threads/{thread_id}/read', { params: { path: { thread_id: id } } })
   }, [id, count, thread.data?.unread])
 
+  const [filesOpen, setFilesOpen] = useState(false)
+  const [append, setAppend] = useState<string | null>(null)
   if (thread.isError) return <div className="page"><div className="error">{thread.error instanceof ApiError && thread.error.status === 404 ? 'This thread does not exist.' : "Couldn't load the thread."}</div></div>
   const t = thread.data
   return (
+    <>
     <div className="thread">
       <div className="thread-scroll" ref={scroller}>
         <div className="thread-items">
-          {t && <ThreadHead t={t} messages={(items.data?.items ?? []).filter((i) => i.type === 'message').length} />}
+          {t && <ThreadHead t={t} messages={(items.data?.items ?? []).filter((i) => i.type === 'message').length} filesOpen={filesOpen} toggleFiles={() => setFilesOpen(!filesOpen)} />}
           {items.data?.items.map((it) => <Item key={`${it.type}-${itemId(it)}`} it={it} />)}
         </div>
       </div>
-      {t && <Composer threadId={id} project={t.project} />}
+      {t && <Composer threadId={id} project={t.project} append={append} appended={() => setAppend(null)} />}
     </div>
+    {t?.project && filesOpen && (
+      <aside className="thread-files">
+        <div className="row-between" style={{ padding: '14px 16px', borderBottom: '1px solid var(--lineSoft)' }}>
+          <div className="stack" style={{ gap: 2 }}><span style={{ font: '500 14px var(--sans)' }}>Project files</span><span className="sub">{t.project} · shelf</span></div>
+          <button className="icon-btn" aria-label="Close files" onClick={() => setFilesOpen(false)}>✕</button>
+        </div>
+        <ShelfView project={t.project} compact onLink={(i) => setAppend(`[${i.label}](l0wagent://file/${i.volume}/${i.path})`)} />
+      </aside>
+    )}
+    </>
   )
 }
 
-function ThreadHead({ t, messages }: { t: S['Thread']; messages: number }) {
+function ThreadHead({ t, messages, filesOpen, toggleFiles }: { t: S['Thread']; messages: number; filesOpen: boolean; toggleFiles: () => void }) {
   const project = useProject(t.project ?? '')
   return (
     <div className="row-between" style={{ alignItems: 'flex-start' }}>
@@ -50,7 +64,10 @@ function ThreadHead({ t, messages }: { t: S['Thread']; messages: number }) {
           {t.status === 'archived' && ' · archived'}
         </div>
       </div>
-      <ThreadMenu t={t} />
+      <div className="btns" style={{ flex: 'none' }}>
+        {t.project && <button className={`btn small pill-btn ${filesOpen ? 'pressed' : ''}`} onClick={toggleFiles}>Files</button>}
+        <ThreadMenu t={t} />
+      </div>
     </div>
   )
 }
@@ -133,8 +150,11 @@ function MessageView({ m }: { m: S['Message'] }) {
   )
 }
 
-function Composer({ threadId, project }: { threadId: number; project: string | null }) {
+function Composer({ threadId, project, append, appended }: { threadId: number; project: string | null; append: string | null; appended: () => void }) {
   const [text, setText] = useState('')
+  useEffect(() => {
+    if (append) { setText((t) => (t && !t.endsWith(' ') ? `${t} ` : t) + append + ' '); appended() }
+  }, [append, appended])
   const [files, setFiles] = useState<{ key: string; name: string; upload?: S['Upload']; error?: string }[]>([])
   const post = usePostMessage(threadId)
   const delivery = useDelivery(threadId)
@@ -198,7 +218,7 @@ function Composer({ threadId, project }: { threadId: number; project: string | n
           <span className="row-start"><span className={`dot ${dot}`} />{note}</span>
           {d?.reply_now_available && online && (
             <button className="link-btn accent" disabled={reply.isPending} onClick={() => reply.mutate()} title="Start a short reply run now">
-              Reply now{d.reply_now_cost != null && <> · {pts(d.reply_now_cost)} pt <span className="sub">({pts(d.reply_budget_left)} left)</span></>}
+              Reply now{d.reply_now_cost != null && <> · up to {pts(d.reply_now_cost)} pts <span className="sub">({pts(d.reply_budget_left)} reply pts left)</span></>}
             </button>
           )}
           {reply.isError && <span style={{ color: 'var(--badInk)' }}>{problem(reply.error)}</span>}

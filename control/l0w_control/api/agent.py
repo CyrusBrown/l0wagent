@@ -96,6 +96,7 @@ def get_status(request: Request) -> dict:
     lines = []
     if run:
         lines.append(f"Run #{run.id} ({run.kind}, {run.why}) · {run.tier} · deadline {run.deadline:%Y-%m-%d %H:%M} UTC" if run.deadline else f"Run #{run.id}")
+        lines.append(f"Budget: {run.used:.1f} of {run.budget or 0:g} pts used ({run.bucket})")
         if run.now:
             lines.append(f"Now: {run.now}")
     else:
@@ -317,11 +318,17 @@ class ClaimDoneIn(BaseModel):
 
 
 @router.post("/claims/done")
-def claim_done(body: ClaimDoneIn, request: Request) -> dict:
+async def claim_done(body: ClaimDoneIn, request: Request) -> dict:
     be = _be(request)
     if body.status not in ("done", "partial", "dropped"):
         raise HTTPException(400, "status is done, partial or dropped")
-    return be.conv.close_claim(_run(be, body.run_id), body.thread, body.status, body.result).model_dump(mode="json")
+    run_id = _run(be, body.run_id)
+    if body.status == "done" and be.reviewer.mode(run_id) == "gate":
+        t = be.conv.thread(body.thread)
+        agree, reply = await be.reviewer.approve(run_id, f"The assistant says the task in thread #{t.id} “{t.title}” is done:", body.result or "(no result given)")
+        if not agree:
+            raise HTTPException(409, f"The reviewer (gate mode) doesn't agree it's done yet:\n\n{reply}")
+    return be.conv.close_claim(run_id, body.thread, body.status, body.result).model_dump(mode="json")
 
 
 class SuggestionIn(BaseModel):
@@ -354,3 +361,201 @@ def secret(name: str, request: Request) -> dict:
 def search(request: Request, q: str, kind: str | None = None) -> list[dict]:
     return [h.model_dump(mode="json") for h in _be(request).conv.search(q, kind, None, None)]
 
+
+# ── shelf ───────────────────────────────────────────────────────────────────
+class ShelfIn(BaseModel):
+    volume: str = Field(pattern="^(workspace|work)$")
+    path: str = Field(min_length=1, max_length=1000)
+    project: str
+    label: str | None = Field(None, max_length=200)
+    snapshot: bool = False
+    keep: int = Field(0, ge=0, le=100)
+    run_id: int | None = None
+
+
+@router.post("/shelf")
+def shelf_add(body: ShelfIn, request: Request) -> dict:
+    from . import schemas as s
+
+    be = _be(request)
+    req = s.ShelfCreate(volume=body.volume, path=body.path, label=body.label, mode="snapshot" if body.snapshot else "live", keep_versions=body.keep)  # type: ignore[arg-type]
+    return be.add_to_shelf(body.project, req, "assistant", _optional_run(be, body.run_id)).model_dump(mode="json")
+
+
+@router.get("/shelf")
+def shelf_list(request: Request, project: str) -> list[dict]:
+    return [i.model_dump(mode="json") for i in _be(request).shelf(project)]
+
+
+@router.delete("/shelf/{item_id}")
+def shelf_remove(item_id: int, request: Request) -> dict:
+    _be(request).remove_from_shelf(item_id, "assistant")
+    return {"ok": True}
+
+
+# ── budget and the wakeup plan ──────────────────────────────────────────────
+def _when(be: SqliteBackend, text: str):
+    """An ISO time from the agent; without a zone it's the owner's local time."""
+    from datetime import datetime
+
+    try:
+        dt = datetime.fromisoformat(text.strip().replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(400, f"not a time: {text!r} (use 2026-11-15T19:05, the owner's local time, or add a zone)") from None
+    return dt if dt.tzinfo else dt.replace(tzinfo=be.budgets.tz())
+
+
+def _worker(be: SqliteBackend) -> str:
+    return be.budgets.role("worker").provider
+
+
+@router.get("/budget")
+def budget(request: Request) -> dict:
+    be = _be(request)
+    pid = _worker(be)
+    return {"text": be.budgets.check_text(pid), "budget": be.budgets.summary(pid).model_dump(mode="json")}
+
+
+class WakeIn(BaseModel):
+    at: str
+    budget: float = Field(gt=0, le=1000)
+    tier: str | None = None
+    reason: str = Field(min_length=3, max_length=300)
+
+
+@router.get("/wake")
+def wake_plan(request: Request) -> dict:
+    from ..scheduler import wakeup_model
+
+    be = _be(request)
+    pid = _worker(be)
+    rows = be.db.q("SELECT * FROM wakeups WHERE status='planned' ORDER BY at")
+    return {"wakeups": [wakeup_model(be.db, r).model_dump(mode="json") for r in rows], "text": be.budgets.check_text(pid)}
+
+
+@router.post("/wake")
+def wake_at(body: WakeIn, request: Request) -> dict:
+    be = _be(request)
+    w = be.scheduler.plan(_worker(be), _when(be, body.at), body.budget, body.tier, be.vault.redact(body.reason) or body.reason, by="assistant")
+    run_id = be.runs_mgr.active_run_id()
+    if run_id:
+        be.runs_mgr.timeline(run_id, Item("control", f"Planned a wakeup: {be.budgets.local(w.at):%a %H:%M}, {w.budget:g} pts, {w.tier} ({w.reason})", True, {"wakeup_id": w.id}))
+    return w.model_dump(mode="json")
+
+
+class WakePlanIn(BaseModel):
+    items: list[WakeIn] = Field(max_length=60)
+
+
+@router.put("/wake")
+def wake_replace(body: WakePlanIn, request: Request) -> dict:
+    be = _be(request)
+    made = be.scheduler.replace_plan(_worker(be), [(_when(be, i.at), i.budget, i.tier, be.vault.redact(i.reason) or i.reason) for i in body.items])
+    run_id = be.runs_mgr.active_run_id()
+    if run_id:
+        be.runs_mgr.timeline(run_id, Item("control", f"Replaced its wakeup plan: {len(made)} wakeup(s)", True))
+    return {"wakeups": [w.model_dump(mode="json") for w in made], "text": be.budgets.check_text(_worker(be))}
+
+
+@router.delete("/wake/{wakeup_id}")
+def wake_cancel(wakeup_id: int, request: Request) -> dict:
+    return _be(request).scheduler.cancel(wakeup_id, by="assistant").model_dump(mode="json")
+
+
+# ── promote, routines ───────────────────────────────────────────────────────
+class PromoteIn(BaseModel):
+    budget: float = Field(gt=0, le=1000)
+    reason: str = Field(min_length=3, max_length=1000)
+    run_id: int | None = None
+
+
+@router.post("/promote")
+def promote(body: PromoteIn, request: Request) -> dict:
+    be = _be(request)
+    run_id = _run(be, body.run_id)
+    run = be.db.q1("SELECT * FROM runs WHERE id=?", (run_id,))
+    if run["kind"] != "reply" or run["bucket"] != "reply":  # type: ignore[index]
+        raise HTTPException(409, "Only a Reply-now run can ask to be promoted; this run already spends the main allowance.")
+    left = be.budgets.left(run["provider"])  # type: ignore[index]
+    if body.budget > left:
+        raise HTTPException(409, f"Only {left:.0f} pts of the allowance are left this week; ask for less, or claim the thread and plan a wakeup.")
+    pr = be.conv.file_promote(run_id, run["thread_id"], body.reason, body.budget)  # type: ignore[index]
+    be.runs_mgr.timeline(run_id, Item("ask", f"Asked to promote this reply to a full run (+{body.budget:g} pts): {body.reason}", True, {"promote_id": pr.id}))
+    return pr.model_dump(mode="json") | {"wait_minutes": be.settings.get("PROMOTE_WAIT_MINUTES")}
+
+
+class RoutineIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    prompt: str = Field(min_length=1, max_length=8000)
+    schedule: dict
+    tier: str = "sonnet/medium"
+    budget: float = Field(gt=0, le=500)
+    reason: str | None = Field(None, max_length=1000)
+    thread: int | None = None
+    run_id: int | None = None
+
+
+@router.post("/routines")
+def routine_propose(body: RoutineIn, request: Request) -> dict:
+    """Propose a routine: a permission card whose action adds it. The owner approves spend."""
+    be = _be(request)
+    payload = {"name": body.name, "prompt": body.prompt, "schedule": body.schedule, "tier": body.tier, "budget": body.budget}
+    perm = be.conv.file_permission(_optional_run(be, body.run_id), body.thread, f"Add a routine: {body.name}", body.reason, [{"kind": "routine", **payload}])
+    return perm.model_dump(mode="json")
+
+
+@router.get("/routines")
+def routines(request: Request) -> dict:
+    be = _be(request)
+    return {"routines": [r.model_dump(mode="json") for r in be.routines.list()], "text": be.routines.occurrences_text(be.budgets.now()) or "No routines."}
+
+
+# ── jobs ────────────────────────────────────────────────────────────────────
+class JobIn(BaseModel):
+    label: str = Field(min_length=1, max_length=200)
+    pid: int | None = Field(None, ge=1)
+    log: str | None = Field(None, max_length=1000)
+    expect_minutes: float | None = Field(None, gt=0, le=60 * 24 * 30)
+    dont_interrupt: bool = False
+    run_id: int | None = None
+
+
+@router.post("/jobs")
+def job_start(body: JobIn, request: Request) -> dict:
+    be = _be(request)
+    run_id = _optional_run(be, body.run_id)
+    job = be.jobs_.start(run_id, body.label, body.pid, body.log, body.expect_minutes, body.dont_interrupt)
+    if run_id:
+        be.runs_mgr.timeline(run_id, Item("control", f"Registered a long job: {job.label}", True, {"job_id": job.id}))
+    return job.model_dump(mode="json")
+
+
+class JobPatch(BaseModel):
+    progress: str | None = Field(None, max_length=300)
+    status: str | None = None
+    note: str | None = Field(None, max_length=2000)
+
+
+@router.patch("/jobs/{job_id}")
+def job_update(job_id: int, body: JobPatch, request: Request) -> dict:
+    return _be(request).jobs_.update(job_id, body.progress, body.status, body.note).model_dump(mode="json")
+
+
+@router.get("/jobs")
+def jobs(request: Request, all: bool = False) -> list[dict]:
+    return [j.model_dump(mode="json") for j in _be(request).jobs_.list(all)]
+
+
+# ── the reviewer ────────────────────────────────────────────────────────────
+class ReviewerIn(BaseModel):
+    kind: str = Field(pattern="^(ask|start|done)$")
+    body: str = Field(min_length=1, max_length=8000)
+    run_id: int | None = None
+
+
+@router.post("/reviewer")
+async def reviewer(body: ReviewerIn, request: Request) -> dict:
+    """Talk to the reviewer; blocks until it answers (a few minutes at most)."""
+    be = _be(request)
+    run_id = _run(be, body.run_id)
+    return {"reply": await be.reviewer.from_agent(run_id, body.kind, be.vault.redact(body.body) or body.body), "mode": be.reviewer.mode(run_id)}

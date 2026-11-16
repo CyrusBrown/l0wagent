@@ -108,6 +108,33 @@ class Backend:
     def stop_run(self, run_id: int) -> s.Run: raise NotImplementedError
     def jobs(self, include_done: bool) -> list[s.Job]: raise NotImplementedError
 
+    # budgets, providers, roles, the reviewer (M4); changes are online only
+    def budget_overview(self) -> s.BudgetOverview: raise NotImplementedError
+    def patch_budget(self, provider: str, req: s.BudgetPatch) -> s.ProviderBudget: raise NotImplementedError
+    def boost(self, provider: str, req: s.BoostRequest) -> s.ProviderBudget: raise NotImplementedError
+    def clear_boost(self, provider: str) -> s.ProviderBudget: raise NotImplementedError
+    def patch_reserve(self, req: s.ReserveSettings) -> s.BudgetOverview: raise NotImplementedError
+    def providers(self) -> list[s.ProviderInfo]: raise NotImplementedError
+    def add_api_provider(self, req: s.ApiProviderCreate) -> s.ProviderInfo: raise NotImplementedError
+    def patch_provider(self, provider: str, req: s.ProviderPatch) -> s.ProviderInfo: raise NotImplementedError
+    def delete_provider(self, provider: str) -> None: raise NotImplementedError
+    def roles(self) -> s.Roles: raise NotImplementedError
+    def set_roles(self, req: s.Roles) -> s.Roles: raise NotImplementedError
+    def reviewer_config(self) -> s.ReviewerConfig: raise NotImplementedError
+    def set_reviewer_config(self, req: s.ReviewerConfig) -> s.ReviewerConfig: raise NotImplementedError
+    def instructions(self) -> s.StandingInstructions: raise NotImplementedError
+    def set_instructions(self, req: s.StandingInstructions) -> s.StandingInstructions: raise NotImplementedError
+
+    # the calendar, wakeups and routines (M4)
+    def calendar(self, start: str | None, end: str | None) -> s.Calendar: raise NotImplementedError
+    def create_wakeup(self, req: s.WakeupCreate) -> s.Wakeup: raise NotImplementedError
+    def patch_wakeup(self, wakeup_id: int, req: s.WakeupPatch) -> s.Wakeup: raise NotImplementedError
+    def cancel_wakeup(self, wakeup_id: int) -> s.Wakeup: raise NotImplementedError
+    def routines_list(self) -> list[s.Routine]: raise NotImplementedError
+    def create_routine(self, req: s.RoutineCreate) -> s.Routine: raise NotImplementedError
+    def patch_routine(self, routine_id: int, req: s.RoutinePatch) -> s.Routine: raise NotImplementedError
+    def delete_routine(self, routine_id: int) -> None: raise NotImplementedError
+
     # secrets (write-only)
     def secrets(self) -> list[s.SecretInfo]: raise NotImplementedError
     def set_secret(self, name: str, req: s.SecretSet) -> s.SecretInfo: raise NotImplementedError
@@ -121,8 +148,14 @@ class Backend:
     def list_dir(self, volume: str, path: str) -> s.Listing: raise NotImplementedError
     def read_file(self, volume: str, path: str) -> tuple[bytes, str]: raise NotImplementedError
     def file_history(self, volume: str, path: str) -> list[s.FileHistoryEntry]: raise NotImplementedError
+    def file_diff(self, volume: str, path: str, rev: str) -> s.FileDiff: raise NotImplementedError
+    def zip_dir(self, volume: str, path: str): raise NotImplementedError
+    def preview_url(self, volume: str, path: str, files_origin: str) -> s.PreviewUrl: raise NotImplementedError
+    def shelf_raw(self, item_id: int, version: int | None) -> tuple[bytes, str, str]: raise NotImplementedError
+    def shelf_preview_url(self, item_id: int, version: int | None, files_origin: str) -> s.PreviewUrl: raise NotImplementedError
+    def web_page(self, url: str) -> s.WebPage: raise NotImplementedError
     def shelf(self, project: str) -> list[s.ShelfItem]: raise NotImplementedError
     def add_to_shelf(self, project: str, req: s.ShelfCreate, by: str) -> s.ShelfItem: raise NotImplementedError
-    def remove_from_shelf(self, item_id: int) -> None: raise NotImplementedError
+    def remove_from_shelf(self, item_id: int, by: str = "owner") -> None: raise NotImplementedError
     def shelf_versions(self, item_id: int) -> list[s.ShelfVersion]: raise NotImplementedError
     def upload(self, project: str | None, name: str, data: bytes, mime: str | None, idempotency_key: str | None) -> s.Upload: raise NotImplementedError

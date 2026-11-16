@@ -18,7 +18,7 @@ from .db import Database
 HEARTBEAT_S = 15  # the web app reconnects after 40 s of silence
 QUEUE_MAX = 1000
 # Entity name → live event type, where they differ.
-EVENT_TYPE = {"timeline_item": "timeline", "security_alert": "security", "auth_session": "status"}
+EVENT_TYPE = {"timeline_item": "timeline", "security_alert": "security", "auth_session": "status", "shelf_item": "shelf"}
 
 Getter = Callable[[str], s.Model | None]
 

@@ -40,6 +40,15 @@ class World:
     file_text: dict[str, str] = field(default_factory=dict)
     sessions: dict[str, s.AuthSession] = field(default_factory=dict)
     secrets: dict[str, s.SecretInfo] = field(default_factory=dict)
+    wakeups: dict[int, s.Wakeup] = field(default_factory=dict)
+    routines: dict[int, s.Routine] = field(default_factory=dict)
+    budget: dict[str, Any] = field(default_factory=lambda: {"level": "steady", "overrides": {}, "boost": None, "reply_pts": 30.0, "fallback_pts": None})
+    roles: dict[str, tuple[str, str]] = field(default_factory=lambda: {"worker": ("claude-subscription", "sonnet/medium"), "reviewer": ("claude-subscription", "opus/medium"),
+                                                                       "replier": ("claude-subscription", "sonnet/low"), "chat": ("claude-subscription", "sonnet/medium"),
+                                                                       "utility": ("claude-subscription", "haiku/low")})
+    reviewer: s.ReviewerConfig = field(default_factory=s.ReviewerConfig)
+    instructions: str = "Keep replies short. Ask before flashing firmware to the garden controller."
+    api_key: bool = False
 
 
 def build(now: datetime | None = None) -> World:
@@ -248,6 +257,28 @@ def build(now: datetime | None = None) -> World:
     shelf(6, "wiring-diagram.png", "work", "garden-irrigation/_inbox/wiring-diagram.png", "snapshot", "owner", ago(days=17), size=1_300_000, mime="image/png")
 
     _recount(w)
+    # ── M4: the wakeup plan and routines, after the mockup's Calendar week ──
+    def at(days: int, hour: int, minute: int = 0) -> datetime:
+        return (now + timedelta(days=days)).replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+    plan = [
+        (1, at(1, 2), 40, "sonnet/medium", "Finish the pump fix, then the receipts", "planned", "assistant", None, "planned"),
+        (2, at(2, 3), 25, "sonnet/medium", "Tax: categorize the receipts that arrived this week", "planned", "assistant", None, "planned"),
+        (3, at(3, 7), 8, "sonnet/low", "Routine: Inbox triage", "routine", "control", 2, "planned"),
+        (4, at(4, 3), 15, "sonnet/medium", "Fallback: nothing was planned for the next two nights", "fallback", "control", None, "planned"),
+        (5, at(-1, 2), 30, "sonnet/medium", "Garden: trace the double pump trigger", "planned", "assistant", None, "done"),
+        (6, at(5, 18), 40, "opus/medium", "Routine: Weekly review", "routine", "control", 1, "planned"),
+    ]
+    for wid, when, budget, tier, reason, kind, by, rid, status in plan:
+        w.wakeups[wid] = s.Wakeup(id=wid, provider="claude-subscription", at=when, budget=budget, tier=tier, reason=reason, kind=kind, created_by=by, routine_id=rid,
+                                  status=status, status_reason="done · used 27.5 pts" if status == "done" else None, run_id=123 if status == "done" else None,
+                                  used=27.5 if status == "done" else None)
+    w.routines[1] = s.Routine(id=1, name="Weekly review", prompt="This is the weekly review, a few hours before the weekly usage reset…", schedule={"kind": "before_reset", "hours": 6},
+                              schedule_text="6 h before the weekly reset", provider="claude-subscription", tier="opus/medium", budget=40, enabled=True, builtin="weekly_review",
+                              status="active", created_by="control", next_at=at(5, 18), last_run_at=ago(days=6))
+    w.routines[2] = s.Routine(id=2, name="Inbox triage", prompt="Triage /work/_inbox: file each upload under its project and tell me what's new.",
+                              schedule={"kind": "daily", "time": "07:00"}, schedule_text="Daily at 07:00", provider="claude-subscription", tier="sonnet/low", budget=8,
+                              enabled=True, builtin=None, status="active", created_by="owner", next_at=at(3, 7), last_run_at=ago(days=1))
     return w
 
 

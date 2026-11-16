@@ -383,6 +383,96 @@ async def selftest(req: SelfTestRequest, x_runner_token: str | None = Header(Non
     return {"checks": await asyncio.to_thread(probes.run, req.targets)}
 
 
+# ── the reviewer: one turn of a second, read-only session ───────────────
+REVIEWER_HOME = Path(os.environ.get("REVIEWER_HOME", str(STATE_DIR / "reviewer")))
+REVIEWER_DENY = "Write Edit MultiEdit NotebookEdit"
+CONSULT_TIMEOUT = 540
+_consult_lock = asyncio.Lock()
+
+
+class ConsultRequest(BaseModel):
+    run_id: int
+    prompt: str
+    system_append: str = ""
+    model: str = "opus"
+    effort: str | None = None
+    resume_session: str | None = None
+
+
+@app.post("/consult")
+async def consult(req: ConsultRequest, x_runner_token: str | None = Header(None)):
+    """One reviewer turn: a second `claude -p` next to the session, with no hook, no agent
+    token, no secrets, and no file-writing tools; /workspace is added for reading. Blocks
+    until the turn ends and returns its final text, session id and cost."""
+    _auth(x_runner_token)
+    if _consult_lock.locked():
+        raise HTTPException(409, "a reviewer turn is already in progress")
+    async with _consult_lock:
+        REVIEWER_HOME.mkdir(parents=True, exist_ok=True)
+        tmp = tempfile.TemporaryDirectory(prefix="consult-")
+        sys_file = Path(tmp.name) / "system.md"
+        sys_file.write_text(req.system_append)
+        argv = [CLAUDE, "-p", "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions", "--model", req.model,
+                "--append-system-prompt-file", str(sys_file), "--add-dir", str(WORKSPACE), "--disallowedTools", REVIEWER_DENY]
+        if req.effort:
+            argv += ["--effort", req.effort]
+        if req.resume_session:
+            argv += ["--resume", req.resume_session]
+        env = {k: v for k, v in os.environ.items() if k not in ("RUNNER_TOKEN", "AGENT_API_TOKEN", "CONTROL_URL")}
+        env.update(ASSISTANT_RUN_ID=str(req.run_id), ASSISTANT_RUN_MODE="reviewer")
+        proc = await asyncio.create_subprocess_exec(*argv, cwd=REVIEWER_HOME, env=env, start_new_session=True, limit=32 * 1024 * 1024,
+                                                    stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        out = {"ok": False, "text": "", "session_id": req.resume_session, "cost_usd": None, "usage": None, "model": None, "messages": []}
+        try:
+            assert proc.stdin and proc.stdout
+            proc.stdin.write(req.prompt.encode())
+            await proc.stdin.drain()
+            proc.stdin.close()
+
+            async def read():
+                async for raw in proc.stdout:  # type: ignore[union-attr]
+                    try:
+                        ev = json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
+                    if ev.get("session_id"):
+                        out["session_id"] = ev["session_id"]
+                    if ev.get("type") == "assistant":
+                        msg = ev.get("message") or {}
+                        out["model"] = msg.get("model") or out["model"]
+                        if msg.get("usage"):
+                            out["messages"].append({"id": msg.get("id"), "model": msg.get("model"), "usage": msg["usage"]})
+                    elif ev.get("type") == "result":
+                        out.update(ok=not ev.get("is_error"), text=ev.get("result") or "", cost_usd=ev.get("total_cost_usd"), usage=ev.get("usage"))
+                await proc.wait()
+
+            await asyncio.wait_for(read(), CONSULT_TIMEOUT)
+        except TimeoutError:
+            out["text"] = f"(the reviewer turn timed out after {CONSULT_TIMEOUT}s)"
+        finally:
+            with anyio.CancelScope(shield=True):
+                await _terminate(proc, grace=2)
+                tmp.cleanup()
+        return out
+
+
+@app.get("/procs")
+async def procs(pids: str = "", x_runner_token: str | None = Header(None)):
+    """Which of these pids are still running (the job registry's liveness check)."""
+    _auth(x_runner_token)
+    alive = []
+    for p in pids.split(","):
+        if p.strip().isdigit():
+            try:
+                os.kill(int(p), 0)
+                alive.append(int(p))
+            except ProcessLookupError:
+                pass
+            except PermissionError:
+                alive.append(int(p))
+    return {"alive": alive}
+
+
 @app.get("/health")
 async def health(x_runner_token: str | None = Header(None)):
     _auth(x_runner_token)

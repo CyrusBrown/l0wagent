@@ -32,6 +32,32 @@ Claims and suggestions:
   assistant suggest thread_archive|thread_rename|thread_move|thread_merge|thread_split N "why" [--title T] [--project P] [--into M] [--messages 1,2]
   assistant suggest project_stale|project_archive|project_merge|project_split SLUG "why" [--into S] [--name N] [--threads 1,2]
 
+The shelf (deliverables in front of the owner, on the project's Files tab):
+  assistant shelf add PATH --project P [--label …] [--snapshot] [--keep N]
+                                         live by default: always the current file (--keep N keeps N old versions)
+  assistant shelf list --project P  ·  assistant shelf remove ID
+
+Budget and your wakeup plan (you plan, control enforces the owner's limits):
+  assistant budget                       what's left this week, your limits, a suggested pace, your plan
+  assistant wake plan [--check]          your planned wakeups (same as `budget`)
+  assistant wake at TIME --budget N --reason "…" [--tier sonnet/medium]
+                                         TIME is the owner's local time, e.g. 2026-11-20T02:00
+  assistant wake plan --replace FILE|-   replace your planned wakeups; one per line: TIME BUDGET TIER REASON…
+                                         (or a JSON list of {at, budget, tier, reason}); all-or-nothing
+  assistant wake cancel ID
+  assistant promote --budget N --reason "…"   Reply-now runs: ask to become a full run on the allowance
+  assistant routine list
+  assistant routine propose "Name" (--weekly "Mon 09:00" | --daily 09:00 | --before-reset 6) --budget N
+                            [--tier T] --prompt FILE|- [--reason …]   the owner approves (it adds spend)
+
+Long jobs (never wait on them: register, chain, carry on):
+  assistant job start "label" [--pid N] [--log /work/…/x.log] [--expect 2h] [--dont-interrupt]
+  assistant job progress ID "text"  ·  assistant job done ID ["note"] [--failed]  ·  assistant job list [--all]
+
+The reviewer (if your brief says it's on):
+  assistant reviewer start "task"  ·  ask "question"  ·  done "what changed, how it was checked"
+                                         blocks until it answers (a few minutes at most)
+
 Other:
   assistant secret list | get NAME | env  secrets the owner gave you (also in your environment)
   assistant search "query" [--kind thread|message|project|run]
@@ -101,6 +127,39 @@ def fmt_project(p: dict) -> str:
 
 def ids(text: str | None) -> list[int]:
     return [int(x) for x in (text or "").replace(" ", "").split(",") if x]
+
+
+DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+
+def duration_minutes(spec: str | None) -> float | None:
+    """'2h' → 120, '30m' → 30, '90' → 90."""
+    if not spec:
+        return None
+    spec = spec.strip().lower()
+    try:
+        if spec.endswith("h"):
+            return float(spec[:-1]) * 60
+        if spec.endswith("d"):
+            return float(spec[:-1]) * 1440
+        return float(spec.rstrip("m"))
+    except ValueError:
+        sys.exit(f"not a duration: {spec!r} (like 2h, 30m or 90)")
+
+
+def plan_items(raw: str) -> list[dict]:
+    raw = raw.strip()
+    if raw.startswith("["):
+        return json.loads(raw)
+    items = []
+    for n, line in enumerate(raw.splitlines(), 1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        parts = line.split(None, 3)
+        if len(parts) < 4:
+            sys.exit(f"line {n}: TIME BUDGET TIER REASON…, got {line!r}")
+        items.append({"at": parts[0], "budget": float(parts[1]), "tier": parts[2], "reason": parts[3]})
+    return items
 
 
 def main() -> None:
@@ -193,6 +252,70 @@ def main() -> None:
     sg.add_argument("--messages", help="ids, comma-separated (thread_split)")
     sg.add_argument("--threads", help="ids, comma-separated (project_split)")
     sg.add_argument("--name", help="the new project's name (project_split)")
+
+    sh = sub.add_parser("shelf", help="add | list | remove")
+    shs = sh.add_subparsers(dest="scmd", required=True)
+    sha = shs.add_parser("add")
+    sha.add_argument("path")
+    sha.add_argument("--project", "-p", required=True)
+    sha.add_argument("--label")
+    sha.add_argument("--snapshot", action="store_true", help="copy it now instead of following the file")
+    sha.add_argument("--keep", type=int, default=0, help="live items: keep this many old versions")
+    shl = shs.add_parser("list")
+    shl.add_argument("--project", "-p", required=True)
+    shr = shs.add_parser("remove")
+    shr.add_argument("id", type=int)
+
+    sub.add_parser("budget", help="what's left this week and your plan")
+    wk = sub.add_parser("wake", help="plan [--check] [--replace FILE] | at TIME … | cancel ID")
+    wks = wk.add_subparsers(dest="wcmd", required=True)
+    wkp = wks.add_parser("plan")
+    wkp.add_argument("--check", action="store_true")
+    wkp.add_argument("--replace", metavar="FILE", help="'-' reads stdin")
+    wka = wks.add_parser("at")
+    wka.add_argument("time")
+    wka.add_argument("--budget", "-b", type=float, required=True)
+    wka.add_argument("--tier")
+    wka.add_argument("--reason", "-r", required=True)
+    wkc = wks.add_parser("cancel")
+    wkc.add_argument("id", type=int)
+    pm = sub.add_parser("promote", help="ask to turn this Reply-now run into a full run")
+    pm.add_argument("--budget", "-b", type=float, required=True)
+    pm.add_argument("--reason", "-r", required=True)
+    rt = sub.add_parser("routine", help="list | propose")
+    rts = rt.add_subparsers(dest="rcmd", required=True)
+    rts.add_parser("list")
+    rtp = rts.add_parser("propose")
+    rtp.add_argument("name")
+    when = rtp.add_mutually_exclusive_group(required=True)
+    when.add_argument("--weekly", metavar='"Mon 09:00"')
+    when.add_argument("--daily", metavar="09:00")
+    when.add_argument("--before-reset", type=float, metavar="HOURS")
+    rtp.add_argument("--budget", "-b", type=float, required=True)
+    rtp.add_argument("--tier", default="sonnet/medium")
+    rtp.add_argument("--prompt", required=True, metavar="FILE|-")
+    rtp.add_argument("--reason", "-r")
+    rtp.add_argument("--thread", "-t", type=int)
+    jb = sub.add_parser("job", help="start | progress | done | list")
+    jbs = jb.add_subparsers(dest="jcmd", required=True)
+    jst = jbs.add_parser("start")
+    jst.add_argument("label")
+    jst.add_argument("--pid", type=int)
+    jst.add_argument("--log")
+    jst.add_argument("--expect", help="e.g. 2h, 30m")
+    jst.add_argument("--dont-interrupt", action="store_true")
+    jpg = jbs.add_parser("progress")
+    jpg.add_argument("id", type=int)
+    jpg.add_argument("text", nargs="+")
+    jdn = jbs.add_parser("done")
+    jdn.add_argument("id", type=int)
+    jdn.add_argument("note", nargs="*")
+    jdn.add_argument("--failed", action="store_true")
+    jls = jbs.add_parser("list")
+    jls.add_argument("--all", action="store_true")
+    rv = sub.add_parser("reviewer", help="start | ask | done")
+    rv.add_argument("kind", choices=["start", "ask", "done"])
+    rv.add_argument("text", nargs="+")
 
     sc = sub.add_parser("secret", help="list | get NAME | env")
     sc.add_argument("action", choices=["list", "get", "env"])
@@ -332,6 +455,25 @@ def main() -> None:
         payload = {k: v for k, v in payload.items() if v is not None}
         r = call("POST", "/suggestions", {"kind": a.kind, "target": a.target, "text": a.text, "payload": payload, "run_id": run_id()})
         print(f"suggestion #{r['id']} filed; the owner accepts or dismisses it")
+    elif a.cmd == "shelf":
+        if a.scmd == "add":
+            path = os.path.abspath(a.path)
+            roots = {"workspace": os.environ.get("WORKSPACE", "/workspace"), "work": os.environ.get("WORK_DIR", "/work")}
+            volume = next((v for v, root in roots.items() if path == root or path.startswith(root.rstrip("/") + "/")), None)
+            if not volume:
+                sys.exit(f"only files under {roots['workspace']} or {roots['work']} can be shelved")
+            rel = path[len(roots[volume]):].lstrip("/")
+            r = call("POST", "/shelf", {"volume": volume, "path": rel, "project": a.project, "label": a.label, "snapshot": a.snapshot,
+                                         "keep": a.keep, "run_id": run_id()})
+            print(f"shelved #{r['id']} “{r['label']}” ({r['mode']}) on {a.project}'s Files tab")
+        elif a.scmd == "list":
+            for r in call("GET", "/shelf" + q({"project": a.project})):
+                missing = "  [missing]" if r.get("missing") else ""
+                keeps = " (keeps %d)" % r["keep_versions"] if r["keep_versions"] else ""
+                print(f"#{r['id']} {r['label']}  /{r['volume']}/{r['path']}  {r['mode']}{keeps}{missing}")
+        else:
+            call("DELETE", f"/shelf/{a.id}")
+            print(f"removed shelf item #{a.id}")
     elif a.cmd == "secret":
         if a.action == "list":
             rows = call("GET", "/secrets")
@@ -348,6 +490,59 @@ def main() -> None:
         print("\n".join(f"{h['kind']:<8} {h['title']}  {h['link']}" + (f"\n         {h['snippet']}" if h.get("snippet") else "") for h in rows) or "Nothing found.")
     elif a.cmd == "link":
         print(f"l0wagent://{a.kind}/{a.target.lstrip('/')}")
+    elif a.cmd == "budget":
+        print(call("GET", "/budget")["text"])
+    elif a.cmd == "wake":
+        if a.wcmd == "at":
+            r = call("POST", "/wake", {"at": a.time, "budget": a.budget, "tier": a.tier, "reason": a.reason})
+            print(f"planned wakeup #{r['id']}: {r['at']} UTC, {r['budget']:g} pts, {r['tier']}")
+        elif a.wcmd == "cancel":
+            call("DELETE", f"/wake/{a.id}")
+            print(f"wakeup #{a.id} cancelled")
+        elif a.replace:
+            raw = sys.stdin.read() if a.replace == "-" else open(a.replace).read()
+            print(call("PUT", "/wake", {"items": plan_items(raw)})["text"])
+        else:
+            print(call("GET", "/wake")["text"])
+    elif a.cmd == "promote":
+        r = call("POST", "/promote", {"budget": a.budget, "reason": a.reason, "run_id": run_id()})
+        print(f"promote request #{r['id']} filed (+{r['budget']:g} pts). The owner decides; `assistant wait` for it "
+              f"(it expires after {r['wait_minutes']:g} min). If it's denied or unanswered: finish the reply, claim the thread, plan a wakeup.")
+    elif a.cmd == "routine":
+        if a.rcmd == "list":
+            print(call("GET", "/routines")["text"])
+        else:
+            if a.weekly:
+                day, _, at = a.weekly.strip().partition(" ")
+                if day[:3].lower() not in DAYS or not at:
+                    sys.exit('--weekly takes "Mon 09:00"')
+                schedule = {"kind": "weekly", "day": DAYS.index(day[:3].lower()), "time": at.strip()}
+            elif a.daily:
+                schedule = {"kind": "daily", "time": a.daily}
+            else:
+                schedule = {"kind": "before_reset", "hours": a.before_reset}
+            prompt = sys.stdin.read() if a.prompt == "-" else open(a.prompt).read()
+            r = call("POST", "/routines", {"name": a.name, "prompt": prompt, "schedule": schedule, "tier": a.tier, "budget": a.budget,
+                                            "reason": a.reason, "thread": a.thread, "run_id": run_id()})
+            print(f"permission #{r['id']} filed: {r['actions'][0]['summary']}. It starts once the owner approves.")
+    elif a.cmd == "job":
+        if a.jcmd == "start":
+            log = os.path.abspath(a.log) if a.log else None
+            r = call("POST", "/jobs", {"label": a.label, "pid": a.pid, "log": log, "expect_minutes": duration_minutes(a.expect), "dont_interrupt": a.dont_interrupt,
+                                        "run_id": run_id()})
+            print(f"job #{r['id']} registered. End its command with: assistant job done {r['id']}; assistant notify \"…\"")
+        elif a.jcmd == "progress":
+            call("PATCH", f"/jobs/{a.id}", {"progress": text(a.text)})
+            print(f"job #{a.id} updated")
+        elif a.jcmd == "done":
+            call("PATCH", f"/jobs/{a.id}", {"status": "failed" if a.failed else "done", "note": " ".join(a.note) or None})
+            print(f"job #{a.id} marked {'failed' if a.failed else 'done'}")
+        else:
+            rows = call("GET", "/jobs" + q({"all": "true" if a.all else ""}))
+            print("\n".join(f"#{j['id']} [{j['status']}] {j['label']}" + (f" · {j['progress']}" if j.get("progress") else "") for j in rows) or "No jobs.")
+    elif a.cmd == "reviewer":
+        r = call("POST", "/reviewer", {"kind": a.kind, "body": text(a.text), "run_id": run_id()}, timeout=600)
+        print(r["reply"])
 
 
 if __name__ == "__main__":

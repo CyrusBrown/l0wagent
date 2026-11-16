@@ -163,3 +163,63 @@ export const useSetSecret = () =>
 export const useDeleteSecret = () =>
   useInvalidating((name: string) => ok(api.DELETE('/api/secrets/{name}', { params: { path: { name } } })), [['secrets']])
 
+// ── M3: files, shelf, web page ─────────────────────────────────────────────
+export const useFileHistory = (volume: S['Listing']['volume'], path: string, enabled = true) =>
+  useQuery({ queryKey: ['files', 'history', volume, path], enabled, queryFn: () => ok(api.GET('/api/files/history', { params: { query: { volume, path } } })) })
+export const useFileDiff = (volume: S['Listing']['volume'], path: string, rev: string | null) =>
+  useQuery({ queryKey: ['files', 'diff', volume, path, rev], enabled: !!rev, queryFn: () => ok(api.GET('/api/files/diff', { params: { query: { volume, path, rev: rev! } } })) })
+export const useShelfVersions = (id: number | null) =>
+  useQuery({ queryKey: ['shelf', 'versions', id], enabled: id != null, queryFn: () => ok(api.GET('/api/shelf/{item_id}/versions', { params: { path: { item_id: id! } } })) })
+export const useAddToShelf = () =>
+  useInvalidating((a: { project: string } & Omit<S['ShelfCreate'], 'idempotency_key'>) =>
+    ok(api.POST('/api/projects/{slug}/shelf', { params: { path: { slug: a.project } }, body: { volume: a.volume, path: a.path, label: a.label, mode: a.mode, keep_versions: a.keep_versions, idempotency_key: newKey() } })),
+  [['shelf'], ['projects']])
+export const useRemoveFromShelf = () =>
+  useInvalidating((id: number) => ok(api.DELETE('/api/shelf/{item_id}', { params: { path: { item_id: id } } })), [['shelf'], ['projects']])
+export const useWebPage = () => useQuery({ queryKey: ['web'], queryFn: () => ok(api.GET('/api/web')), refetchInterval: 60_000 })
+
+// ── M4: budgets, providers, roles, the reviewer, the calendar, routines ────
+// All of these changes are online only (never queued): budgets and settings.
+const budgetKeys = [['budget'], ['status'], ['calendar'], ['thread']]
+const P = 'claude-subscription'
+
+export const useBudget = () => useQuery({ queryKey: ['budget'], queryFn: () => ok(api.GET('/api/budget')) })
+export const usePatchBudget = (provider = P) =>
+  useInvalidating((b: S['BudgetPatch']) => ok(api.PATCH('/api/budget/{provider}', { params: { path: { provider } }, body: b })), budgetKeys)
+export const useBoost = (provider = P) =>
+  useInvalidating((b: S['BoostRequest']) => ok(api.POST('/api/budget/{provider}/boost', { params: { path: { provider } }, body: b })), budgetKeys)
+export const useClearBoost = (provider = P) =>
+  useInvalidating(() => ok(api.DELETE('/api/budget/{provider}/boost', { params: { path: { provider } } })), budgetKeys)
+export const usePatchReserve = () => useInvalidating((b: S['ReserveSettings']) => ok(api.PATCH('/api/budget', { body: b })), budgetKeys)
+
+export const useProviders = () => useQuery({ queryKey: ['budget', 'providers'], queryFn: () => ok(api.GET('/api/providers')) })
+export const useAddApiProvider = () => useInvalidating((b: S['ApiProviderCreate']) => ok(api.POST('/api/providers/anthropic-api', { body: b })), budgetKeys)
+export const usePatchProvider = () =>
+  useInvalidating((a: { id: string } & S['ProviderPatch']) => ok(api.PATCH('/api/providers/{provider}', { params: { path: { provider: a.id } }, body: { enabled: a.enabled, label: a.label } })), budgetKeys)
+export const useDeleteProvider = () => useInvalidating((id: string) => ok(api.DELETE('/api/providers/{provider}', { params: { path: { provider: id } } })), budgetKeys)
+
+export const useRoles = () => useQuery({ queryKey: ['budget', 'roles'], queryFn: () => ok(api.GET('/api/roles')) })
+export const useSetRoles = () => useInvalidating((b: S['Roles']) => ok(api.PUT('/api/roles', { body: b })), [['budget']])
+export const useReviewer = () => useQuery({ queryKey: ['budget', 'reviewer'], queryFn: () => ok(api.GET('/api/reviewer')) })
+export const useSetReviewer = () => useInvalidating((b: S['ReviewerConfig']) => ok(api.PUT('/api/reviewer', { body: b })), [['budget']])
+export const useInstructions = () => useQuery({ queryKey: ['budget', 'instructions'], queryFn: () => ok(api.GET('/api/instructions')) })
+export const useSetInstructions = () => useInvalidating((text: string) => ok(api.PUT('/api/instructions', { body: { text } })), [['budget']])
+
+export const useCalendar = (start?: string, end?: string) =>
+  useQuery({ queryKey: ['calendar', start ?? '', end ?? ''], queryFn: () => ok(api.GET('/api/calendar', { params: { query: { start, end } } })) })
+export const useCreateWakeup = () => useInvalidating((b: S['WakeupCreate']) => ok(api.POST('/api/wakeups', { body: b })), budgetKeys)
+export const usePatchWakeup = () =>
+  useInvalidating((a: { id: number } & S['WakeupPatch']) => {
+    const { id, ...body } = a
+    return ok(api.PATCH('/api/wakeups/{wakeup_id}', { params: { path: { wakeup_id: id } }, body }))
+  }, budgetKeys)
+export const useCancelWakeup = () => useInvalidating((id: number) => ok(api.DELETE('/api/wakeups/{wakeup_id}', { params: { path: { wakeup_id: id } } })), budgetKeys)
+
+export const useRoutines = () => useQuery({ queryKey: ['calendar', 'routines'], queryFn: () => ok(api.GET('/api/routines')) })
+export const useCreateRoutine = () => useInvalidating((b: S['RoutineCreate']) => ok(api.POST('/api/routines', { body: b })), budgetKeys)
+export const usePatchRoutine = () =>
+  useInvalidating((a: { id: number } & S['RoutinePatch']) => {
+    const { id, ...body } = a
+    return ok(api.PATCH('/api/routines/{routine_id}', { params: { path: { routine_id: id } }, body }))
+  }, budgetKeys)
+export const useDeleteRoutine = () => useInvalidating((id: number) => ok(api.DELETE('/api/routines/{routine_id}', { params: { path: { routine_id: id } } })), budgetKeys)

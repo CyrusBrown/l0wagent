@@ -202,8 +202,12 @@ def test_uploads_are_contained(c, be, tmp_path):
     m = ok(c.post(f"/api/threads/{t['id']}/messages", json={"body": "see attached", "upload_ids": [u["id"]]}), 201)
     assert m["attachments"][0]["path"] == "_inbox/garden/notes.txt"
     assert "/work/_inbox/garden/notes.txt" in ok(agent(c, "GET", "/inbox"))["text"]
+    # Once delivered, the thread history (a Reply now brief, `assistant messages`) still lists it.
+    assert "(attached: /work/_inbox/garden/notes.txt)" in ok(agent(c, "GET", f"/messages?thread={t['id']}"))["text"]
 
 
 def test_harness_news_announces_the_new_commands(c):
     news = ok(agent(c, "GET", "/news"))
-    assert news[0]["title"] == "Threads, asks, claims and suggestions" and "assistant claim N" in news[0]["body"]
+    titles = [n["title"] for n in news]  # newest first
+    assert titles[:3] == ["Budgets, your wakeup plan, routines, the reviewer and long jobs", "The shelf and the owner's uploads", "Threads, asks, claims and suggestions"]
+    assert "assistant wake at" in news[0]["body"] and "assistant shelf add" in news[1]["body"] and "assistant claim N" in news[2]["body"]

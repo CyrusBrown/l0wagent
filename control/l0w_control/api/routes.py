@@ -7,11 +7,14 @@ Agent routes (/api/agent/*), the MCP connector (/mcp) and the reserved
 from __future__ import annotations
 
 import json
+import os
 from typing import Annotated, Literal
+from urllib.parse import quote, urlsplit
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from fastapi.security import APIKeyCookie, HTTPAuthorizationCredentials, HTTPBearer
+from starlette.background import BackgroundTask
 
 from ..backends.base import Backend
 from . import schemas as s
@@ -355,6 +358,133 @@ def list_jobs(be: Be, include_done: bool = False) -> list[s.Job]:
     return be.jobs(include_done)
 
 
+# ── Budgets, providers, roles, the reviewer (online only) ─────────────────
+@api.get("/budget", tags=["budgets"])
+def budget_overview(be: Be) -> s.BudgetOverview:
+    """Per provider: level, Boost, limits, allowance left, you vs. the assistant, the reply budget."""
+    return be.budget_overview()
+
+
+@api.patch("/budget/{provider}", tags=["budgets"])
+def patch_budget(provider: str, req: s.BudgetPatch, be: Be) -> s.ProviderBudget:
+    """Set the level (clears overrides) or override single limits."""
+    return be.patch_budget(provider, req)
+
+
+@api.post("/budget/{provider}/boost", tags=["budgets"])
+def boost(provider: str, req: s.BoostRequest, be: Be) -> s.ProviderBudget:
+    return be.boost(provider, req)
+
+
+@api.delete("/budget/{provider}/boost", tags=["budgets"])
+def clear_boost(provider: str, be: Be) -> s.ProviderBudget:
+    return be.clear_boost(provider)
+
+
+@api.patch("/budget", tags=["budgets"])
+def patch_reserve(req: s.ReserveSettings, be: Be) -> s.BudgetOverview:
+    """The owner's reserve and the sweep's window and ceiling."""
+    return be.patch_reserve(req)
+
+
+@api.get("/providers", tags=["budgets"])
+def list_providers(be: Be) -> list[s.ProviderInfo]:
+    return be.providers()
+
+
+@api.post("/providers/anthropic-api", tags=["budgets"])
+def add_api_provider(req: s.ApiProviderCreate, be: Be) -> s.ProviderInfo:
+    """Save an Anthropic API key (write-only; only sessions on this provider get it)."""
+    return be.add_api_provider(req)
+
+
+@api.patch("/providers/{provider}", tags=["budgets"])
+def patch_provider(provider: str, req: s.ProviderPatch, be: Be) -> s.ProviderInfo:
+    return be.patch_provider(provider, req)
+
+
+@api.delete("/providers/{provider}", tags=["budgets"])
+def delete_provider(provider: str, be: Be) -> s.Ok:
+    be.delete_provider(provider)
+    return s.Ok()
+
+
+@api.get("/roles", tags=["budgets"])
+def get_roles(be: Be) -> s.Roles:
+    return be.roles()
+
+
+@api.put("/roles", tags=["budgets"])
+def set_roles(req: s.Roles, be: Be) -> s.Roles:
+    return be.set_roles(req)
+
+
+@api.get("/reviewer", tags=["budgets"])
+def get_reviewer(be: Be) -> s.ReviewerConfig:
+    return be.reviewer_config()
+
+
+@api.put("/reviewer", tags=["budgets"])
+def set_reviewer(req: s.ReviewerConfig, be: Be) -> s.ReviewerConfig:
+    return be.set_reviewer_config(req)
+
+
+@api.get("/instructions", tags=["budgets"])
+def get_instructions(be: Be) -> s.StandingInstructions:
+    """Standing instructions: included in every brief."""
+    return be.instructions()
+
+
+@api.put("/instructions", tags=["budgets"])
+def set_instructions(req: s.StandingInstructions, be: Be) -> s.StandingInstructions:
+    return be.set_instructions(req)
+
+
+# ── Calendar, wakeups, routines ────────────────────────────────────────────
+@api.get("/calendar", tags=["calendar"])
+def calendar(be: Be, start: str | None = None, end: str | None = None) -> s.Calendar:
+    """Planned wakeups, routine occurrences, allowed hours and the sweep window (default: this week, Monday 00:00 local)."""
+    return be.calendar(start, end)
+
+
+@api.post("/wakeups", tags=["calendar"])
+def create_wakeup(req: s.WakeupCreate, be: Be) -> s.Wakeup:
+    """Your own wakeup. Online only."""
+    return be.create_wakeup(req)
+
+
+@api.patch("/wakeups/{wakeup_id}", tags=["calendar"])
+def patch_wakeup(wakeup_id: int, req: s.WakeupPatch, be: Be) -> s.Wakeup:
+    """Move or resize a planned wakeup (the assistant hears about changes to its own)."""
+    return be.patch_wakeup(wakeup_id, req)
+
+
+@api.delete("/wakeups/{wakeup_id}", tags=["calendar"])
+def cancel_wakeup(wakeup_id: int, be: Be) -> s.Wakeup:
+    return be.cancel_wakeup(wakeup_id)
+
+
+@api.get("/routines", tags=["calendar"])
+def list_routines(be: Be) -> list[s.Routine]:
+    return be.routines_list()
+
+
+@api.post("/routines", tags=["calendar"])
+def create_routine(req: s.RoutineCreate, be: Be) -> s.Routine:
+    return be.create_routine(req)
+
+
+@api.patch("/routines/{routine_id}", tags=["calendar"])
+def patch_routine(routine_id: int, req: s.RoutinePatch, be: Be) -> s.Routine:
+    return be.patch_routine(routine_id, req)
+
+
+@api.delete("/routines/{routine_id}", tags=["calendar"])
+def delete_routine(routine_id: int, be: Be) -> s.Ok:
+    be.delete_routine(routine_id)
+    return s.Ok()
+
+
 # ── Secrets ────────────────────────────────────────────────────────────────
 @api.get("/secrets", tags=["secrets"])
 def list_secrets(be: Be) -> list[s.SecretInfo]:
@@ -392,14 +522,60 @@ def list_dir(be: Be, volume: s.Volume, path: str = "") -> s.Listing:
     return be.list_dir(volume, path)
 
 
-@api.get("/files/raw", tags=["files"], response_class=Response, responses={200: {"content": {"application/octet-stream": {}}}})
-def read_file(be: Be, volume: s.Volume, path: str) -> Response:
-    """File bytes. Agent-made HTML/SVG is never rendered from this origin: previews load it
-    from the separate files origin in a sandboxed frame (M3)."""
-    data, mime = be.read_file(volume, path)
-    if mime in ("text/html", "image/svg+xml"):
+PAGE_TYPES = ("text/html", "image/svg+xml", "application/xhtml+xml", "text/xml", "application/xml")
+
+
+def _raw(data: bytes, mime: str, name: str, download: bool) -> Response:
+    """Bytes from the agent's storage on the main origin, never rendered as a page here:
+    HTML, SVG and XML go out as text/plain (sandboxed and nosniff besides). They're shown
+    only from the files origin (preview-url) in a sandboxed frame."""
+    headers = {"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox", "Cache-Control": "private, no-cache"}
+    if download:
+        headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(name)}"
+        mime = "application/octet-stream"
+    elif mime in PAGE_TYPES:
         mime = "text/plain; charset=utf-8"
-    return Response(data, media_type=mime, headers={"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox"})
+    return Response(data, media_type=mime, headers=headers)
+
+
+def _origin(request: Request, env_name: str, port_env: str, default_port: int) -> str:
+    """Where the browser reaches another of the server's ports: the host of this request."""
+    override = os.environ.get(env_name, "").rstrip("/")
+    if override:
+        return override
+    host = urlsplit("//" + (request.headers.get("host") or "localhost")).hostname or "localhost"
+    if ":" in host:
+        host = f"[{host}]"
+    scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+    return f"{scheme}://{host}:{os.environ.get(port_env, str(default_port))}"
+
+
+@api.get("/files/raw", tags=["files"], response_class=Response, responses={200: {"content": {"application/octet-stream": {}}}})
+def read_file(be: Be, volume: s.Volume, path: str, download: bool = False) -> Response:
+    """File bytes, for downloads and client-side previewers (text, CSV, notebooks, 3D)."""
+    data, mime = be.read_file(volume, path)
+    return _raw(data, mime, path.rsplit("/", 1)[-1], download)
+
+
+@api.get("/files/zip", tags=["files"], response_class=Response, responses={200: {"content": {"application/zip": {}}}})
+def zip_dir(be: Be, volume: s.Volume, path: str = "") -> Response:
+    """A folder as a zip (symlinks skipped)."""
+    f = be.zip_dir(volume, path)
+    name = (path.rstrip("/").rsplit("/", 1)[-1] or volume) + ".zip"
+    return StreamingResponse(iter(lambda: f.read(1 << 20), b""), media_type="application/zip",
+                             headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"}, background=BackgroundTask(f.close))
+
+
+@api.get("/files/preview-url", tags=["files"])
+def file_preview_url(request: Request, be: Be, volume: s.Volume, path: str) -> s.PreviewUrl:
+    """A link on the files origin for showing this file in a frame or media element. HTML
+    gets a link scoped to its folder, so its relative assets load."""
+    return be.preview_url(volume, path, _origin(request, "L0W_FILES_ORIGIN", "L0W_FILES_PORT", 8001))
+
+
+@api.get("/files/diff", tags=["files"])
+def file_diff(be: Be, volume: s.Volume, path: str, rev: str) -> s.FileDiff:
+    return be.file_diff(volume, path, rev)
 
 
 @api.get("/files/history", tags=["files"])
@@ -427,6 +603,23 @@ def remove_from_shelf(item_id: int, be: Be) -> s.Ok:
 def shelf_versions(item_id: int, be: Be) -> list[s.ShelfVersion]:
     return be.shelf_versions(item_id)
 
+
+@api.get("/shelf/{item_id}/raw", tags=["files"], response_class=Response, responses={200: {"content": {"application/octet-stream": {}}}})
+def shelf_raw(item_id: int, be: Be, version: int | None = None, download: bool = False) -> Response:
+    """A shelf item's bytes: a kept version, the snapshot, or the live file."""
+    data, mime, name = be.shelf_raw(item_id, version)
+    return _raw(data, mime, name, download)
+
+
+@api.get("/shelf/{item_id}/preview-url", tags=["files"])
+def shelf_preview_url(item_id: int, request: Request, be: Be, version: int | None = None) -> s.PreviewUrl:
+    return be.shelf_preview_url(item_id, version, _origin(request, "L0W_FILES_ORIGIN", "L0W_FILES_PORT", 8001))
+
+
+@api.get("/web", tags=["files"])
+def web_page(request: Request, be: Be) -> s.WebPage:
+    """The assistant's web page (its port 8787, through agent-web)."""
+    return be.web_page(_origin(request, "L0W_AGENT_WEB_URL", "L0W_AGENT_WEB_PORT", 8787) + "/")
 
 
 @api.post("/uploads", tags=["files"], status_code=201)

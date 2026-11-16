@@ -1,7 +1,6 @@
-# Wakeup brief (run #{run_id})
+<!-- Control-owned wakeup brief template ({placeholders} filled by control). Archive old text before editing. -->
+# Run #{run_id} brief
 
-- Why you woke: {why} (detail: {detail})
-- Model: {tier}
-- Deadline: {deadline} (control stops the run then)
-
-Orient (NOW.md, the pre-run report below if any), decide what this run is for, and work.
+- **Why you woke:** {why}
+- **Budget:** {budget} pts from {bucket}; control stops the run there. Deadline {deadline}.
+- **Tier:** {tier} · **level:** {level} · **reviewer:** {reviewer}

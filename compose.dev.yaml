@@ -1,6 +1,6 @@
 # Development stack, built from source.
 #
-#   docker compose -f compose.dev.yaml up --build     → http://localhost:5173 (UI), :8000 (API)
+#   docker compose -f compose.dev.yaml up --build     → http://localhost:5173 (UI), :8000 (API), :8001 (files origin)
 #
 # By default the agent runs a fake Claude Code (FAKE_CLAUDE=1) and runs may start without a
 # usage reading, so nothing needs a login or spends usage. For the real thing:
@@ -36,7 +36,8 @@ services:
       L0W_SANDBOX_SUBNET: ${SANDBOX_SUBNET:-172.31.240.0/24}
       L0W_AGENT_HOME: /agent-home
       USAGE_UNKNOWN_POLICY: ${USAGE_UNKNOWN_POLICY:-allow}
-    ports: ["127.0.0.1:8000:8000"]
+      L0W_FILES_PORT: "8001"  # the files origin: agent-made files, never on the UI's origin
+    ports: ["127.0.0.1:8000:8000", "127.0.0.1:8001:8001"]
     volumes:
       - control-data:/data
       - agent-home:/agent-home:ro

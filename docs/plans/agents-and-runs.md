@@ -88,7 +88,7 @@ This replaces today's nightly, review, turbo and chat modes.
 | **Allowed hours** | When wakeups may happen. |
 | **Wakeup limits** | Max per day, minimum gap, max budget per wakeup. |
 | **Allowed tiers** | Which models/efforts the worker may use. |
-| **Reply budget** | A small separate weekly budget for Reply-now runs (default: about 3% of the week for Claude subscriptions, $1/week for API providers). |
+| **Reply budget** | A small separate weekly budget for Reply-now runs (default: 30 pts, 3% of the week, for Claude subscriptions; 10 pts, $1/week, for API providers). |
 | **Fallback wakeup** | On by default: if nothing is planned for 2 nights, control schedules one. |
 | **Sweep** | On/off, with its own ceiling and window (below). |
 | **Reviewer** | **On by default, in Monitor mode** (below). |
@@ -97,13 +97,15 @@ This replaces today's nightly, review, turbo and chat modes.
 
 **Level presets** fill these in from one choice, scaled to the plan size:
 
-| Level | Roughly (shares are placeholders until points are defined, before M4) |
+**Points** (owner, 2026-11-15): one budget unit. On a Claude subscription **1 pt = 0.1% of the week** (1,000 pts a week, read straight off the usage meter); on an API key **1 pt = $0.10**.
+
+| Level | Allowance and behavior |
 |---|---|
 | **Dormant** | No scheduled wakeups; Reply now only. |
-| **Frugal** | ~5% of the week; a few short night wakeups; a small model. |
-| **Steady** | ~15%; about one wakeup a night; a mid model. |
-| **Busy** | ~40%; nightly plus off-hours wakeups; sweep on. |
-| **Max** | ~85%; around the clock, paced per 5-hour window; sweep on. |
+| **Frugal** | 50 pts (5% of the week); a few short night wakeups; a small model. |
+| **Steady** | 150 pts (15%); about one wakeup a night; a mid model. |
+| **Busy** | 400 pts (40%); nightly plus off-hours wakeups; sweep on. |
+| **Max** | 850 pts (85%); around the clock, paced per 5-hour window; sweep on. |
 
 **Boost** is a temporary raise ("Busy until Friday's reset", "Max for 6 hours").
 

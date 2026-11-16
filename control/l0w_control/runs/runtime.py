@@ -42,6 +42,7 @@ class Parsed:
     tool_results: list[tuple[str, str, bool]] = field(default_factory=list)  # (tool_use_id, text, is_error)
     result: dict | None = None             # {"ok", "text", "turns", "cost_usd", "subtype", "usage"}
     rate_limit: dict | None = None         # the raw rate-limit info, for the usage fallback
+    usage: tuple[str | None, str | None, dict] | None = None  # (message id, model, token usage) of one model message
     runner: str | None = None              # runner event: started | pre_run | exited | lost
     runner_data: dict = field(default_factory=dict)
 
@@ -117,7 +118,10 @@ class ClaudeCode(RuntimeAdapter):
             return p
         if t == "assistant":
             p.session_id = ev.get("session_id")
-            for block in (ev.get("message") or {}).get("content") or []:
+            msg = ev.get("message") or {}
+            if isinstance(msg.get("usage"), dict):
+                p.usage = (msg.get("id"), msg.get("model"), msg["usage"])
+            for block in msg.get("content") or []:
                 bt = block.get("type")
                 if bt == "text" and block.get("text", "").strip():
                     p.items.append(Item("text", _clip(block["text"], RESULT_MAX)))

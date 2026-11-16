@@ -67,7 +67,8 @@ describe('screens render with mock data', () => {
   })
   it('Files', async () => {
     renderAt('/files')
-    expect(await screen.findByText('NOW.md')).toBeInTheDocument()
+    expect((await screen.findAllByText('NOW.md')).length).toBe(2) // tree and table
+    expect(screen.getByRole('button', { name: 'Upload to a project' })).toBeInTheDocument()
   })
   it('Project', async () => {
     renderAt('/p/garden-irrigation')
@@ -86,8 +87,21 @@ describe('screens render with mock data', () => {
     expect(await screen.findByText("Can't reach the LAN or the host")).toBeInTheDocument()
   })
   it('Settings: a later tab says when it arrives', async () => {
+    renderAt('/settings/notifications')
+    expect(await screen.findByText(/arrive with push notifications \(M5\)/)).toBeInTheDocument()
+  })
+  it('Settings: budgets and levels', async () => {
     renderAt('/settings/budgets')
-    expect(await screen.findByText(/arrive with M4/)).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /Steady\s*150 pts\/wk/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('Weekly allowance')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Boost for 24 h' })).toBeInTheDocument()
+  })
+  it('Calendar: planned wakeups, routines and the budget', async () => {
+    renderAt('/calendar')
+    expect(await screen.findByRole('heading', { name: 'Calendar' })).toBeInTheDocument()
+    expect((await screen.findAllByText('Finish the pump fix, then the receipts')).length).toBeGreaterThan(0)
+    expect(screen.getByText('Budget left this week')).toBeInTheDocument()
+    expect((await screen.findAllByText('Inbox triage')).length).toBeGreaterThan(0)
   })
   it('Login when signed out', async () => {
     overrides = { '/api/auth/me': new Response('{"error":"unauthorized"}', { status: 401 }) }

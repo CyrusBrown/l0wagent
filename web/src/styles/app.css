@@ -284,3 +284,149 @@ a.new-chip:hover { background: var(--rowh); text-decoration: none; color: var(--
   .secrets-row > :nth-child(2), .secrets-row > :nth-child(3), .secrets-row > :nth-child(4) { display: none }
 }
 
+/* ── M3: files, previews, shelf, web page (layouts from the mockup) ───── */
+.files-layout { flex: 1; min-width: 0; display: flex; min-height: 0; height: 100%; animation: rise .28s cubic-bezier(.2,.7,.3,1) both }
+.files-side { width: 260px; flex: none; background: var(--side); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0 }
+.files-roots { padding: 12px 10px 8px; flex: none; display: flex; flex-direction: column; gap: 6px }
+.seg.wide { display: flex; background: var(--hover) } .seg.wide button { flex: 1 }
+.files-tree { flex: 1; min-height: 0; overflow: auto; padding: 2px 8px 16px }
+.tree-row { display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 8px; border: none; background: transparent; border-radius: 7px; text-align: left; font: 400 13.5px/20px var(--sans) }
+.tree-row:hover { background: var(--hover) } .tree-row.on { background: var(--active) }
+.tree-row .caret { width: 14px; flex: none; font-size: 11px; color: var(--faint); text-align: center }
+.tree-row .grow { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.ext-hint { flex: none; font-size: 11px; color: var(--faint2) }
+.files-main { flex: 1; min-width: 0; overflow: auto; display: flex; flex-direction: column }
+.files-bar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 24px; border-bottom: 1px solid var(--lineSoft); flex-wrap: wrap }
+.files-bar .crumbs { font-size: 13.5px; align-items: center }
+.crumbs button { padding: 3px 5px; border-radius: 5px } .crumbs button:hover { background: var(--hover) }
+.dim { color: var(--dim) }
+.files-pane { padding: 20px 24px 32px; display: flex; flex-direction: column; gap: 16px; width: 100%; animation: rise .24s ease both }
+.fs-row { display: grid; grid-template-columns: minmax(0, 1fr) 80px 110px 60px; gap: 12px; align-items: center; padding: 10px 16px; border: none; border-bottom: 1px solid var(--soft); background: transparent; width: 100%; text-align: left; font-size: 13px }
+.fs-row:hover:not(.head):not(:disabled) { background: var(--rowh) }
+.fs-row.head { font: 500 11.5px var(--sans); color: var(--faint); padding: 9px 16px; border-bottom: 1px solid var(--lineSoft) }
+.fs-row:disabled { opacity: .6; cursor: default }
+.ext-badge { font: 500 9.5px var(--mono); background: var(--soft); color: var(--muted); border-radius: 4px; padding: 2px 5px; flex: none; width: 32px; text-align: center; text-transform: uppercase }
+.btn.pressed { background: var(--active) }
+.btn.pill-btn { border-radius: 999px }
+a.btn { display: inline-flex; align-items: center; color: var(--fg); text-decoration: none }
+a.btn:hover { text-decoration: none; color: var(--fg) }
+.menu.wide { width: min(360px, calc(100vw - 32px)) }
+.hist-row { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 8px 10px; border-radius: 8px; border: none; background: transparent; text-align: left; font-size: 13px; width: 100% }
+.hist-row:hover, .hist-row.on { background: var(--rowh) }
+.code-preview { margin: 0; padding: 18px 20px; font: 400 13px/1.7 var(--mono); color: var(--fg2); background: var(--code); border: 1px solid var(--line); border-radius: 12px; overflow: auto; white-space: pre }
+.code-preview.numbered .ln { display: inline-block; width: 3.2em; color: var(--faint2); user-select: none }
+.code-preview.diff .add { background: var(--okSoft); color: var(--okInk) }
+.code-preview.diff .del { background: var(--badSoft); color: var(--badInk) }
+.code-preview.diff .hunk { color: var(--infoInk) }
+.md-preview { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 24px 28px; font: 400 16px/1.75 var(--serif); color: var(--fg2) }
+.md-preview.compact { border: none; padding: 4px 16px; font-size: 14px; background: transparent }
+.md-preview h1, .md-preview h2, .md-preview h3 { color: var(--fg); margin: .6em 0 .3em } .md-preview > :first-child { margin-top: 0 }
+.md-preview code { font-size: 13px } .md-preview pre { margin: .6em 0 }
+.csv-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--card); max-height: 70vh }
+.table.csv { font: 400 13px var(--mono) } .table.csv th { position: sticky; top: 0; background: var(--card) }
+.media-preview { display: flex; justify-content: center; background: repeating-conic-gradient(var(--soft) 0 25%, transparent 0 50%) 0 0 / 16px 16px; border: 1px solid var(--line); border-radius: 12px; padding: 12px }
+.media-preview img { max-width: 100%; max-height: 70vh; object-fit: contain }
+.audio-preview { width: 100% }
+.video-preview { width: 100%; max-height: 70vh; border-radius: 12px; background: #000 }
+.frame-preview { width: 100%; height: 70vh; border: 1px solid var(--line); border-radius: 12px; background: #fff }
+.binary-preview { border: 1.5px dashed var(--line3); border-radius: 12px; padding: 40px 24px; text-align: center; display: flex; flex-direction: column; gap: 6px }
+.model3d { position: relative; height: 460px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: radial-gradient(circle at 50% 40%, var(--card), var(--side)) }
+.model3d canvas { display: block }
+.model3d-note { position: absolute; left: 12px; bottom: 10px; font-size: 12px; color: var(--faint) }
+.notebook { display: flex; flex-direction: column; gap: 12px }
+.nb-cell { display: flex; flex-direction: column; gap: 6px }
+.nb-out { margin: 0; padding: 10px 14px; font: 400 12.5px/1.6 var(--mono); background: var(--card); border: 1px solid var(--lineSoft); border-radius: 8px; white-space: pre-wrap }
+.nb-out.err { color: var(--badInk) }
+.nb-img { max-width: 100%; border-radius: 8px; border: 1px solid var(--lineSoft); background: #fff }
+.shelf { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px; align-items: start }
+.shelf.compact { display: flex; flex-direction: column; gap: 0; min-height: 0; flex: 1 }
+.shelf.compact > .stack { max-height: 45%; overflow: auto; border-bottom: 1px solid var(--lineSoft) }
+.shelf.compact .rows { border: none; border-radius: 0 }
+.shelf-row { display: grid; grid-template-columns: minmax(0, 1fr) 72px 84px; gap: 12px; align-items: center; padding: 10px 14px; border: none; border-bottom: 1px solid var(--soft); background: transparent; width: 100%; text-align: left; font-size: 13.5px }
+.shelf.compact .shelf-row { grid-template-columns: minmax(0, 1fr) auto; padding: 9px 16px }
+.shelf-row.head { font: 500 11.5px var(--sans); color: var(--faint); padding: 9px 14px; border-bottom: 1px solid var(--lineSoft) }
+.shelf-row:hover:not(.head), .shelf-row.on { background: var(--rowh) }
+.mode { font: 500 11.5px var(--sans) } .mode.live { color: var(--okInk) } .mode.snapshot { color: var(--muted) } .mode.missing { color: var(--badInk) }
+.shelf-preview { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; min-width: 0 }
+.shelf.compact .shelf-preview { border: none; border-radius: 0; flex: 1; min-height: 0; overflow: auto }
+.shelf-preview-head { padding: 12px 14px; border-bottom: 1px solid var(--lineSoft) }
+.shelf-preview-body { padding: 0 } .shelf-preview-body > * { border-radius: 0 !important; border-left: none !important; border-right: none !important }
+.shelf.compact .shelf-preview-body .code-preview { font-size: 11.5px; padding: 12px 16px }
+.version-pick { width: auto; padding: 4px 9px; font-size: 12px; flex: none }
+.drop-zone { border: 1.5px dashed var(--line3); border-radius: 12px; padding: 14px; text-align: center; font-size: 13px; color: var(--faint); cursor: pointer }
+.drop-zone.over { border-color: #c4673f; color: var(--fg) }
+.thread-files { width: 310px; flex: none; border-left: 1px solid var(--line); background: var(--card); display: flex; flex-direction: column; min-height: 0; animation: fade .2s ease both }
+.web-page { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 16px 20px 20px; gap: 10px; min-height: calc(100vh - 52px) }
+.url-bar { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line2); background: var(--card); border-radius: 8px; padding: 6px 11px; font: 400 12.5px var(--mono); color: var(--muted) }
+.web-frame { flex: 1; min-height: 320px; border: 1px solid var(--line); border-radius: 12px; background: #fff; width: 100% }
+.web-empty { flex: 1; min-height: 320px; border: 1px solid var(--line); border-radius: 12px; background: repeating-linear-gradient(135deg, var(--stripe) 0 8px, var(--track) 8px 16px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center; padding: 24px }
+@media (max-width: 760px) {
+  .files-side { display: none }
+  .fs-row { grid-template-columns: minmax(0, 1fr) 70px }
+  .fs-row > :nth-child(3), .fs-row > :nth-child(4) { display: none }
+  .thread-files { position: fixed; inset: 52px 0 0 auto; width: min(100vw, 360px); z-index: 30; box-shadow: var(--shadow) }
+  .shelf { grid-template-columns: minmax(0, 1fr) }
+}
+
+/* ── Calendar (M4), from the mockup ─────────────────────────────────────── */
+.calendar { flex: 1; min-width: 0; overflow: auto; padding: 24px 24px 32px; display: flex; flex-direction: column; gap: 16px; animation: rise .28s cubic-bezier(.2,.7,.3,1) both }
+.serif-title { font: 500 28px/1.2 var(--serif) }
+.serif-num { font: 500 26px var(--serif) }
+.cal-legend { display: flex; gap: 14px; flex-wrap: wrap; font: 400 12px var(--sans); color: var(--muted) }
+.cal-legend > span { display: flex; align-items: center; gap: 6px }
+.cal-swatch { width: 10px; height: 10px; border-radius: 3px; border: 1px solid var(--line3) }
+.cal-layout { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; min-width: 0 }
+.cal-grid-card { flex: 1 1 560px; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden }
+.cal-head, .cal-body { display: grid; grid-template-columns: 44px repeat(7, minmax(0, 1fr)) }
+.cal-head { border-bottom: 1px solid var(--lineSoft) }
+.cal-head > div { padding: 9px 8px; display: flex; align-items: baseline; gap: 6px; border-left: 1px solid var(--soft); font: 500 12.5px var(--sans); color: var(--fg2) }
+.cal-head > div:first-child { border-left: none }
+.cal-head > div.today { color: var(--accentInk) }
+.cal-hours { position: relative }
+.cal-hours > span { position: absolute; right: 6px; font: 400 10.5px var(--mono); color: var(--faint2) }
+.cal-day { position: relative; border-left: 1px solid var(--soft); background: var(--card); background-image: repeating-linear-gradient(to bottom, transparent 0 83px, var(--soft) 83px 84px) }
+.cal-day.today { background-color: var(--today) }
+.cal-ev { position: absolute; left: 3px; right: 3px; border: 1px solid; border-radius: 6px; padding: 1px 6px; overflow: hidden; display: flex; align-items: baseline; line-height: 14px; touch-action: none; user-select: none }
+.cal-ev > span { flex: 1; min-width: 0; font: 500 10.5px var(--sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.cal-ev.past { opacity: .55 }
+.wakeup, .cal-swatch.wakeup { background: var(--accentSoft); border-color: var(--accentLine); color: var(--accentInk) }
+.routine, .cal-swatch.routine { background: var(--infoSoft); border-color: var(--infoLine); color: var(--infoInk) }
+.sweep, .cal-swatch.sweep { background: var(--soft); border-color: var(--line3); color: var(--muted) }
+.fallback, .cal-swatch.fallback { background: var(--bg); border-color: var(--dim); border-style: dashed; color: var(--muted) }
+.cal-ev.mine, .cal-swatch.mine { background: var(--okSoft); border-color: var(--okLine); color: var(--okInk) }
+.cal-ev.protected, .cal-swatch.protected { background: repeating-linear-gradient(135deg, var(--soft) 0 5px, var(--bg) 5px 10px); border-color: transparent; color: var(--faint); pointer-events: none }
+.cal-ev.sweep-window { background: transparent; border: 1px dashed var(--line3); pointer-events: none }
+.cal-side { flex: 1 0 240px; max-width: 320px; display: flex; flex-direction: column; gap: 20px }
+.cal-side .side-label { padding: 0 }
+.cal-sched { display: flex; flex-direction: column; gap: 2px; padding: 9px 0; border-bottom: 1px solid var(--lineSoft) }
+.split-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden }
+.cal-editor { position: fixed; z-index: 60; top: 14vh; left: 50%; transform: translateX(-50%); width: min(420px, calc(100vw - 32px)); gap: 10px }
+
+/* ── Settings → Budgets & levels, Roles, Reviewer (M4) ──────────────────── */
+.level-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px }
+.level-opt { border: 1.5px solid var(--line); background: var(--card); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 4px; text-align: left; cursor: pointer }
+.level-opt.on { border-color: #c4673f }
+.level-text { font: 400 15px/1.6 var(--serif); color: var(--fg2); text-wrap: pretty }
+.card-flat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden }
+.allowance-row { display: grid; grid-template-columns: 140px minmax(0, 1fr) 220px; gap: 16px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--soft) }
+.allowance-row:last-child, .roles-row:last-child { border-bottom: none }
+.alloc-bar { height: 6px; border-radius: 3px; background: var(--track); overflow: hidden; display: flex }
+.alloc-bar > div { height: 100% }
+.budget-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden }
+.budget-field { background: var(--card); padding: 12px 14px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px }
+.value-chip { font: 400 13px var(--sans); border: 1px solid var(--line2); border-radius: 7px; padding: 4px 9px; white-space: nowrap; background: var(--card); color: var(--fg); max-width: 220px; overflow: hidden; text-overflow: ellipsis }
+.value-chip:hover:not(:disabled) { border-color: var(--dim) }
+.custom-tag { margin-left: 6px; font: 500 10.5px var(--sans); color: var(--accentInk); background: var(--accentSoft); border-radius: 5px; padding: 1px 5px }
+.inline-edit { display: flex; gap: 6px; align-items: center; flex-wrap: wrap }
+.inline-edit .input { width: auto; min-width: 70px; max-width: 220px; padding: 5px 8px; font-size: 13px }
+.tier-checks { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px }
+.boost-box { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: var(--side); border-radius: 12px; padding: 14px 16px; flex-wrap: wrap }
+.roles-row { display: grid; grid-template-columns: 110px 140px 110px 100px minmax(0, 1fr); gap: 12px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--soft); font: 400 13px var(--sans) }
+.roles-row.head { font: 500 11.5px var(--sans); color: var(--faint); padding: 9px 14px; border-bottom: 1px solid var(--lineSoft) }
+.roles-row .input { padding: 5px 8px; font-size: 12.5px }
+@media (max-width: 720px) {
+  .level-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+  .budget-grid { grid-template-columns: minmax(0, 1fr) }
+  .allowance-row { grid-template-columns: minmax(0, 1fr) }
+  .roles-row { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+}

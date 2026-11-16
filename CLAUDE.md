@@ -2,7 +2,7 @@
 
 A long-running personal AI assistant on the owner's own server. **Start with [docs/plans/development.md](docs/plans/development.md)**: it says which milestone is current and what "done" means. Don't build ahead of the current milestone; ideas for later go in that file's "Later" list.
 
-Current milestone: **M2 (conversations)**, built on top of M1; both are waiting on the owner's review. M3 (files) is next.
+Current milestone: **M4 (budgets, wakeups and runs)**, built on top of M1–M3; all four are waiting on the owner's review. M5 (installable and shareable) is next.
 
 ## Sources of truth
 - **UI and styling: the mockup** (`design/mockup/`; readable sources in `design/mockup/src/`). It outranks `docs/plans/ui.md`. Port screens from its markup and tokens; where ui.md disagrees, update ui.md. [design/mockup/REVIEW.md](design/mockup/REVIEW.md) lists every known difference and how it was settled.
@@ -15,6 +15,8 @@ control/   FastAPI app (Python 3.12, SQLite, no ORM). api/ = schemas + owner rou
            backends/base.py = the interface routes call, sqlite.py = the real backend, mock/ = in-memory
            fixtures for UI work; auth.py; guard.py (request guard); live.py (live stream + sync feed);
            conv.py (projects, threads, messages, asks, claims, suggestions, delivery to the agent);
+           budgets.py (points, levels, ledger, wakeup validation, roles, reviewer config); scheduler.py
+           (due wakeups, fallback, sweep, routine occurrences); routines.py; reviewer.py; jobs.py;
            vault.py (write-only secrets, redaction); runs/ = run manager, runtime adapters,
            runner/egress clients, usage reader + gate; prompts/ = control-owned prompts and
            harness news (news.py); db/migrations/ = versioned SQL

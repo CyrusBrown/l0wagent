@@ -7,7 +7,7 @@ import { ago, clock, duration, pts, until } from '../components/format'
 
 const statusPill: Record<S['Run']['status'], string> = { starting: 'run', running: 'run', done: 'ok', partial: 'warn', stopped: 'mute', failed: 'bad' }
 const whyLabel = (r: S['Run']) =>
-  ({ planned: 'Planned wakeup', manual: 'Started by you', fallback: 'Fallback', sweep: 'Sweep', promoted: 'Promoted reply', routine: 'Routine', owner_message: 'Reply now' })[r.why] ?? r.why
+  ({ planned: 'Planned wakeup', manual: 'Started by you', fallback: 'Fallback', sweep: 'Sweep', promoted: 'Promoted reply', routine: 'Routine', owner_message: 'Reply now', owner: 'Your wakeup' })[r.why] ?? r.why
 
 export function Runs() {
   const [params, setParams] = useSearchParams()
@@ -85,7 +85,8 @@ export function Run() {
   const d = run.data
   if (!d) return <div className="page" />
   const r = d.run
-  const meta = [['Why it woke', `${whyLabel(r)}${r.why_detail ? ` · ${r.why_detail}` : ''}`], ['Level', d.level ?? '–'], ['Reviewer', d.reviewer_mode], ['Model', r.tier ?? '–']]
+  const cap = (x: string) => x[0].toUpperCase() + x.slice(1)
+  const meta = [['Why it woke', `${whyLabel(r)}${r.why_detail ? ` · ${r.why_detail}` : ''}`], ['Level', d.level ? cap(d.level) : '–'], ['Reviewer', cap(d.reviewer_mode)], ['Model', r.tier ?? '–'], ['Spends', r.bucket === 'reply' ? 'Reply budget' : r.bucket === 'sweep' ? 'Sweep (unused before reset)' : 'Allowance']]
   return (
     <div className="page">
       <div className="page-head">

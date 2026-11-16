@@ -34,7 +34,7 @@ A sketch to turn into the real schema and OpenAPI contract in phase 0. Part of t
 **Chats**
 - `chats`, `chat_messages`, `chat_links` (hand-offs to threads)
 
-The first real schema is [`control/l0w_control/db/migrations/0001_init.sql`](../../control/l0w_control/db/migrations/0001_init.sql) (M1–M3 tables; `0002_runs_usage.sql` adds what the M1 run manager and usage gate need; `0003_conversations.sql` adds M2's delivery tracking, reply runs, holds and secret metadata) and the API is [`control/openapi.json`](../../control/openapi.json); this file stays the sketch for later tables. The two `sessions` tables below are named `run_sessions` and `auth_sessions` there.
+The first real schema is [`control/l0w_control/db/migrations/0001_init.sql`](../../control/l0w_control/db/migrations/0001_init.sql) (M1–M3 tables; `0002_runs_usage.sql` adds what the M1 run manager and usage gate need; `0003_conversations.sql` adds M2's delivery tracking, reply runs, holds and secret metadata; `0004_files.sql` the shelf watcher's state; `0005_budgets.sql` M4's providers, usage ledger, wakeup plan, routines, reviewer messages and run budget columns) and the API is [`control/openapi.json`](../../control/openapi.json); this file stays the sketch for later tables. The two `sessions` tables below are named `run_sessions` and `auth_sessions` there.
 
 **Runs and budgets**
 - `runs` (kind ∈ wakeup | reply | routine | reviewer, why, provider, tier, budget, deadline, status, now_sentence, description)

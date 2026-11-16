@@ -53,6 +53,13 @@ class RunnerClient:
     async def refresh_auth(self) -> dict:
         return await self._call("POST", "/auth/refresh", timeout=180)
 
+    async def consult(self, payload: dict) -> dict:
+        """One reviewer turn (blocks until it ends)."""
+        return await self._call("POST", "/consult", timeout=600, json=payload)
+
+    async def procs(self, pids: list[int]) -> set[int]:
+        return set((await self._call("GET", f"/procs?pids={','.join(map(str, pids))}"))["alive"])
+
     async def selftest(self, targets: dict) -> list[dict]:
         return (await self._call("POST", "/selftest", json={"targets": targets}, timeout=60))["checks"]
 

@@ -39,7 +39,7 @@ export function Shell() {
       )}
       <div className="body">
         {inConversation && <Sidebar />}
-        <main className="main" style={loc.pathname.startsWith('/t/') ? { display: 'flex', overflow: 'hidden' } : undefined}>
+        <main className="main" style={/^\/(t\/|files|web)/.test(loc.pathname) ? { display: 'flex', overflow: 'hidden' } : undefined}>
           <Outlet />
         </main>
       </div>

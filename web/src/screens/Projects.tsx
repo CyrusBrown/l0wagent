@@ -6,6 +6,7 @@ import {
 } from '../api/queries'
 import { InboxCard } from '../components/Cards'
 import { ago, bytes, duration, usageText } from '../components/format'
+import { ShelfView } from '../components/ShelfView'
 
 const statusPill = { active: 'ok', stale: 'warn', archived: 'mute' } as const
 const statusText = { active: 'Active', stale: 'Stale', archived: 'Archived' } as const
@@ -76,7 +77,9 @@ export function Project() {
   const shelf = useShelf(slug)
   const waiting = useInbox('waiting')
   const runs = useRuns(undefined, slug)
-  const [tab, setTab] = useState<Tab>('overview')
+  const [params, setParams] = useSearchParams()
+  const tab = (params.get('tab') ?? 'overview') as Tab
+  const setTab = (t: Tab) => setParams(t === 'overview' ? {} : { tab: t })
   if (project.isError) return <div className="page"><div className="error">No such project.</div></div>
   const p = project.data
   if (!p) return <div className="page" />
@@ -140,21 +143,7 @@ export function Project() {
           ))}
         </div>
       )}
-      {tab === 'files' && (
-        shelf.isError || shelf.data?.length === 0 || !shelf.data ? <div className="empty">The shelf (deliverables the assistant puts in front of you) arrives with M3. Files you attach in this project's threads go to <code>/work/_inbox/{slug}/</code>.</div> : (
-          <table className="table">
-            <thead><tr><th>Item</th><th>Mode</th><th>By</th><th>Updated</th></tr></thead>
-            <tbody>{shelf.data.map((i) => (
-              <tr key={i.id}>
-                <td><div>{i.label}</div><div className="sub"><code>{i.path}</code> · {bytes(i.size)}</div></td>
-                <td><span className={`pill ${i.mode === 'live' ? 'ok' : 'mute'}`}>{i.mode}</span>{i.versions > 1 && <span className="sub"> v{i.versions}</span>}</td>
-                <td className="sub">{i.added_by === 'owner' ? 'From you' : 'Assistant'}</td>
-                <td className="sub">{ago(i.updated_at)}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-        )
-      )}
+      {tab === 'files' && <ShelfView project={slug} />}
       {tab === 'asks' && (asks.length === 0 ? <div className="empty">Nothing waiting on you in this project.</div> : (
         <div className="stack" style={{ maxWidth: 720 }}>
           {asks.map((e) => <div key={e.kind + e.id} className="stack" style={{ gap: 4 }}>{e.thread_id && <Link className="sub" to={`/t/${e.thread_id}`}>#{e.thread_title}</Link>}<InboxCard e={e} /></div>)}

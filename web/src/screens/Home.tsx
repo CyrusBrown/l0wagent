@@ -1,6 +1,6 @@
 import { Link } from 'react-router'
 import type { S } from '../api/client'
-import { useClaims, useInbox, useJobs, useMe, useRecent, useRun, useStatus } from '../api/queries'
+import { useClaims, useInbox, useJobs, useMe, useRecent, useRun, useStatus, useWebPage } from '../api/queries'
 import { ClaimCard, InboxCard } from '../components/Cards'
 import { ago, clock, duration, pts, until } from '../components/format'
 import { Markdown } from '../components/Markdown'
@@ -17,6 +17,7 @@ export function Home() {
   const recent = useRecent('assistant')
   const claims = useClaims()
   const jobs = useJobs()
+  const web = useWebPage()
   const st = status.data
   const top = (waiting.data ?? []).slice(0, 3)
 
@@ -76,6 +77,13 @@ export function Home() {
 
           {st?.budget ? <BudgetCard b={st.budget} /> : st && <UsageCard u={st.usage} />}
 
+          {web.data?.reachable && (
+            <Link to="/web" className="card" style={{ color: 'var(--fg)', textDecoration: 'none', gap: 4 }}>
+              <div className="section-label"><span>The assistant's web page</span><span className="dot ok" /></div>
+              <div style={{ fontSize: 13.5 }}>Something is running on its port 8787. Open it</div>
+            </Link>
+          )}
+
           <section className="stack">
             <div className="section-label">Long jobs <Link to="/runs?tab=jobs">All jobs</Link></div>
             {jobs.isSuccess && jobs.data.length === 0 && <div className="empty">No long jobs running.</div>}
@@ -108,13 +116,9 @@ function CurrentRun({ id }: { id: number }) {
 function BudgetCard({ b }: { b: S['BudgetSummary'] }) {
   return (
     <section className="card">
-      <div className="section-label">Budget this week</div>
+      <div className="section-label"><span>Budget this week</span><Link to="/calendar">Calendar</Link></div>
       <div><span style={{ font: '500 28px var(--serif)' }}>{pts(b.left)}</span> <span className="sub">of {pts(b.allowance)} {b.unit} left</span></div>
-      <div className="gauge" style={{ display: 'flex' }}>
-        <div style={{ width: `${(b.used_by_owner / b.allowance) * 100}%`, background: 'var(--okInk)', borderRadius: 0 }} />
-        <div style={{ width: `${(b.used_by_chat / b.allowance) * 100}%`, background: 'var(--infoInk)', borderRadius: 0 }} />
-        <div style={{ width: `${(b.used_by_assistant / b.allowance) * 100}%`, borderRadius: 0 }} />
-      </div>
+      <div className="gauge"><div style={{ width: `${b.allowance ? Math.min(100, ((b.allowance - b.left) / b.allowance) * 100) : 100}%` }} /></div>
       <div className="row-between sub">
         <span><span className="dot ok" style={{ display: 'inline-block', marginRight: 6 }} />You · {pts(b.used_by_owner)}</span>
         <span><span className="dot info" style={{ display: 'inline-block', marginRight: 6, background: 'var(--infoInk)' }} />Your chats · {pts(b.used_by_chat)}</span>

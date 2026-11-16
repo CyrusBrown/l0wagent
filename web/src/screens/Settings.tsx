@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { type JSX, useState } from 'react'
 import { NavLink, useParams } from 'react-router'
 import type { S } from '../api/client'
 import {
@@ -6,15 +6,16 @@ import {
 } from '../api/queries'
 import { ago, clock, usageText } from '../components/format'
 import { useTheme, type ThemePref } from '../app/theme'
+import { Budgets, Instructions, Providers, Reviewer, Roles } from './SettingsBudget'
 
 // Tab list and order from the mockup. Tabs without a screen yet say which milestone brings them.
 const TABS: [slug: string, label: string, later?: string][] = [
   ['appearance', 'Appearance'],
-  ['budgets', 'Budgets & levels', 'Budgets, levels, allowances and Boost arrive with M4.'],
-  ['providers', 'Providers', 'Provider logins and usage sources arrive with M4. For now the agent uses its own Claude login (see System).'],
-  ['roles', 'Roles', 'Roles (worker, reviewer, replier, chat, utility) arrive with M4.'],
-  ['reviewer', 'Reviewer', 'The reviewer arrives with M4.'],
-  ['instructions', 'Standing instructions', 'Standing instructions arrive with M4.'],
+  ['budgets', 'Budgets & levels'],
+  ['providers', 'Providers'],
+  ['roles', 'Roles'],
+  ['reviewer', 'Reviewer'],
+  ['instructions', 'Standing instructions'],
   ['account', 'Account'],
   ['notifications', 'Notifications', 'Notification settings arrive with push notifications (M5). New-device sign-ins already show in your Inbox.'],
   ['extensions', 'Extensions', 'Extensions arrive with M8. They can add pages, sidebar sections, cards and settings panels here.'],
@@ -31,10 +32,15 @@ export function Settings() {
         {TABS.map(([slug, label]) => <NavLink key={slug} to={`/settings/${slug}`} className={() => (slug === cur[0] ? 'on' : '')}>{label}</NavLink>)}
       </nav>
       <div className="settings-body">
-        {cur[0] === 'appearance' ? <Appearance /> : cur[0] === 'account' ? <Account /> : cur[0] === 'system' ? <System /> : <Later text={cur[2] ?? ''} title={cur[1]} />}
+        {PAGES[cur[0]] ?? <Later text={cur[2] ?? ''} title={cur[1]} />}
       </div>
     </div>
   )
+}
+
+const PAGES: Record<string, JSX.Element> = {
+  appearance: <Appearance />, budgets: <Budgets />, providers: <Providers />, roles: <Roles />, reviewer: <Reviewer />, instructions: <Instructions />,
+  account: <Account />, system: <System />,
 }
 
 function Later({ title, text }: { title: string; text: string }) {
