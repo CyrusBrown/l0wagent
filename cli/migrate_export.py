@@ -276,12 +276,10 @@ def do_export(force: bool) -> None:
 
 
 def lock_down(legacy: Path, out: Path) -> None:
+    """Everything under _legacy, the control export included, is root's: the agent reads it, never changes it."""
     is_root = hasattr(os, "geteuid") and os.geteuid() == 0
     if is_root:
-        for dp, dns, fns in os.walk(out):
-            for n in dns + fns:
-                os.lchown(os.path.join(dp, n), AGENT_UID, AGENT_UID)
-        os.lchown(out, AGENT_UID, AGENT_UID)
+        os.chown(legacy, 0, 0)
     for dp, dns, fns in os.walk(legacy):
         for n in dns + fns:
             p = os.path.join(dp, n)
@@ -289,7 +287,7 @@ def lock_down(legacy: Path, out: Path) -> None:
                 if is_root:
                     os.lchown(p, 0, 0)
                 continue
-            if is_root and not _under(Path(p), out):
+            if is_root:
                 os.chown(p, 0, 0)
             if os.path.isdir(p):
                 os.chmod(p, 0o755)
