@@ -3870,6 +3870,631 @@
         }
       }
     },
+    "/api/chats": {
+      "get": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "List Chats",
+        "operationId": "list_chats_api_chats_get",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Archived"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Chat"
+                  },
+                  "title": "Response List Chats Api Chats Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Create Chat",
+        "description": "Start a chat with its first message; the reply streams as `chat_delta` live events.",
+        "operationId": "create_chat_api_chats_post",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chat"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chats/{chat_id}": {
+      "get": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Get Chat",
+        "operationId": "get_chat_api_chats__chat_id__get",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Chat Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chat"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Patch Chat",
+        "operationId": "patch_chat_api_chats__chat_id__patch",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Chat Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chat"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chats/{chat_id}/messages": {
+      "get": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Chat Messages",
+        "operationId": "chat_messages_api_chats__chat_id__messages_get",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Chat Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ChatMessage"
+                  },
+                  "title": "Response Chat Messages Api Chats  Chat Id  Messages Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Send Chat Message",
+        "operationId": "send_chat_message_api_chats__chat_id__messages_post",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Chat Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatMessageCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatMessage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chats/{chat_id}/stop": {
+      "post": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Stop Chat",
+        "operationId": "stop_chat_api_chats__chat_id__stop_post",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Chat Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chat"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chats/{chat_id}/cards/{message_id}": {
+      "post": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Decide Chat Card",
+        "description": "Act on a card the chat proposed. Online only. A secret's value is stored write-only.",
+        "operationId": "decide_chat_card_api_chats__chat_id__cards__message_id__post",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Chat Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCardDecision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatMessage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chats/{chat_id}/handoff": {
+      "post": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Chat Handoff",
+        "description": "Move to the assistant: a new thread with the summary and the transcript attached.",
+        "operationId": "chat_handoff_api_chats__chat_id__handoff_post",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Chat Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatHandoff"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chat"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chats/{chat_id}/ask": {
+      "post": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Chat Ask",
+        "operationId": "chat_ask_api_chats__chat_id__ask_post",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Chat Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatAsk"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatMessage"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chats/{chat_id}/context": {
+      "post": {
+        "tags": [
+          "chats"
+        ],
+        "summary": "Chat Pull",
+        "description": "Pull a thread into the chat as read-only context.",
+        "operationId": "chat_pull_api_chats__chat_id__context_post",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "chat_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Chat Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatPull"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chat"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/secrets": {
       "get": {
         "tags": [
@@ -5507,6 +6132,40 @@
         ],
         "title": "BoostRequest"
       },
+      "BudgetCaps": {
+        "properties": {
+          "five_hour": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Five Hour"
+          },
+          "week": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "BudgetCaps",
+        "description": "Shares of the period's allowance the assistant may spend in any window (opencode Go: 0.2 and 0.5)."
+      },
       "BudgetLimits": {
         "properties": {
           "allowance": {
@@ -5751,6 +6410,46 @@
               }
             ]
           },
+          "period": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "week",
+                  "month"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period",
+            "description": "Not for the Claude subscription (weekly)."
+          },
+          "reset_day": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 28.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reset Day"
+          },
+          "caps": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BudgetCaps"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set both shares; 0 or null turns one off."
+          },
           "reply_pts": {
             "anyOf": [
               {
@@ -5819,6 +6518,15 @@
               }
             ],
             "title": "Resets At"
+          },
+          "period": {
+            "type": "string",
+            "enum": [
+              "week",
+              "month"
+            ],
+            "title": "Period",
+            "default": "week"
           }
         },
         "additionalProperties": false,
@@ -5953,6 +6661,422 @@
         "additionalProperties": false,
         "type": "object",
         "title": "Capabilities"
+      },
+      "Chat": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "tier": {
+            "type": "string",
+            "title": "Tier",
+            "description": "model/effort, e.g. sonnet/medium (on opencode Go, the tier's mapped model)."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "archived"
+            ],
+            "title": "Status"
+          },
+          "busy": {
+            "type": "boolean",
+            "title": "Busy",
+            "description": "A reply is being written."
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "description": "The chat can run on its provider (a key is saved; the subscription needs the sidecar)."
+          },
+          "handed_off_to": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ThreadRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "context_threads": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Context Threads",
+            "description": "Threads pulled in as read-only context.",
+            "default": []
+          },
+          "last_message_preview": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Message Preview"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "provider",
+          "tier",
+          "status",
+          "busy",
+          "available",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Chat",
+        "description": "A 1:1 chat with the owner's own model. Independent: no memory across chats."
+      },
+      "ChatAsk": {
+        "properties": {
+          "thread_id": {
+            "type": "integer",
+            "title": "Thread Id"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 50000,
+            "minLength": 1,
+            "title": "Message"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "thread_id",
+          "message"
+        ],
+        "title": "ChatAsk",
+        "description": "'Ask the assistant': a message into an existing thread, labeled via chat."
+      },
+      "ChatCardDecision": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "decline"
+            ],
+            "title": "Decision"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "A secret card's value: stored write-only, never shown to the model."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "title": "ChatCardDecision",
+        "description": "Online only (a card can be a secret, a level, a network rule or a wakeup)."
+      },
+      "ChatCreate": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "Message"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider",
+            "description": "Defaults to the chat role's provider."
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier",
+            "description": "Defaults to the chat role's tier."
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key",
+            "description": "Client-generated key; repeating a create with the same key returns the first result."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "ChatCreate"
+      },
+      "ChatHandoff": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary",
+            "description": "Defaults to one built from the chat."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ChatHandoff",
+        "description": "'Move to the assistant': a new thread whose first message is the summary, with the transcript attached."
+      },
+      "ChatMessage": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "chat_id": {
+            "type": "integer",
+            "title": "Chat Id"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "assistant",
+              "tool",
+              "card",
+              "system"
+            ],
+            "title": "Role"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data",
+            "description": "assistant: {calls}; tool: {name, input, result, is_error}; card: {kind, ..., state}; system: {thread_id?}.",
+            "default": {}
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "chat_id",
+          "role",
+          "body",
+          "created_at"
+        ],
+        "title": "ChatMessage"
+      },
+      "ChatMessageCreate": {
+        "properties": {
+          "body": {
+            "type": "string",
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "Body"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key",
+            "description": "Client-generated key; repeating a create with the same key returns the first result."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "body"
+        ],
+        "title": "ChatMessageCreate"
+      },
+      "ChatPatch": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "archived"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ChatPatch"
+      },
+      "ChatPull": {
+        "properties": {
+          "thread_id": {
+            "type": "integer",
+            "title": "Thread Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "thread_id"
+        ],
+        "title": "ChatPull"
       },
       "Claim": {
         "properties": {
@@ -8000,6 +9124,50 @@
           "fallback_pts": {
             "type": "number",
             "title": "Fallback Pts"
+          },
+          "period": {
+            "type": "string",
+            "enum": [
+              "week",
+              "month"
+            ],
+            "title": "Period",
+            "description": "The budget period: week, or month from reset_day. Fields named week_* mean the period.",
+            "default": "week"
+          },
+          "reset_day": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reset Day",
+            "description": "Monthly periods: the day of the month they reset (1–28)."
+          },
+          "caps": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BudgetCaps"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cap_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cap Reason",
+            "description": "Why the caps stop new runs right now, if they do."
           },
           "has_credential": {
             "type": "boolean",
@@ -10716,6 +11884,25 @@
         "type": "object",
         "title": "ThreadPatch"
       },
+      "ThreadRef": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "ThreadRef"
+      },
       "TierModel": {
         "properties": {
           "model": {
@@ -11476,7 +12663,9 @@
               "promote",
               "security",
               "budget",
-              "calendar"
+              "calendar",
+              "chat",
+              "chat_delta"
             ],
             "title": "Type",
             "type": "string"

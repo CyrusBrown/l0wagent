@@ -116,7 +116,7 @@ function CurrentRun({ id }: { id: number }) {
 function BudgetCard({ b }: { b: S['BudgetSummary'] }) {
   return (
     <section className="card">
-      <div className="section-label"><span>Budget this week</span><Link to="/calendar">Calendar</Link></div>
+      <div className="section-label"><span>Budget this {b.period ?? 'week'}</span><Link to="/calendar">Calendar</Link></div>
       <div><span style={{ font: '500 28px var(--serif)' }}>{pts(b.left)}</span> <span className="sub">of {pts(b.allowance)} {b.unit} left</span></div>
       <div className="gauge"><div style={{ width: `${b.allowance ? Math.min(100, ((b.allowance - b.left) / b.allowance) * 100) : 100}%` }} /></div>
       <div className="row-between sub">

@@ -9,6 +9,7 @@ import { Home } from '../screens/Home'
 import { Inbox } from '../screens/Inbox'
 import { Login } from '../screens/Login'
 import { NotPorted } from '../screens/NotPorted'
+import { Chat } from '../screens/Chat'
 import { NewItem, Project, Projects } from '../screens/Projects'
 import { Run, Runs } from '../screens/Runs'
 import { Settings } from '../screens/Settings'
@@ -46,6 +47,7 @@ export const routes: RouteObject[] = [
       { path: 'projects', element: <Projects /> },
       { path: 'p/:slug', element: <Project /> },
       { path: 't/:id', element: <Thread /> },
+      { path: 'c/:id', element: <Chat /> },
       { path: 'runs', element: <Runs /> },
       { path: 'runs/:id', element: <Run /> },
       { path: 'files', element: <Files /> },

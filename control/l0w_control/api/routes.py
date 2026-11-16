@@ -504,6 +504,66 @@ def delete_routine(routine_id: int, be: Be) -> s.Ok:
     return s.Ok()
 
 
+# ── 1:1 chats (M6) ─────────────────────────────────────────────────────────
+@api.get("/chats", tags=["chats"])
+def list_chats(be: Be, archived: bool = False) -> list[s.Chat]:
+    return be.chats(archived)
+
+
+@api.post("/chats", tags=["chats"], status_code=201)
+def create_chat(req: s.ChatCreate, be: Be) -> s.Chat:
+    """Start a chat with its first message; the reply streams as `chat_delta` live events."""
+    return be.create_chat(req)
+
+
+@api.get("/chats/{chat_id}", tags=["chats"])
+def get_chat(chat_id: int, be: Be) -> s.Chat:
+    return be.chat(chat_id)
+
+
+@api.patch("/chats/{chat_id}", tags=["chats"])
+def patch_chat(chat_id: int, req: s.ChatPatch, be: Be) -> s.Chat:
+    return be.patch_chat(chat_id, req)
+
+
+@api.get("/chats/{chat_id}/messages", tags=["chats"])
+def chat_messages(chat_id: int, be: Be) -> list[s.ChatMessage]:
+    return be.chat_messages(chat_id)
+
+
+@api.post("/chats/{chat_id}/messages", tags=["chats"], status_code=201)
+def send_chat_message(chat_id: int, req: s.ChatMessageCreate, be: Be) -> s.ChatMessage:
+    return be.send_chat_message(chat_id, req)
+
+
+@api.post("/chats/{chat_id}/stop", tags=["chats"])
+def stop_chat(chat_id: int, be: Be) -> s.Chat:
+    return be.stop_chat(chat_id)
+
+
+@api.post("/chats/{chat_id}/cards/{message_id}", tags=["chats"])
+def decide_chat_card(chat_id: int, message_id: int, req: s.ChatCardDecision, be: Be) -> s.ChatMessage:
+    """Act on a card the chat proposed. Online only. A secret's value is stored write-only."""
+    return be.decide_chat_card(chat_id, message_id, req)
+
+
+@api.post("/chats/{chat_id}/handoff", tags=["chats"])
+def chat_handoff(chat_id: int, req: s.ChatHandoff, be: Be) -> s.Chat:
+    """Move to the assistant: a new thread with the summary and the transcript attached."""
+    return be.chat_handoff(chat_id, req)
+
+
+@api.post("/chats/{chat_id}/ask", tags=["chats"])
+def chat_ask(chat_id: int, req: s.ChatAsk, be: Be) -> s.ChatMessage:
+    return be.chat_ask(chat_id, req)
+
+
+@api.post("/chats/{chat_id}/context", tags=["chats"])
+def chat_pull(chat_id: int, req: s.ChatPull, be: Be) -> s.Chat:
+    """Pull a thread into the chat as read-only context."""
+    return be.chat_pull(chat_id, req)
+
+
 # ── Secrets ────────────────────────────────────────────────────────────────
 @api.get("/secrets", tags=["secrets"])
 def list_secrets(be: Be) -> list[s.SecretInfo]:

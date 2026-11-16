@@ -17,6 +17,14 @@ effort to the closest variant that model has.
 - An API key or opencode Go: cost × 10 (opencode reports each step's cost at the catalog's
   prices; free models cost nothing).
 
+**Budget periods** (owner, 2026-11-16): each provider's budget runs per week (the default; the
+Claude subscription always, since its meter is weekly) or per month from a reset day (opencode
+Go's default: its limits are monthly). Level presets are per week and scale to the period's
+length; an allowance the owner sets is per period. Optional caps keep the assistant from
+spending a month early: at most a share of the period's allowance in any 5 hours and in any
+7 days (opencode Go: 20% and 50%, mirroring Go's own limits). "Week" in names below means
+"the provider's budget period".
+
 **The allowance** is what the assistant may plan with this week: the level's (or the owner's
 override, or a Boost's), minus what it already used, and never more than the room left below
 the owner's weekly reserve, so the owner's own use shrinks it automatically. Reply-now runs
@@ -105,11 +113,14 @@ class Effective:
     limits: Limits
     reply_pts: float
     custom: list[str] = field(default_factory=list)   # overridden fields
+    period: str = "week"
 
 
 def default_config(kind: str) -> dict:
-    cfg = {"level": "steady", "overrides": {}, "boost": None, "reply_pts": 30.0 if kind == SUBSCRIPTION else 10.0,
-           "fallback_pts": None, "chat_cap": None}
+    month = kind == OPENCODE_GO
+    cfg = {"level": "steady", "overrides": {}, "boost": None, "reply_pts": 30.0 if kind == SUBSCRIPTION else 40.0 if month else 10.0,
+           "fallback_pts": None, "chat_cap": None, "period": "month" if month else "week", "reset_day": 1,
+           "caps": {"five_hour": 0.2, "week": 0.5} if month else None}
     if kind == OPENCODE_GO:
         cfg["models"] = json.loads(json.dumps(GO_MODELS))
     return cfg
@@ -289,9 +300,21 @@ class Budgets:
     def local(self, dt: datetime) -> datetime:
         return dt.astimezone(self.tz())
 
+    def period_unit(self, pid: str) -> str:
+        return "week" if pid == SUBSCRIPTION else (self.config(pid).get("period") or "week")
+
     def week(self, pid: str, now: datetime | None = None) -> tuple[datetime, datetime]:
-        """The provider's budget week: a subscription's weekly window, else Monday 00:00 local."""
+        """The provider's budget period: a subscription's weekly window; a month from the reset
+        day (00:00 local); else the week from Monday 00:00 local."""
         now = now or self.now()
+        if self.period_unit(pid) == "month":
+            day = min(max(int(self.config(pid).get("reset_day") or 1), 1), 28)
+            loc = self.local(now)
+            start = loc.replace(day=day, hour=0, minute=0, second=0, microsecond=0)
+            if start > loc:
+                start = (start.replace(day=1) - timedelta(days=1)).replace(day=day)
+            nxt = (start.replace(day=1) + timedelta(days=32)).replace(day=day)
+            return start, nxt
         if pid == SUBSCRIPTION:
             u = self.usage.cached()
             if u and u.seven_day_resets_at:
@@ -319,7 +342,26 @@ class Budgets:
                 if k in LIMIT_KEYS and v is not None:
                     setattr(limits, k, v)
                     custom.append(k)
-        return Effective(pid, level, base, boost, limits, float(cfg.get("reply_pts") or 0), custom)
+        unit = self.period_unit(pid)
+        if unit != "week" and "allowance" not in custom:  # presets are per week
+            start, end = self.week(pid, now)
+            limits.allowance = round(limits.allowance * (end - start).total_seconds() / (7 * 86400))
+        return Effective(pid, level, base, boost, limits, float(cfg.get("reply_pts") or 0), custom, unit)
+
+    def cap_reason(self, pid: str, now: datetime | None = None) -> str | None:
+        """Why the period's caps stop new runs now (e.g. 20% of the month in 5 hours), or None."""
+        caps = self.config(pid).get("caps") if pid != SUBSCRIPTION else None
+        if not caps:
+            return None
+        now = now or self.now()
+        allowance = self.effective(pid, now).limits.allowance
+        for key, window, label in (("five_hour", timedelta(hours=5), "5 hours"), ("week", timedelta(days=7), "7 days")):
+            share = caps.get(key)
+            if share and allowance > 0:
+                used = self.spent(pid, now - window, now + timedelta(seconds=1))
+                if used >= share * allowance:
+                    return f"The assistant used {used:.0f} {UNIT} in the last {label}, the cap of {share:.0%} of this {self.period_unit(pid)}'s allowance."
+        return None
 
     def set_budget(self, pid: str, patch: s.BudgetPatch) -> None:
         cfg = self.config(pid)
@@ -347,6 +389,14 @@ class Budgets:
             cfg["reply_pts"] = max(0.0, patch.reply_pts)
         if patch.fallback_pts is not None:
             cfg["fallback_pts"] = max(0.0, patch.fallback_pts) or None
+        if patch.period is not None:
+            if pid == SUBSCRIPTION and patch.period != "week":
+                raise BadRequest("weekly_only", "The Claude subscription's budget is weekly: its usage meter is.")
+            cfg["period"] = patch.period
+        if patch.reset_day is not None:
+            cfg["reset_day"] = patch.reset_day
+        if patch.caps is not None:
+            cfg["caps"] = {k: v for k, v in patch.caps.model_dump().items() if v} or None
         self.save_config(pid, cfg)
 
     def set_boost(self, pid: str, req: s.BoostRequest) -> None:
@@ -485,7 +535,7 @@ class Budgets:
         pace = (f"{unscheduled:.0f} {UNIT} unscheduled, {days_left:.1f} days left: ~{max(unscheduled, 0) / days_left:.0f}/day"
                 if eff.limits.allowance > 0 else "Dormant: no scheduled wakeups")
         native = (f"{reading.seven_day_pct:.0f}% of the week used" if reading and reading.seven_day_pct is not None else
-                  ("weekly usage unknown" if pid == SUBSCRIPTION else f"${self.spent(pid, start, end, who=('assistant', 'reviewer', 'chat')) / 10:.2f} this week"))
+                  ("weekly usage unknown" if pid == SUBSCRIPTION else f"${self.spent(pid, start, end, who=('assistant', 'reviewer', 'chat')) / 10:.2f} this {eff.period}"))
         return s.ProviderBudget(
             provider=pid, kind=row["kind"], label=row["label"], enabled=bool(row["enabled"]), unit=UNIT, level=eff.base_level, effective_level=eff.level,  # type: ignore[arg-type]
             boost=s.Boost(level=eff.boost["level"], until=parse(eff.boost["until"])) if eff.boost else None,  # type: ignore[arg-type]
@@ -494,19 +544,24 @@ class Budgets:
             reply_allowance=eff.reply_pts, reply_left=round(max(0.0, eff.reply_pts - self.spent(pid, start, end, bucket="reply")), 1),
             scheduled=round(scheduled, 1), week_start=start, resets_at=end, pace=pace, native=native, pts_per_usd=round(self.pts_per_usd(pid), 3),
             fallback_pts=self.fallback_pts(pid, now), has_credential=bool(row["credential_enc"]) or pid == SUBSCRIPTION,
+            period=eff.period, reset_day=int(self.config(pid).get("reset_day") or 1) if eff.period == "month" else None,  # type: ignore[arg-type]
+            caps=s.BudgetCaps(**(self.config(pid).get("caps") or {})) if pid != SUBSCRIPTION and self.config(pid).get("caps") else None,
+            cap_reason=self.cap_reason(pid, now),
         )
 
     def budget_summary(self, pid: str) -> s.BudgetSummary:
         p = self.summary(pid)
         return s.BudgetSummary(unit=UNIT, left=p.left, allowance=p.allowance, used_by_assistant=p.used_by_assistant, used_by_owner=p.used_by_owner,
-                               used_by_chat=p.used_by_chat, resets_at=p.resets_at)
+                               used_by_chat=p.used_by_chat, resets_at=p.resets_at, period=p.period)
 
     def fallback_pts(self, pid: str, now: datetime | None = None) -> float:
         eff = self.effective(pid, now)
         cfg = self.config(pid)
         if cfg.get("fallback_pts"):
             return float(min(cfg["fallback_pts"], eff.limits.max_wakeup or cfg["fallback_pts"]))
-        return float(round(min(eff.limits.max_wakeup, max(5.0, eff.limits.allowance * 0.1))))
+        start, end = self.week(pid, now)
+        weekly = eff.limits.allowance * 7 * 86400 / max((end - start).total_seconds(), 1)
+        return float(round(min(eff.limits.max_wakeup, max(5.0, weekly * 0.1))))
 
     # ── validating a planned wakeup ────────────────────────────────────────
     def validate(self, pid: str, at: datetime, budget: float, tier: str, *, exclude_id: int | None = None, by: str = "assistant") -> str | None:
@@ -547,8 +602,8 @@ class Budgets:
         room = self.summary(pid, now).left if this_week else lim.allowance
         planned = self.scheduled(pid, max(now, start), end, exclude_id)
         if planned + budget > room + 1e-6:
-            return (f"Not enough budget that week: {room:.0f} {UNIT} left, {planned:.0f} already planned, this asks for {budget:g}."
-                    if this_week else f"That week's allowance is {room:.0f} {UNIT}; {planned:.0f} already planned, this asks for {budget:g}.")
+            return (f"Not enough budget that {eff.period}: {room:.0f} {UNIT} left, {planned:.0f} already planned, this asks for {budget:g}."
+                    if this_week else f"That {eff.period}'s allowance is {room:.0f} {UNIT}; {planned:.0f} already planned, this asks for {budget:g}.")
         return None
 
     def check_text(self, pid: str) -> str:
@@ -562,10 +617,13 @@ class Budgets:
             boost = f" (Boost until {self.local(parse(eff.boost['until'])):%a %H:%M}; your level is {eff.base_level.capitalize()})"  # type: ignore[arg-type]
         limits = (f"allowed hours {hours_text(lim.allowed_hours)}; at most {lim.max_per_day}/day, {lim.min_gap_minutes} min apart, "
                   f"{lim.max_wakeup:g} {UNIT} each; tiers {', '.join(lim.tiers) or 'none'}")
-        lines = [f"{b.label}: {b.left:.0f} of {b.allowance:.0f} {UNIT} left this week (resets {self.local(b.resets_at):%a %H:%M}); {b.native}.",
+        lines = [f"{b.label}: {b.left:.0f} of {b.allowance:.0f} {UNIT} left this {eff.period} (resets {self.local(b.resets_at):%a %b %d %H:%M}); {b.native}.",
                  f"Level {eff.level.capitalize()}{boost}: {limits}.",
                  f"Reply budget: {b.reply_left:.0f} of {b.reply_allowance:.0f} {UNIT} left.",
                  f"Pace: {b.pace}."]
+        if b.caps:
+            caps = [f"{v:.0%} of the {eff.period}'s allowance in any {lbl}" for v, lbl in ((b.caps.five_hour, "5 hours"), (b.caps.week, "7 days")) if v]
+            lines.append(f"Caps: at most {' and '.join(caps)}." + (f" Now: {b.cap_reason}" if b.cap_reason else ""))
         if b.room_below_reserve is not None and b.room_below_reserve < lim.allowance - b.used_by_assistant:
             lines.append(f"Your allowance is capped by the owner's reserve: {b.room_below_reserve:.0f} {UNIT} of room below {self.settings.get('RESERVE_WEEKLY_PCT'):.0f}% weekly usage.")
         if lim.sweep and pid == SUBSCRIPTION:

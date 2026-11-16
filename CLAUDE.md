@@ -19,8 +19,10 @@ control/   FastAPI app (Python 3.12, SQLite, no ORM). api/ = schemas + owner rou
            (due wakeups, fallback, sweep, routine occurrences); routines.py; reviewer.py; jobs.py;
            vault.py (write-only secrets, redaction); runs/ = run manager, runtime adapters,
            runner/egress clients, usage reader + gate; prompts/ = control-owned prompts and
-           harness news (news.py); notify.py (web push, ntfy); updates.py (update check, draining);
-           hostctl.py (host-side commands for ./l0w); db/migrations/ = versioned SQL
+           harness news (news.py); chat.py (the 1:1 chat: loop, model clients, cards, hand-off);
+           tools.py (the chat's and the connector's tools, written once); notify.py (web push, ntfy);
+           updates.py (update check, draining); hostctl.py (host-side commands for ./l0w);
+           db/migrations/ = versioned SQL
 agent/     the agent image: runner/ (runner.py, fake_claude.py, fake_opencode.py, opencode-plugin.js, selftest.py),
            bin/ (assistant CLI, hook), seed/. Two runtimes: Claude Code and opencode (for opencode Go)
 egress/    the egress proxy (from the old assistant)      agent-web/  the LAN forwarder for port 8787
@@ -31,7 +33,7 @@ design/mockup/  the mockup bundle as exported, its extracted sources, and REVIEW
 cli/       l0w.py, the host CLI (`./l0w`: install, update, ops parity); stdlib only
 deploy/    control.Dockerfile (control + built web app); compose.yaml at the root is the release stack
 ```
-Created in their milestones: `chat-runtime/`.
+Created in their milestones: `chat-runtime/` (the stateless sidecar for subscription chats; not built yet).
 
 ## Commands
 ```

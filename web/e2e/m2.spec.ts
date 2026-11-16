@@ -35,5 +35,6 @@ test('message, Reply now, and answer its question in place', async ({ page, requ
   // The thread shows up in the sidebar, read; the run lists what happened.
   await expect(page.locator('.side').getByText('Can you run the pump test this weekend?')).toBeVisible()
   await page.locator('.claim-card').getByRole('link', { name: /run #\d+/ }).click()
-  await expect(page.getByText('Question: Which day should I run the pump test?')).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Run #\d+/ })).toBeVisible()
+  await expect(page.locator('.change-row', { hasText: 'Asks filed' })).toContainText('1 item')
 })

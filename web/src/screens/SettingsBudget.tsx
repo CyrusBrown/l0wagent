@@ -81,6 +81,7 @@ export function Budgets() {
   const isCustom = (k: string) => b.custom.includes(k)
   const next = LEVEL_ORDER[Math.min(LEVEL_ORDER.length - 1, LEVEL_ORDER.indexOf(b.level) + 1)]
   const levelText = o.levels.find((l) => l.name === b.effective_level)?.text ?? ''
+  const per = b.period === 'month' ? 'mo' : 'wk'
   return (
     <div className="stack" style={{ gap: 28 }}>
       {err && <div className="error" role="alert">{err}</div>}
@@ -95,7 +96,10 @@ export function Budgets() {
           ))}
         </div>
         <div className="level-text">{levelText}{b.custom.length ? ' You changed some of its limits below.' : ''}</div>
-        <div className="sub" style={{ fontSize: 12.5 }}>1 pt is 0.1% of your Claude subscription's week (1,000 pts a week), or $0.10 on an API key.</div>
+        <div className="sub" style={{ fontSize: 12.5 }}>
+          1 pt is 0.1% of your Claude subscription's week (1,000 pts a week), or $0.10 on an API key or opencode Go.
+          {b.period === 'month' && ' Levels are per week; on a monthly budget they scale to the month.'}
+        </div>
       </section>
 
       <section className="set-section">
@@ -119,12 +123,12 @@ export function Budgets() {
           })}
         </div>
         <div className="sub" style={{ fontSize: 12.5 }}>
-          This week: you {Math.round(b.used_by_owner)} pts{b.used_by_chat ? ` (+${Math.round(b.used_by_chat)} in 1:1 chats)` : ''}, the assistant {Math.round(b.used_by_assistant)} pts. {b.pace}.
+          This {b.period}: you {Math.round(b.used_by_owner)} pts{b.used_by_chat ? ` (+${Math.round(b.used_by_chat)} in 1:1 chats)` : ''}, the assistant {Math.round(b.used_by_assistant)} pts. {b.pace}.
         </div>
       </section>
 
       <div className="budget-grid">
-        <Field k="Weekly allowance" hint="what the assistant may plan with" value={`${lim.allowance} pts / wk`} custom={isCustom('allowance')} onReset={() => override({ allowance: null })}>
+        <Field k={b.period === 'month' ? 'Monthly allowance' : 'Weekly allowance'} hint="what the assistant may plan with" value={`${lim.allowance} pts / ${per}`} custom={isCustom('allowance')} onReset={() => override({ allowance: null })}>
           {(close) => <NumberEdit value={lim.allowance} suffix="pts" onSave={(v) => override({ allowance: v })} close={close} />}
         </Field>
         <Field k="Allowed hours" hint="when wakeups may run (the rest is yours)" value={hoursText(lim.allowed_hours)} custom={isCustom('allowed_hours')} onReset={() => override({ allowed_hours: null })}>
@@ -134,7 +138,7 @@ export function Budgets() {
           custom={isCustom('max_per_day') || isCustom('min_gap_minutes') || isCustom('max_wakeup')} onReset={() => override({ max_per_day: null, min_gap_minutes: null, max_wakeup: null })}>
           {(close) => <LimitsEdit lim={lim} onSave={(v) => override(v)} close={close} />}
         </Field>
-        <Field k="Reply budget" hint="for “Reply now”" value={`${b.reply_allowance} pts / wk`}>
+        <Field k="Reply budget" hint="for “Reply now”" value={`${b.reply_allowance} pts / ${per}`}>
           {(close) => <NumberEdit value={b.reply_allowance} suffix="pts" onSave={(v) => patch.mutate({ provider: b.provider, reply_pts: v }, done)} close={close} />}
         </Field>
         <Field k="Fallback" hint="if nothing is planned for 2 nights" value={lim.fallback ? `on · ${b.fallback_pts} pts` : 'off'} custom={isCustom('fallback')} onReset={() => override({ fallback: null })}>
@@ -161,6 +165,11 @@ export function Budgets() {
             </div>
           )}
         </Field>
+        {b.kind !== 'claude-subscription' && (
+          <Field k="Budget period" hint={b.caps ? 'and caps on fast spending' : 'when the allowance resets'} value={periodText(b)}>
+            {(close) => <PeriodEdit b={b} onSave={(v) => patch.mutate({ provider: b.provider, ...v }, done)} close={close} />}
+          </Field>
+        )}
         <Field k="Allowed tiers" hint="models the worker may use" value={lim.tiers.length ? lim.tiers.join(', ') : 'none'} custom={isCustom('tiers')} onReset={() => override({ tiers: null })}>
           {(close) => <TiersEdit all={o.tiers} value={lim.tiers} onSave={(v) => override({ tiers: v })} close={close} />}
         </Field>
@@ -219,6 +228,34 @@ function TiersEdit({ all, value, onSave, close }: { all: string[]; value: string
         {all.map((t) => <label key={t}><input type="checkbox" checked={sel.includes(t)} onChange={(e) => setSel(e.target.checked ? [...sel, t] : sel.filter((x) => x !== t))} /> {t}</label>)}
       </div>
       <div><button className="btn small primary" onClick={() => { onSave(all.filter((t) => sel.includes(t))); close() }}>Save</button></div>
+    </div>
+  )
+}
+
+// ── Budget period (M6) ──────────────────────────────────────────────────
+const pct = (x?: number | null) => `${Math.round((x ?? 0) * 100)}%`
+function periodText(b: S['ProviderBudget']): string {
+  const base = b.period === 'month' ? `Monthly · resets on day ${b.reset_day ?? 1}` : 'Weekly'
+  const caps = b.caps ? [b.caps.five_hour && `${pct(b.caps.five_hour)} / 5 h`, b.caps.week && `${pct(b.caps.week)} / 7 days`].filter(Boolean).join(', ') : ''
+  return caps ? `${base} · caps ${caps}` : base
+}
+
+function PeriodEdit({ b, onSave, close }: { b: S['ProviderBudget']; onSave: (v: S['BudgetPatch']) => void; close: () => void }) {
+  const [period, setPeriod] = useState<'week' | 'month'>(b.period ?? 'week')
+  const [day, setDay] = useState(b.reset_day ?? 1)
+  const [five, setFive] = useState(Math.round((b.caps?.five_hour ?? 0) * 100))
+  const [week, setWeek] = useState(Math.round((b.caps?.week ?? 0) * 100))
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <div className="seg">
+        <button className={period === 'week' ? 'on' : ''} onClick={() => setPeriod('week')}>Week</button>
+        <button className={period === 'month' ? 'on' : ''} onClick={() => setPeriod('month')}>Month</button>
+      </div>
+      {period === 'month' && <label className="inline-edit">Resets on day <input className="input" type="number" min={1} max={28} value={day} onChange={(e) => setDay(Number(e.target.value))} aria-label="Reset day" /></label>}
+      <label className="inline-edit">At most <input className="input" type="number" min={0} max={100} value={five} onChange={(e) => setFive(Number(e.target.value))} aria-label="5-hour cap" />% in any 5 hours</label>
+      <label className="inline-edit">At most <input className="input" type="number" min={0} max={100} value={week} onChange={(e) => setWeek(Number(e.target.value))} aria-label="7-day cap" />% in any 7 days</label>
+      <span className="sub" style={{ fontSize: 12 }}>Caps are shares of the period's allowance (0 turns one off). opencode Go's own limits are 20% and 50% of its month.</span>
+      <div><button className="btn small primary" onClick={() => { onSave({ period, reset_day: period === 'month' ? day : null, caps: { five_hour: five / 100 || null, week: week / 100 || null } }); close() }}>Save</button></div>
     </div>
   )
 }

@@ -48,16 +48,16 @@ test('set up, log in, wake, watch live, survive a control restart', async ({ pag
   await page.getByRole('link', { name: 'Runs' }).click()
   await page.getByRole('button', { name: 'Wake now' }).click()
   await expect(page).toHaveURL(/\/runs\/\d+$/)
-  await page.getByRole('button', { name: 'Detailed' }).click()
+  await expect(page.getByText(/A fake session/).first()).toBeVisible({ timeout: 30_000 })
+  await page.getByText('Open full timeline →').click()
   await expect(page.getByText('Tidying the journal index.')).toBeVisible({ timeout: 30_000 })
-  await expect(page.getByRole('heading', { name: /A fake session/ })).toBeVisible()
 
   // Restart control mid-run: the page reconnects and the run carries on.
   restartControl()
-  await page.getByRole('button', { name: 'Simple' }).click()
+  await page.getByRole('button', { name: '← Back to summary' }).click()
   await expect(page.getByText('Control restarted; re-attached to the run')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('Run finished')).toBeVisible({ timeout: 90_000 }) // after the live stream notices the restart
-  await expect(page.locator('.pill', { hasText: 'done' })).toBeVisible()
+  await expect(page.locator('.pill', { hasText: 'Done' })).toBeVisible()
 
   // The new sign-ins show up as Inbox cards and in Settings → Account.
   await page.goto('/settings/account')

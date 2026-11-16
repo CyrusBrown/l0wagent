@@ -59,6 +59,7 @@ class BudgetSummary(Model):
     used_by_owner: float = Field(description="The owner's own use outside l0wagent (other apps).")
     used_by_chat: float = Field(description="The owner's 1:1 chats. Owner usage, not an assistant budget; shown as its own line.")
     resets_at: datetime | None = None
+    period: Literal["week", "month"] = "week"
 
 
 class UsageReading(Model):
@@ -648,6 +649,13 @@ class Boost(Model):
     until: datetime
 
 
+class BudgetCaps(Model):
+    """Shares of the period's allowance the assistant may spend in any window (opencode Go: 0.2 and 0.5)."""
+
+    five_hour: float | None = Field(None, ge=0, le=1)
+    week: float | None = Field(None, ge=0, le=1)
+
+
 class ProviderBudget(Model):
     provider: str
     kind: str
@@ -674,6 +682,10 @@ class ProviderBudget(Model):
     native: str = Field(description="The provider's own unit, e.g. '46% of the week used' or '$3.10 this week'.")
     pts_per_usd: float = Field(description="Subscription: the learned calibration from API-priced tokens to points.")
     fallback_pts: float
+    period: Literal["week", "month"] = Field("week", description="The budget period: week, or month from reset_day. Fields named week_* mean the period.")
+    reset_day: int | None = Field(None, description="Monthly periods: the day of the month they reset (1–28).")
+    caps: BudgetCaps | None = None
+    cap_reason: str | None = Field(None, description="Why the caps stop new runs right now, if they do.")
     has_credential: bool
 
 
@@ -698,6 +710,9 @@ class BudgetPatch(Model):
 
     level: LevelName | None = None
     overrides: BudgetLimitsPatch | None = None
+    period: Literal["week", "month"] | None = Field(None, description="Not for the Claude subscription (weekly).")
+    reset_day: int | None = Field(None, ge=1, le=28)
+    caps: BudgetCaps | None = Field(None, description="Set both shares; 0 or null turns one off.")
     reply_pts: float | None = None
     fallback_pts: float | None = None
 
@@ -1102,13 +1117,92 @@ class SelfTestResult(Model):
 
 
 # ── Live stream ────────────────────────────────────────────────────────────
+# ── 1:1 chats (M6) ──────────────────────────────────────────────────────────
+class ThreadRef(Model):
+    id: int
+    title: str
+
+
+class Chat(Model):
+    """A 1:1 chat with the owner's own model. Independent: no memory across chats."""
+
+    id: int
+    title: str
+    provider: str
+    tier: str = Field(description="model/effort, e.g. sonnet/medium (on opencode Go, the tier's mapped model).")
+    status: Literal["open", "archived"]
+    busy: bool = Field(description="A reply is being written.")
+    available: bool = Field(description="The chat can run on its provider (a key is saved; the subscription needs the sidecar).")
+    handed_off_to: ThreadRef | None = None
+    context_threads: list[int] = Field([], description="Threads pulled in as read-only context.")
+    last_message_preview: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ChatMessage(Model):
+    id: int
+    chat_id: int
+    role: Literal["owner", "assistant", "tool", "card", "system"]
+    body: str
+    data: dict[str, Any] = Field({}, description="assistant: {calls}; tool: {name, input, result, is_error}; card: {kind, ..., state}; system: {thread_id?}.")
+    model: str | None = None
+    created_at: datetime
+
+
+class ChatCreate(Model):
+    message: str = Field(min_length=1, max_length=100_000)
+    title: str | None = Field(None, max_length=80)
+    provider: str | None = Field(None, description="Defaults to the chat role's provider.")
+    tier: str | None = Field(None, description="Defaults to the chat role's tier.")
+    idempotency_key: IdempotencyKey
+
+
+class ChatMessageCreate(Model):
+    body: str = Field(min_length=1, max_length=100_000)
+    idempotency_key: IdempotencyKey
+
+
+class ChatPatch(Model):
+    title: str | None = Field(None, max_length=80)
+    provider: str | None = None
+    tier: str | None = None
+    status: Literal["open", "archived"] | None = None
+
+
+class ChatCardDecision(Model):
+    """Online only (a card can be a secret, a level, a network rule or a wakeup)."""
+
+    decision: Literal["approve", "decline"]
+    value: str | None = Field(None, max_length=20_000, description="A secret card's value: stored write-only, never shown to the model.")
+
+
+class ChatHandoff(Model):
+    """'Move to the assistant': a new thread whose first message is the summary, with the transcript attached."""
+
+    title: str | None = Field(None, max_length=200)
+    project: str | None = None
+    summary: str | None = Field(None, max_length=20_000, description="Defaults to one built from the chat.")
+
+
+class ChatAsk(Model):
+    """'Ask the assistant': a message into an existing thread, labeled via chat."""
+
+    thread_id: int
+    message: str = Field(min_length=1, max_length=50_000)
+
+
+class ChatPull(Model):
+    thread_id: int
+
+
 class LiveEvent(Model):
     """One line of GET /api/events (newline-delimited JSON)."""
 
     type: Literal[
         "hello", "heartbeat", "status", "message", "thread", "project", "card", "claim",
         "timeline", "run", "inbox_counts", "unread", "job", "shelf", "upload", "question", "permission",
-        "task", "suggestion", "promote", "security", "budget", "calendar",
+        "task", "suggestion", "promote", "security", "budget", "calendar", "chat", "chat_delta",
     ]
     cursor: str | None = Field(None, description="Sync cursor after this event, when it changed cached data.")
     data: dict[str, Any] = {}

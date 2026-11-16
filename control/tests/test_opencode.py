@@ -116,7 +116,7 @@ def test_a_go_only_instance_runs_wakeups_on_opencode(stack: Stack):
     assert any(i["kind"] == "tool" and i["data"].get("result") for i in items)
     assert any(t.startswith("Session finished: IDLE") for t in texts), texts
     budget = next(p for p in c.get("/api/budget").json()["providers"] if p["provider"] == "opencode-go")
-    assert budget["used_by_assistant"] > 0 and budget["native"].endswith("this week")
+    assert budget["used_by_assistant"] > 0 and budget["native"].endswith("this month") and budget["period"] == "month"
     # The owner can pick other models; they reach the next session.
     r = c.patch("/api/providers/opencode-go", json={"models": {"sonnet": "opencode-go/beam-free"}})
     assert r.status_code == 200 and r.json()["models"]["sonnet"]["model"] == "opencode-go/beam-free"

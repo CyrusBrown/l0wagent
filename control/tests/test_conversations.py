@@ -209,7 +209,7 @@ def test_uploads_are_contained(c, be, tmp_path):
 def test_harness_news_announces_the_new_commands(c):
     news = ok(agent(c, "GET", "/news"))
     titles = [n["title"] for n in news]  # newest first
-    assert titles[:5] == ["You may run on opencode", "Updates wait for you", "Budgets, your wakeup plan, routines, the reviewer and long jobs",
+    assert titles[:6] == ["Monthly budgets and spending caps", "You may run on opencode", "Updates wait for you", "Budgets, your wakeup plan, routines, the reviewer and long jobs",
                           "The shelf and the owner's uploads", "Threads, asks, claims and suggestions"]
-    assert "opencode" in news[0]["body"] and "--dont-interrupt" in news[1]["body"] and "assistant wake at" in news[2]["body"]
-    assert "assistant shelf add" in news[3]["body"] and "assistant claim N" in news[4]["body"]
+    assert "per month" in news[0]["body"] and "opencode" in news[1]["body"] and "--dont-interrupt" in news[2]["body"]
+    assert "assistant wake at" in news[3]["body"] and "assistant shelf add" in news[4]["body"] and "assistant claim N" in news[5]["body"]

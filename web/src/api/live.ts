@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { S } from './client'
 
 /** Read the NDJSON live stream with fetch (not EventSource, so apps can send a token header). */
@@ -20,6 +20,17 @@ export async function* readEvents(signal: AbortSignal): AsyncGenerator<S['LiveEv
       if (line) yield JSON.parse(line)
     }
   }
+}
+
+// A chat's reply as it streams (`chat_delta` events): the text so far, or null once it's stored.
+const drafts = new Map<number, string | null>()
+const draftSubs = new Set<() => void>()
+export function setDraft(chatId: number, text: string | null) {
+  drafts.set(chatId, text)
+  draftSubs.forEach((f) => f())
+}
+export function useDraft(chatId: number): string | null {
+  return useSyncExternalStore((cb) => { draftSubs.add(cb); return () => { draftSubs.delete(cb) } }, () => drafts.get(chatId) ?? null)
 }
 
 /** Which cached queries an event makes stale. Kept coarse on purpose: refetches are cheap. */
@@ -58,6 +69,15 @@ export function invalidateFor(qc: QueryClient, e: S['LiveEvent']) {
     case 'shelf':
     case 'upload':
       return inv(['shelf'], ['files'])
+    case 'chat':
+      return inv(['chats'], ['chat'])
+    case 'chat_delta': {
+      const d = e.data ?? {}
+      const id = Number(d.chat_id)
+      setDraft(id, (d.text as string | null) ?? null)
+      if (d.text == null) inv(['chat', String(id)], ['chats'])
+      return
+    }
   }
 }
 

@@ -223,8 +223,10 @@ class RunManager:
         """May a run on this provider start (or keep going)? Subscription: the usage gate (the
         sweep uses its ceiling instead of the weekly reserve). API: a key is saved."""
         if provider != SUBSCRIPTION:
-            ok = bool(self.budgets.credential(provider))
-            return ok, None if ok else "No API key is saved for this provider.", None
+            if not self.budgets.credential(provider):
+                return False, "No API key is saved for this provider.", None
+            cap = self.budgets.cap_reason(provider) if starting and bucket != "reply" else None
+            return cap is None, cap, None
         reading = await self.usage.read(max_age=60, refresh=self._refresh_login if starting else None)
         if bucket == "sweep":
             ceiling = self.settings.get("SWEEP_CEILING_PCT")

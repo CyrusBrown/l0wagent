@@ -186,7 +186,7 @@ function Side({ c }: { c: S['Calendar'] }) {
   return (
     <div className="cal-side">
       <div className="stack" style={{ gap: 8 }}>
-        <div className="side-label">Budget left this week</div>
+        <div className="side-label">Budget left this {b.period ?? 'week'}</div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}><span className="serif-num">{Math.round(b.left)}</span><span className="sub">of {Math.round(b.allowance)} pts</span></div>
         <div className="gauge"><div style={{ width: `${b.allowance ? Math.min(100, (b.left / b.allowance) * 100) : 0}%` }} /></div>
         <div className="sub" style={{ fontSize: 12 }}>{b.pace}</div>

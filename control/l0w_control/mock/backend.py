@@ -755,6 +755,75 @@ class MockBackend(Backend):
         return node, git
 
     # ── secrets ────────────────────────────────────────────────────────────
+    # ── 1:1 chats ──────────────────────────────────────────────────────────
+    def _chat(self, chat_id: int) -> s.Chat:
+        c = self.w.chats.get(chat_id)
+        if not c:
+            raise NotFound(f"chat {chat_id}")
+        return c
+
+    def _chat_add(self, chat_id: int, role: str, body: str = "", data: dict | None = None) -> s.ChatMessage:
+        msgs = self.w.chat_messages.setdefault(chat_id, [])
+        m = s.ChatMessage(id=max([x.id for v in self.w.chat_messages.values() for x in v] or [0]) + 1, chat_id=chat_id, role=role, body=body,  # type: ignore[arg-type]
+                          data=data or {}, created_at=_now())
+        msgs.append(m)
+        self.w.chats[chat_id] = self._chat(chat_id).model_copy(update={"updated_at": _now(), "last_message_preview": body[:140] or None})
+        return m
+
+    def chats(self, archived: bool) -> list[s.Chat]:
+        return sorted((c for c in self.w.chats.values() if (c.status == "archived") == archived), key=lambda c: c.updated_at, reverse=True)
+
+    def chat(self, chat_id: int) -> s.Chat:
+        return self._chat(chat_id)
+
+    def create_chat(self, req: s.ChatCreate) -> s.Chat:
+        cid = max(self.w.chats or [0]) + 1
+        self.w.chats[cid] = s.Chat(id=cid, title=(req.title or req.message.splitlines()[0])[:80], provider=req.provider or "claude-subscription",
+                                   tier=req.tier or "sonnet/medium", status="open", busy=False, available=True, created_at=_now(), updated_at=_now())
+        self.send_chat_message(cid, s.ChatMessageCreate(body=req.message))
+        return self._chat(cid)
+
+    def patch_chat(self, chat_id: int, req: s.ChatPatch) -> s.Chat:
+        self.w.chats[chat_id] = self._chat(chat_id).model_copy(update=req.model_dump(exclude_none=True))
+        return self._chat(chat_id)
+
+    def chat_messages(self, chat_id: int) -> list[s.ChatMessage]:
+        self._chat(chat_id)
+        return list(self.w.chat_messages.get(chat_id, []))
+
+    def send_chat_message(self, chat_id: int, req: s.ChatMessageCreate) -> s.ChatMessage:
+        m = self._chat_add(chat_id, "owner", req.body)
+        self._chat_add(chat_id, "assistant", f"(mock) You said: {req.body}", {"calls": []})
+        return m
+
+    def stop_chat(self, chat_id: int) -> s.Chat:
+        return self._chat(chat_id)
+
+    def decide_chat_card(self, chat_id: int, message_id: int, req: s.ChatCardDecision) -> s.ChatMessage:
+        msgs = self.w.chat_messages.get(chat_id, [])
+        i = next((i for i, m in enumerate(msgs) if m.id == message_id and m.role == "card"), None)
+        if i is None:
+            raise NotFound(f"card {message_id}")
+        msgs[i] = msgs[i].model_copy(update={"data": {**msgs[i].data, "state": "done" if req.decision == "approve" else "declined"}})
+        self._chat_add(chat_id, "system", "The owner saved the secret." if req.decision == "approve" else "The owner declined the card.")
+        return msgs[i]
+
+    def chat_handoff(self, chat_id: int, req: s.ChatHandoff) -> s.Chat:
+        t = self.create_thread(s.ThreadCreate(title=req.title or self._chat(chat_id).title, project=req.project, first_message=req.summary or "(from a chat)"))
+        self.w.chats[chat_id] = self._chat(chat_id).model_copy(update={"handed_off_to": s.ThreadRef(id=t.id, title=t.title)})
+        self._chat_add(chat_id, "system", f"Continued in the thread #{t.id} “{t.title}”.", {"thread_id": t.id})
+        return self._chat(chat_id)
+
+    def chat_ask(self, chat_id: int, req: s.ChatAsk) -> s.ChatMessage:
+        t = self.thread(req.thread_id)
+        return self._chat_add(chat_id, "system", f"Asked the assistant in #{t.id} “{t.title}”.", {"thread_id": t.id})
+
+    def chat_pull(self, chat_id: int, req: s.ChatPull) -> s.Chat:
+        c = self._chat(chat_id)
+        if req.thread_id not in c.context_threads:
+            self.w.chats[chat_id] = c.model_copy(update={"context_threads": [*c.context_threads, req.thread_id]})
+        return self._chat(chat_id)
+
     def secrets(self) -> list[s.SecretInfo]:
         return sorted(self.w.secrets.values(), key=lambda x: x.name)
 

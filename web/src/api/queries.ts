@@ -39,7 +39,7 @@ export const useThread = (id: number) =>
 export const useThreadItems = (id: number) =>
   useQuery({ queryKey: ['thread', id, 'items'], queryFn: () => ok(api.GET('/api/threads/{thread_id}/items', { params: { path: { thread_id: id }, query: { limit: 200 } } })) })
 export const useDelivery = (id: number) =>
-  useQuery({ queryKey: ['thread', id, 'delivery'], queryFn: () => ok(api.GET('/api/threads/{thread_id}/delivery', { params: { path: { thread_id: id } } })) })
+  useQuery({ queryKey: ['thread', id, 'delivery'], queryFn: () => ok(api.GET('/api/threads/{thread_id}/delivery', { params: { path: { thread_id: id } } })), enabled: id > 0 })
 
 export const useInbox = (view: 'waiting' | 'history', kind?: S['InboxEntry']['kind'], q?: string) =>
   useQuery({ queryKey: ['inbox', view, kind ?? 'all', q ?? ''], queryFn: () => ok(api.GET('/api/inbox', { params: { query: { view, kind, q: q || undefined } } })) })
@@ -282,3 +282,26 @@ export async function subscribePush(label: string): Promise<void> {
 export const useClaudeLoginStart = () => useMutation({ mutationFn: () => ok(api.POST('/api/providers/claude-subscription/login')) })
 export const useClaudeLoginCode = () =>
   useInvalidating((code: string) => ok(api.POST('/api/providers/claude-subscription/login/code', { body: { code } })), [['system'], ['status'], ['budget']])
+
+// ── 1:1 chats (M6) ─────────────────────────────────────────────────────────
+// Sending a chat message is online only: replies stream from the model right away.
+export const useChats = (archived = false) => useQuery({ queryKey: ['chats', archived], queryFn: () => ok(api.GET('/api/chats', { params: { query: { archived } } })) })
+export const useChat = (id: number) => useQuery({ queryKey: ['chat', String(id)], queryFn: () => ok(api.GET('/api/chats/{chat_id}', { params: { path: { chat_id: id } } })), enabled: id > 0 })
+export const useChatMessages = (id: number) =>
+  useQuery({ queryKey: ['chat', String(id), 'messages'], queryFn: () => ok(api.GET('/api/chats/{chat_id}/messages', { params: { path: { chat_id: id } } })), enabled: id > 0 })
+const chatKeys = [['chats'], ['chat']]
+export const useCreateChat = () => useInvalidating((b: S['ChatCreate']) => ok(api.POST('/api/chats', { body: { ...b, idempotency_key: b.idempotency_key ?? newKey() } })), chatKeys)
+export const useSendChat = (id: number) =>
+  useInvalidating((body: string) => ok(api.POST('/api/chats/{chat_id}/messages', { params: { path: { chat_id: id } }, body: { body, idempotency_key: newKey() } })), chatKeys)
+export const usePatchChat = (id: number) => useInvalidating((b: S['ChatPatch']) => ok(api.PATCH('/api/chats/{chat_id}', { params: { path: { chat_id: id } }, body: b })), chatKeys)
+export const useStopChat = (id: number) => useInvalidating(() => ok(api.POST('/api/chats/{chat_id}/stop', { params: { path: { chat_id: id } } })), chatKeys)
+export const useDecideChatCard = (id: number) =>
+  useInvalidating((a: { message_id: number } & S['ChatCardDecision']) =>
+    ok(api.POST('/api/chats/{chat_id}/cards/{message_id}', { params: { path: { chat_id: id, message_id: a.message_id } }, body: { decision: a.decision, value: a.value } })),
+  [...chatKeys, ['secrets'], ['budget'], ['calendar']])
+export const useChatHandoff = (id: number) =>
+  useInvalidating((b: S['ChatHandoff']) => ok(api.POST('/api/chats/{chat_id}/handoff', { params: { path: { chat_id: id } }, body: b })), [...chatKeys, ['threads']])
+export const useChatAsk = (id: number) =>
+  useInvalidating((b: S['ChatAsk']) => ok(api.POST('/api/chats/{chat_id}/ask', { params: { path: { chat_id: id } }, body: b })), [...chatKeys, ['thread']])
+export const useChatPull = (id: number) =>
+  useInvalidating((thread_id: number) => ok(api.POST('/api/chats/{chat_id}/context', { params: { path: { chat_id: id } }, body: { thread_id } })), chatKeys)

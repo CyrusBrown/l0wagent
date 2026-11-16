@@ -51,4 +51,11 @@ opencode as your agent CLI, with non-Claude models behind the same tier names (h
 that the owner picks. Everything else is the same: your `assistant` commands, your workspace and `CLAUDE.md`, budgets in points
 (1 pt = $0.10 of the model's catalog price; free models cost nothing). Answers and the owner's messages
 arrive appended to a tool's output, marked [control notification], instead of as a separate note."""),
+    ("2026-11-17", "Monthly budgets and spending caps", """\
+A provider's budget can now run per month instead of per week (opencode Go does by default). `assistant budget`
+says which ("left this month", and when it resets); plan the whole period, not just the next few days.
+A monthly budget may also have caps: at most a share of the month's allowance in any 5 hours and in any
+7 days (Go: 20% and 50%). When a cap is reached, new wakeups wait until older spending leaves the window;
+`assistant budget` shows the caps and whether one applies now. The owner's 1:1 chats with their own model
+are separate from your budget."""),
 ]

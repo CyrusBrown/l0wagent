@@ -1,0 +1,318 @@
+"""The tools the 1:1 chat and outside chat services (the MCP connector) use, written once.
+
+They know the assistant through control's own backend: read projects, threads, runs, the
+shelf, budgets and the wakeup plan, search, and read the agent's workspace (read-only, on
+demand); write threads and projects as the owner ("via chat"); wake the assistant with Reply
+now (the reply budget). Anything sensitive (a secret, a setting or budget change, an egress
+rule, an extra wakeup) is only *proposed*, as a card the owner acts on in their own UI: no
+tool here can set a secret, change a setting, approve anything or spend the allowance.
+
+Each tool returns text for the model (compact JSON or a sentence). `kind` labels it:
+read | write | wake | card. Outside clients get only the scopes they were granted.
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any
+
+from .api import schemas as s
+from .backends.base import BadRequest, Conflict, NotFound
+
+MAX_RESULT = 12_000
+FILE_MAX = 60_000
+
+
+@dataclass
+class Ctx:
+    """Who is calling: a chat (chat_id) or an outside client (client label)."""
+
+    be: Any                       # the backend
+    chat_id: int | None = None
+    client: str | None = None     # e.g. "mcp:Claude Desktop"
+    cards: list[dict] = field(default_factory=list)  # cards proposed during this turn
+
+    @property
+    def via(self) -> str:
+        return f"chat:{self.chat_id}" if self.chat_id else (self.client or "chat")
+
+
+@dataclass(frozen=True)
+class Tool:
+    name: str
+    kind: str                     # read | write | wake | card
+    description: str
+    params: dict[str, Any]        # JSON schema properties
+    required: tuple[str, ...]
+    fn: Callable[[Ctx, dict], str]
+    label: str                    # past tense, for the chat's "Read 3 threads · …" line
+
+    def schema(self) -> dict:
+        return {"type": "object", "properties": self.params, "required": list(self.required), "additionalProperties": False}
+
+
+def _default(o: Any) -> Any:
+    if hasattr(o, "isoformat"):
+        return o.isoformat()
+    if hasattr(o, "model_dump"):
+        return o.model_dump(mode="json", exclude_none=True)
+    return str(o)
+
+
+def _j(obj: Any) -> str:
+    if isinstance(obj, list):
+        data = [o.model_dump(mode="json", exclude_none=True) if hasattr(o, "model_dump") else o for o in obj]
+    elif hasattr(obj, "model_dump"):
+        data = obj.model_dump(mode="json", exclude_none=True)
+    else:
+        data = obj
+    text = json.dumps(data, ensure_ascii=False, separators=(",", ":"), default=_default)
+    return text if len(text) <= MAX_RESULT else text[:MAX_RESULT] + f"… [{len(text) - MAX_RESULT} more characters cut]"
+
+
+def _int(a: dict, k: str, default: int | None = None) -> int:
+    v = a.get(k, default)
+    if v is None:
+        raise BadRequest("bad_input", f"{k} is required")
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        raise BadRequest("bad_input", f"{k} must be a number") from None
+
+
+def _str(a: dict, k: str, required: bool = True, max_len: int = 20_000) -> str | None:
+    v = a.get(k)
+    if v is None or (isinstance(v, str) and not v.strip()):
+        if required:
+            raise BadRequest("bad_input", f"{k} is required")
+        return None
+    if not isinstance(v, str):
+        raise BadRequest("bad_input", f"{k} must be text")
+    return v[:max_len]
+
+
+# ── read ──────────────────────────────────────────────────────────────────
+def status(ctx: Ctx, a: dict) -> str:
+    st = ctx.be.status()
+    return _j(st)
+
+
+def list_projects(ctx: Ctx, a: dict) -> str:
+    return _j([{"slug": p.slug, "name": p.name, "status": p.status, "summary": p.summary} for p in ctx.be.projects(None)])
+
+
+def list_threads(ctx: Ctx, a: dict) -> str:
+    project = _str(a, "project", required=False)
+    threads = ctx.be.threads(project, False, bool(a.get("archived")))
+    return _j([{"id": t.id, "title": t.title, "project": t.project, "status": t.status, "last_activity_at": t.last_activity_at, "open_asks": t.open_asks}
+               for t in threads[:200]])
+
+
+def read_thread(ctx: Ctx, a: dict) -> str:
+    tid = _int(a, "thread_id")
+    t = ctx.be.thread(tid)
+    items = ctx.be.thread_items(tid, None, min(_int(a, "limit", 40), 200)).items
+    out = []
+    for i in items:
+        d = i.model_dump(mode="json", exclude_none=True)
+        msg = d.get("message")
+        if msg:
+            out.append({"type": "message", "id": msg["id"], "sender": msg["sender"], "at": msg["created_at"], "body": msg["body"]})
+        else:
+            out.append({k: v for k, v in d.items() if k in ("type", "question", "permission", "task", "claim", "suggestion", "promote", "card")})
+    return _j({"thread": {"id": t.id, "title": t.title, "project": t.project, "status": t.status}, "items": out, "link": f"l0wagent://thread/{tid}"})
+
+
+def search(ctx: Ctx, a: dict) -> str:
+    q = _str(a, "query", max_len=500)
+    return _j(ctx.be.search(q, _str(a, "kind", required=False), _str(a, "project", required=False), None)[:30])
+
+
+def list_runs(ctx: Ctx, a: dict) -> str:
+    return _j(ctx.be.runs(None, _str(a, "project", required=False), min(_int(a, "limit", 10), 50)))
+
+
+def read_run(ctx: Ctx, a: dict) -> str:
+    rid = _int(a, "run_id")
+    run = ctx.be.run(rid)
+    tl = ctx.be.timeline(rid, "simple", None, None)
+    return _j({"run": run, "timeline": [{"kind": i.kind, "text": i.text} for i in tl[-80:]]})
+
+
+def shelf(ctx: Ctx, a: dict) -> str:
+    return _j(ctx.be.shelf(_str(a, "project", max_len=100)))
+
+
+def wakeup_plan(ctx: Ctx, a: dict) -> str:
+    cal = ctx.be.calendar(None, None)
+    return _j({"wakeups": cal.wakeups, "budget": ctx.be.budget_overview().providers[:1]})
+
+
+def _volume(a: dict) -> str:
+    v = _str(a, "volume", required=False) or "workspace"
+    if v not in ("workspace", "work"):
+        raise BadRequest("bad_input", "volume is workspace or work")
+    return v
+
+
+def list_files(ctx: Ctx, a: dict) -> str:
+    return _j(ctx.be.list_dir(_volume(a), _str(a, "path", required=False) or ""))
+
+
+def read_file(ctx: Ctx, a: dict) -> str:
+    data, mime = ctx.be.read_file(_volume(a), _str(a, "path", max_len=1000))
+    if b"\x00" in data[:4096]:
+        return f"(a binary file, {mime}, {len(data)} bytes; not shown)"
+    text = data.decode("utf-8", errors="replace")
+    return text if len(text) <= FILE_MAX else text[:FILE_MAX] + f"\n… [{len(text) - FILE_MAX} more characters cut]"
+
+
+# ── write (as the owner, labeled "via chat") ─────────────────────────────
+def create_thread(ctx: Ctx, a: dict) -> str:
+    title = _str(a, "title", max_len=200)
+    body = _str(a, "message", max_len=50_000)
+    project = _str(a, "project", required=False)
+    conv = ctx.be.conv
+    t = conv.create_thread(title, project, "chat")
+    conv.post_owner_message(t.id, body, [], None, via=ctx.via)
+    return _j({"created": {"thread_id": t.id, "title": t.title, "project": t.project}, "link": f"l0wagent://thread/{t.id}"})
+
+
+def post_to_thread(ctx: Ctx, a: dict) -> str:
+    tid = _int(a, "thread_id")
+    m = ctx.be.conv.post_owner_message(tid, _str(a, "message", max_len=50_000), [], None, via=ctx.via)
+    return _j({"posted": {"thread_id": tid, "message_id": m.id}, "link": f"l0wagent://thread/{tid}"})
+
+
+def create_project(ctx: Ctx, a: dict) -> str:
+    p = ctx.be.create_project(s.ProjectCreate(name=_str(a, "name", max_len=120) or "", summary=_str(a, "summary", required=False, max_len=2000) or "",
+                                              idempotency_key=None))
+    return _j({"created": {"slug": p.slug, "name": p.name}})
+
+
+# ── wake ──────────────────────────────────────────────────────────────────
+def reply_now(ctx: Ctx, a: dict) -> str:
+    tid = _int(a, "thread_id")
+    d = ctx.be.delivery(tid)
+    if not d.reply_now_available:
+        return f"Reply now isn't available for this thread right now (state: {d.state}). The assistant will see it at its next wakeup."
+    run = ctx.be.reply_now(tid)
+    return _j({"started": {"run_id": run.id, "budget_pts": run.budget, "bucket": run.bucket}, "note": "Spends the reply budget, not the allowance."})
+
+
+# ── cards: proposals the owner acts on ───────────────────────────────────
+def _card(ctx: Ctx, kind: str, **fields) -> str:
+    card = {"kind": kind, **fields, "state": "open"}
+    ctx.cards.append(card)
+    where = "in this chat" if ctx.chat_id else "in the owner's l0wagent app (Inbox)"
+    return f"Proposed: a {kind} card is shown {where}. Only the owner can act on it; you'll see the outcome in the conversation."
+
+
+def ask_for_secret(ctx: Ctx, a: dict) -> str:
+    name = (_str(a, "name", max_len=64) or "").strip().upper()
+    if not name.replace("_", "").isalnum():
+        raise BadRequest("bad_input", "Secret names are letters, digits and underscores, e.g. GITHUB_TOKEN")
+    return _card(ctx, "secret", name=name, description=_str(a, "description", required=False, max_len=500) or "", link=_str(a, "help_url", required=False, max_len=500))
+
+
+def propose_wakeup(ctx: Ctx, a: dict) -> str:
+    budget = _int(a, "budget")
+    if not 1 <= budget <= 400:
+        raise BadRequest("bad_input", "budget is 1–400 pts")
+    return _card(ctx, "wakeup", at=_str(a, "at", required=False, max_len=40), budget=budget, reason=_str(a, "reason", max_len=500))
+
+
+def propose_level(ctx: Ctx, a: dict) -> str:
+    level = _str(a, "level", max_len=20)
+    if level not in ("dormant", "frugal", "steady", "busy", "max"):
+        raise BadRequest("bad_input", "level is dormant, frugal, steady, busy or max")
+    return _card(ctx, "level", level=level, reason=_str(a, "reason", required=False, max_len=500))
+
+
+def propose_egress_rule(ctx: Ctx, a: dict) -> str:
+    host = (_str(a, "host", max_len=255) or "").strip().lower()
+    if not host or "/" in host or " " in host:
+        raise BadRequest("bad_input", "host is a domain, e.g. api.github.com")
+    action = _str(a, "action", required=False) or "allow"
+    if action not in ("allow", "block"):
+        raise BadRequest("bad_input", "action is allow or block")
+    return _card(ctx, "egress", host=host, action=action, reason=_str(a, "reason", required=False, max_len=500))
+
+
+P = {"type": "string"}
+N = {"type": "integer"}
+TOOLS: list[Tool] = [
+    Tool("status", "read", "What the assistant is doing now, its budget this week, what's waiting for the owner.", {}, (), status, "checked the status"),
+    Tool("list_projects", "read", "The owner's projects.", {}, (), list_projects, "listed projects"),
+    Tool("list_threads", "read", "Threads, optionally in one project (slug), optionally archived ones.",
+         {"project": P, "archived": {"type": "boolean"}}, (), list_threads, "listed threads"),
+    Tool("read_thread", "read", "A thread's recent messages and cards (questions, permissions, tasks, claims).",
+         {"thread_id": N, "limit": N}, ("thread_id",), read_thread, "read a thread"),
+    Tool("search", "read", "Search threads, messages, projects and files.", {"query": P, "kind": P, "project": P}, ("query",), search, "searched"),
+    Tool("list_runs", "read", "Recent runs (wakeups, replies, routines) with status and spend.", {"project": P, "limit": N}, (), list_runs, "listed runs"),
+    Tool("read_run", "read", "One run and its timeline (simple view).", {"run_id": N}, ("run_id",), read_run, "read a run"),
+    Tool("shelf", "read", "A project's shelf: the deliverables the assistant put on its Files tab.", {"project": P}, ("project",), shelf, "checked the shelf"),
+    Tool("wakeup_plan", "read", "The assistant's planned wakeups and this week's budget.", {}, (), wakeup_plan, "checked the wakeup plan"),
+    Tool("list_files", "read", "List a folder in the assistant's storage (volume workspace = its memory, work = project work). Read-only.",
+         {"volume": P, "path": P}, (), list_files, "browsed the workspace"),
+    Tool("read_file", "read", "Read a text file from the assistant's storage (read-only).", {"volume": P, "path": P}, ("path",), read_file, "read a file"),
+    Tool("create_thread", "write", "Start a thread for the assistant (as the owner, labeled via chat), optionally in a project. "
+         "Use it to hand work over: the assistant picks it up at its next run or a Reply now.",
+         {"title": P, "message": P, "project": P}, ("title", "message"), create_thread, "started a thread"),
+    Tool("post_to_thread", "write", "Post a message into an existing thread as the owner (labeled via chat).",
+         {"thread_id": N, "message": P}, ("thread_id", "message"), post_to_thread, "posted to a thread"),
+    Tool("create_project", "write", "Create a project.", {"name": P, "summary": P}, ("name",), create_project, "created a project"),
+    Tool("reply_now", "wake", "Wake the assistant now to answer one thread (Reply now). Spends its small reply budget, never the allowance.",
+         {"thread_id": N}, ("thread_id",), reply_now, "woke the assistant"),
+    Tool("ask_for_secret", "card", "Ask the owner to enter a secret (an API token, a password) on a secure input card. "
+         "The value goes from their browser straight to control; you never see it, only that it was saved. Link the provider's token page.",
+         {"name": P, "description": P, "help_url": P}, ("name",), ask_for_secret, "asked for a secret"),
+    Tool("propose_wakeup", "card", "Propose an extra wakeup for the assistant (the owner approves it; it spends the allowance).",
+         {"at": {"type": "string", "description": "ISO time; omit for as soon as possible"}, "budget": N, "reason": P}, ("budget", "reason"),
+         propose_wakeup, "proposed a wakeup"),
+    Tool("propose_level", "card", "Propose a different budget level (dormant, frugal, steady, busy, max); the owner decides.",
+         {"level": P, "reason": P}, ("level",), propose_level, "proposed a level"),
+    Tool("propose_egress_rule", "card", "Propose allowing (or blocking) a host for the assistant's internet access; the owner decides.",
+         {"host": P, "action": P, "reason": P}, ("host",), propose_egress_rule, "proposed a network rule"),
+]
+BY_NAME = {t.name: t for t in TOOLS}
+SCOPE_KINDS = {"read": {"read"}, "write": {"read", "write"}, "wake": {"read", "wake"}}
+
+
+def run(ctx: Ctx, name: str, args: dict) -> tuple[str, bool]:
+    """Run one tool: (result text, is_error). Errors are returned, not raised: the model reads them."""
+    tool = BY_NAME.get(name)
+    if not tool:
+        return f"No tool named {name}.", True
+    if not isinstance(args, dict):
+        return "Tool input must be an object.", True
+    unknown = set(args) - set(tool.params)
+    if unknown:
+        return f"Unknown arguments: {', '.join(sorted(unknown))}.", True
+    try:
+        return tool.fn(ctx, args), False
+    except (BadRequest, Conflict) as e:
+        return f"{getattr(e, 'detail', None) or e}", True
+    except NotFound as e:
+        return f"Not found: {e}", True
+    except Exception as e:  # noqa: BLE001 - the model reads the failure; the chat goes on
+        return f"The tool failed: {type(e).__name__}: {str(e)[:300]}", True
+
+
+def summary(names: list[str]) -> str:
+    """'Read 3 threads · searched' for the chat's tool line."""
+    out: list[str] = []
+    counts: dict[str, int] = {}
+    for n in names:
+        counts[n] = counts.get(n, 0) + 1
+    for n, c in counts.items():
+        label = BY_NAME[n].label if n in BY_NAME else n
+        if c > 1 and label.startswith("read a "):
+            label = f"read {c} {label[7:]}s"
+        elif c > 1:
+            label = f"{label} ×{c}"
+        out.append(label)
+    text = " · ".join(out)
+    return text[:1].upper() + text[1:]

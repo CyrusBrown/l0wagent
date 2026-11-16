@@ -328,3 +328,46 @@ def test_reviewer_gate_tier_changes_and_budget_share(be):
     # At its share (25% of 20 pts = 5) it goes quiet rather than spending more.
     be.db.ex("UPDATE usage_ledger SET pts=5 WHERE who='reviewer'")
     assert asyncio.run(be.reviewer.approve(rid, "The assistant wants to end the wakeup.", "IDLE")) == (True, "")
+
+
+# ── budget periods (M6) ───────────────────────────────────────────────────
+def spend(be, pid: str, pts: float, at: datetime) -> None:
+    be.db.ex("INSERT INTO usage_ledger(provider, who, bucket, pts, cost_usd, cost_final, at, updated_at) VALUES(?,?,?,?,?,1,?,?)",
+             (pid, "assistant", "allowance", pts, pts / 10, iso(at), iso(at)))
+
+
+def test_opencode_go_budgets_per_month_with_caps(be):
+    be.budgets.add_api_provider("sk-go-test-0123456789abcdefghij", None, "opencode-go")
+    be.clock.t = datetime(2027, 3, 10, 12, tzinfo=UTC)
+    start, end = be.budgets.week("opencode-go")
+    assert (start, end) == (datetime(2027, 3, 1, tzinfo=UTC), datetime(2027, 4, 1, tzinfo=UTC))
+    b = be.budgets.summary("opencode-go")
+    assert b.period == "month" and b.reset_day == 1 and b.caps.five_hour == 0.2 and b.caps.week == 0.5
+    assert b.allowance == round(150 * 31 / 7)   # Steady's 150/week over a 31-day month
+    assert "this month" in be.budgets.check_text("opencode-go") and "Caps: at most 20%" in be.budgets.check_text("opencode-go")
+    # A reset day mid-month; before it, the period started last month.
+    be.budgets.set_budget("opencode-go", s.BudgetPatch(reset_day=15))
+    assert be.budgets.week("opencode-go") == (datetime(2027, 2, 15, tzinfo=UTC), datetime(2027, 3, 15, tzinfo=UTC))
+    be.budgets.set_budget("opencode-go", s.BudgetPatch(reset_day=1))
+    # The 5-hour cap: 20% of 664 pts is ~133; spending that in the last hours stops new runs.
+    assert be.budgets.cap_reason("opencode-go") is None
+    spend(be, "opencode-go", 140, be.clock.t - timedelta(hours=2))
+    assert "last 5 hours" in be.budgets.cap_reason("opencode-go")
+    be.clock.t += timedelta(hours=4)
+    assert be.budgets.cap_reason("opencode-go") is None
+    spend(be, "opencode-go", 200, be.clock.t - timedelta(days=3))
+    assert "last 7 days" in be.budgets.cap_reason("opencode-go")   # 340 ≥ 50%
+    # An allowance the owner sets is per period, not scaled; the fallback stays a week's 10%.
+    be.budgets.set_budget("opencode-go", s.BudgetPatch(overrides=s.BudgetLimitsPatch(allowance=300)))
+    assert be.budgets.summary("opencode-go").allowance == 300
+    assert be.budgets.fallback_pts("opencode-go") == round(min(be.budgets.effective("opencode-go").limits.max_wakeup, 300 * 7 / 31 * 0.1))
+    # Weekly again, caps off.
+    be.budgets.set_budget("opencode-go", s.BudgetPatch(period="week", caps=s.BudgetCaps()))
+    b = be.budgets.summary("opencode-go")
+    assert b.period == "week" and b.caps is None and b.reset_day is None
+
+
+def test_the_subscription_stays_weekly(be):
+    with pytest.raises(BadRequest):
+        be.budgets.set_budget("claude-subscription", s.BudgetPatch(period="month"))
+    assert be.budgets.summary("claude-subscription").period == "week"

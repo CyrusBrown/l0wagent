@@ -28,7 +28,7 @@ test('opencode Go: key, tier models, roles and a run on opencode', async ({ page
   await page.goto('/runs')
   await page.getByRole('button', { name: 'Wake now' }).click()
   await expect(page).toHaveURL(/\/runs\/\d+/)
-  await page.getByRole('button', { name: 'Detailed' }).click()
+  await page.getByText('Open full timeline →').click()
   await expect(page.getByText(/^Model opencode-go\//).first()).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('Run finished', { exact: false }).first()).toBeVisible({ timeout: 60_000 })
 

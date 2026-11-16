@@ -28,7 +28,7 @@ test('levels, a wakeup that plans the next one, the calendar and both run views'
   await expect(page.getByText('Run finished', { exact: false }).first()).toBeVisible({ timeout: 60_000 })
   await expect(page.getByText(/^Reviewer: Nightly/)).toBeVisible()
   await expect(page.getByText(/Planned a wakeup/).first()).toBeVisible()
-  await page.getByRole('button', { name: 'Detailed' }).click()
+  await page.getByText('Open full timeline →').click()
   await expect(page.getByText(/To the reviewer \(ask\)/)).toBeVisible()
 
   // Its plan is on the calendar (it may fall in next week), with the budget beside it.

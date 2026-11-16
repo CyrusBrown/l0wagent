@@ -1,26 +1,40 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import type { S } from '../api/client'
-import { problem, useJobs, useRun, useRuns, useStartRun, useStopRun, useTimeline } from '../api/queries'
-import { ClaimCard } from '../components/Cards'
+import { problem, useJobs, useProjects, useRun, useRuns, useStartRun, useStopRun, useTimeline } from '../api/queries'
 import { ago, clock, duration, pts, until } from '../components/format'
 
-const statusPill: Record<S['Run']['status'], string> = { starting: 'run', running: 'run', done: 'ok', partial: 'warn', stopped: 'mute', failed: 'bad' }
+// Runs and one run, ported from the mockup's RUNS LIST and RUN screens. A run opens as its
+// summary; the status timeline card opens the full (detailed) timeline, with "← Back to summary".
+// Additions not in the mockup: "Wake now" (REVIEW.md #24), Reply runs in the filters.
+
+const STATUS: Record<S['Run']['status'], [string, string]> = {
+  starting: ['Starting', 'run'], running: ['Running', 'run'], done: ['Done', 'ok'], partial: ['Partial', 'warn'], stopped: ['Stopped', 'mute'], failed: ['Failed', 'bad'],
+}
+const CLAIM: Record<string, string> = { in_progress: 'run', planned: 'info', done: 'ok', dropped: 'mute' }
 const whyLabel = (r: S['Run']) =>
   ({ planned: 'Planned wakeup', manual: 'Started by you', fallback: 'Fallback', sweep: 'Sweep', promoted: 'Promoted reply', routine: 'Routine', owner_message: 'Reply now', owner: 'Your wakeup' })[r.why] ?? r.why
+const FILTERS: [string, (r: S['Run']) => boolean][] = [
+  ['All kinds', () => true], ['Planned', (r) => r.why === 'planned' || r.why === 'owner' || r.why === 'manual'], ['Routine', (r) => r.why === 'routine'],
+  ['Sweep', (r) => r.why === 'sweep'], ['Promoted', (r) => r.why === 'promoted'], ['Replies', (r) => r.kind === 'reply'],
+]
+const cap = (x: string) => x[0].toUpperCase() + x.slice(1)
 
 export function Runs() {
   const [params, setParams] = useSearchParams()
   const tab = params.get('tab') === 'jobs' ? 'jobs' : 'runs'
-  const [kind, setKind] = useState<S['Run']['kind'] | undefined>()
-  const runs = useRuns(kind)
+  const [filter, setFilter] = useState(0)
+  const [project, setProject] = useState('')
+  const runs = useRuns(undefined, project || undefined)
   const jobs = useJobs()
+  const projects = useProjects()
   const nav = useNavigate()
   const start = useStartRun()
+  const shown = (runs.data ?? []).filter(FILTERS[filter][1])
   return (
-    <div className="page">
+    <div className="page runs-page">
       <div className="page-head">
-        <h1>Runs</h1>
+        <h1 className="runs-title">Runs</h1>
         <button className="btn primary" disabled={start.isPending} title="Start a run now (manual wakeup)"
           onClick={() => start.mutate({ reason: 'manual' }, { onSuccess: (r) => nav(`/runs/${r.id}`) })}>
           {start.isPending ? 'Waking…' : 'Wake now'}
@@ -33,139 +47,218 @@ export function Runs() {
       </div>
       {tab === 'runs' ? <>
         <div className="pills">
-          {([[undefined, 'All kinds'], ['wakeup', 'Wakeups'], ['reply', 'Replies'], ['routine', 'Routines'], ['reviewer', 'Reviewer']] as const).map(([k, l]) => (
-            <button key={l} className={`filter ${kind === k ? 'on' : ''}`} onClick={() => setKind(k)}>{l}</button>
-          ))}
+          {FILTERS.map(([l], i) => <button key={l} className={`filter ${filter === i ? 'on' : ''}`} onClick={() => setFilter(i)}>{l}</button>)}
+          <select className={`filter ${project ? 'on' : ''}`} value={project} onChange={(e) => setProject(e.target.value)} aria-label="Project">
+            <option value="">All projects ▾</option>
+            {projects.data?.map((p) => <option key={p.slug} value={p.slug}>{p.name}</option>)}
+          </select>
         </div>
-        {runs.isSuccess && runs.data.length === 0 && <div className="empty">No runs yet. The assistant's first wakeup will show up here.</div>}
-        <table className="table">
-          <thead><tr><th>#</th><th>About</th><th>Why</th><th>Started</th><th>Budget</th><th>Status</th></tr></thead>
-          <tbody>
-            {runs.data?.map((r) => (
-              <tr key={r.id} className="click" onClick={() => nav(`/runs/${r.id}`)}>
-                <td className="sub">#{r.id}</td>
-                <td><Link to={`/runs/${r.id}`} style={{ color: 'var(--fg)' }}>{r.about ?? whyLabel(r)}</Link></td>
-                <td className="sub">{whyLabel(r)}{r.why_detail ? ` · ${r.why_detail}` : ''}</td>
-                <td className="sub">{ago(r.started_at)} · {duration(r.started_at, r.ended_at)}</td>
-                <td style={{ minWidth: 110 }}>
-                  <div className="sub">{pts(r.used)} / {pts(r.budget)}</div>
-                  <div className="gauge"><div style={{ width: `${Math.min(100, (r.used / (r.budget || 1)) * 100)}%` }} /></div>
-                </td>
-                <td><span className={`pill ${statusPill[r.status]}`}>{r.status}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {runs.isSuccess && shown.length === 0
+          ? <div className="empty">{runs.data.length ? 'No runs match.' : "No runs yet. The assistant's first wakeup will show up here."}</div>
+          : (
+            <div className="run-list">
+              {shown.map((r) => (
+                <div key={r.id} className="run-row" role="link" tabIndex={0} onClick={() => nav(`/runs/${r.id}`)} onKeyDown={(e) => { if (e.key === 'Enter') nav(`/runs/${r.id}`) }}>
+                  <span className="run-id">#{r.id}</span>
+                  <div className="run-about">
+                    <span className="ellipsis">{r.about ?? whyLabel(r)}</span>
+                    <span className="sub">{whyLabel(r)}{r.why_detail ? ` · ${r.why_detail}` : ''}</span>
+                  </div>
+                  <div className="run-when"><span>{ago(r.started_at)}</span><span>{duration(r.started_at, r.ended_at)}{r.status === 'running' ? ' so far' : ''}</span></div>
+                  <div className="run-spend">
+                    <span>{pts(r.used)} / {pts(r.budget)} pts</span>
+                    <div className="bar"><div style={{ width: `${Math.min(100, (r.used / (r.budget || 1)) * 100)}%` }} /></div>
+                  </div>
+                  <span className={`pill ${STATUS[r.status][1]}`} style={{ justifySelf: 'end' }}>{STATUS[r.status][0]}</span>
+                </div>
+              ))}
+            </div>
+          )}
       </> : <Jobs jobs={jobs.data ?? []} />}
     </div>
   )
 }
 
 function Jobs({ jobs }: { jobs: S['Job'][] }) {
-  if (!jobs.length) return <div className="empty">No long jobs. Jobs the assistant registers with <code>assistant job start</code> show up here.</div>
-  return <>{jobs.map((j) => (
-    <div key={j.id} className="card">
-      <div className="row-between"><span style={{ fontWeight: 500 }}>{j.label}</span><span className="pill run">{j.progress}</span></div>
-      <div className="sub">
-        Started {ago(j.started_at)}{j.run_id && <> by <Link to={`/runs/${j.run_id}`}>run #{j.run_id}</Link></>}
-        {j.expected_end && ` · expected ${until(j.expected_end)}`}{j.dont_interrupt && " · don't interrupt (holds updates)"}
+  if (!jobs.length) {
+    return (
+      <div className="empty-big">
+        <div className="empty-title">No long jobs running</div>
+        <div className="sub">When the assistant starts something that outlives a run, like a backup or a long index, it shows up here with its log.</div>
       </div>
-      <pre>{j.log_tail}</pre>
+    )
+  }
+  return <>{jobs.map((j) => (
+    <div key={j.id} className="job-card">
+      <div className="job-head">
+        <span className="dot working" />
+        <div className="stack" style={{ gap: 3, flex: 1, minWidth: 200 }}>
+          <div className="row-start" style={{ flexWrap: 'wrap' }}>
+            <span style={{ font: '500 14.5px var(--sans)' }}>{j.label}</span>
+            {j.dont_interrupt && <span className="pill warn">Don't interrupt</span>}
+          </div>
+          <span className="sub">
+            Started {j.run_id ? <>by <Link to={`/runs/${j.run_id}`}>run #{j.run_id}</Link> · </> : ''}{ago(j.started_at)}{j.expected_end && ` · expected ${until(j.expected_end)}`}
+          </span>
+        </div>
+        <span className="mono" style={{ fontSize: 13, color: 'var(--fg2)' }}>{j.progress}</span>
+      </div>
+      <pre className="job-log">{j.log_tail}</pre>
+      {j.dont_interrupt && <div className="job-foot">Updates are held until this job ends.</div>}
     </div>
   ))}</>
 }
 
 export function Run() {
   const id = Number(useParams().id)
-  const [view, setView] = useState<'simple' | 'detailed'>('simple')
+  const [params, setParams] = useSearchParams()
+  const detailed = params.get('view') === 'detailed'
   const run = useRun(id)
-  const timeline = useTimeline(id, view)
   const stop = useStopRun()
   if (run.isError) return <div className="page"><div className="error">Couldn't load run #{id}.</div></div>
   const d = run.data
   if (!d) return <div className="page" />
   const r = d.run
-  const cap = (x: string) => x[0].toUpperCase() + x.slice(1)
-  const meta = [['Why it woke', `${whyLabel(r)}${r.why_detail ? ` · ${r.why_detail}` : ''}`], ['Level', d.level ? cap(d.level) : '–'], ['Reviewer', cap(d.reviewer_mode)], ['Model', r.tier ?? '–'], ['Spends', r.bucket === 'reply' ? 'Reply budget' : r.bucket === 'sweep' ? 'Sweep (unused before reset)' : 'Allowance']]
+  const live = r.status === 'running' || r.status === 'starting'
+  const meta = [
+    ['Why it woke', `${whyLabel(r)}${r.why_detail ? ` · ${r.why_detail}` : ''}`], ['Level', d.level ? cap(d.level) : '–'], ['Reviewer', cap(d.reviewer_mode)],
+    ['Model', r.tier ? r.tier.split('/').map(cap).join(' · ') : '–'], ['Spends', r.bucket === 'reply' ? 'Reply budget' : r.bucket === 'sweep' ? 'Sweep' : 'Allowance'],
+  ]
+  const elapsed = (Date.parse(r.ended_at ?? new Date().toISOString()) - Date.parse(r.started_at)) / 1000
+  const total = r.deadline ? (Date.parse(r.deadline) - Date.parse(r.started_at)) / 1000 : 0
   return (
-    <div className="page">
-      <div className="page-head">
-        <div className="stack" style={{ gap: 4 }}>
-          <div className="sub"><Link to="/runs">Runs</Link> / #{r.id}</div>
-          <h1>{r.about ?? whyLabel(r)}</h1>
-        </div>
-        <div className="btns">
-          <div className="seg">
-            <button className={view === 'simple' ? 'on' : ''} onClick={() => setView('simple')}>Simple</button>
-            <button className={view === 'detailed' ? 'on' : ''} onClick={() => setView('detailed')}>Detailed</button>
+    <div className="page run-page">
+      <div className="run-head">
+        <div className="row-between" style={{ flexWrap: 'wrap' }}>
+          <div className="row-start" style={{ gap: 10 }}>
+            <h1>Run #{r.id}</h1>
+            <span className={`pill ${STATUS[r.status][1]} row-start`} style={{ gap: 6 }}>{live && <span className="dot working" style={{ width: 6, height: 6 }} />}{STATUS[r.status][0]}</span>
           </div>
-          {(r.status === 'running' || r.status === 'starting') && <button className="btn danger" disabled={stop.isPending} onClick={() => stop.mutate(r.id)}>Stop</button>}
+          {live && <button className="btn small" style={{ color: 'var(--badInk)' }} disabled={stop.isPending} onClick={() => stop.mutate(r.id)}>Stop</button>}
         </div>
-      </div>
-      <div className="card" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 24 }}>
-        {meta.map(([k, v]) => <div key={k}><div className="sub">{k}</div><div>{v}</div></div>)}
-        <div style={{ flex: 1, minWidth: 180 }}>
-          <div className="sub">Budget · {pts(r.used)} of {pts(r.budget)} · {duration(r.started_at, r.ended_at)}{r.deadline && r.status === 'running' ? ` · deadline ${clock(r.deadline)}` : ''}</div>
-          <div className="gauge" style={{ marginTop: 8 }}><div style={{ width: `${Math.min(100, (r.used / (r.budget || 1)) * 100)}%` }} /></div>
-        </div>
-        <span className={`pill ${statusPill[r.status]}`} style={{ alignSelf: 'flex-start' }}>{r.status}</span>
-      </div>
-      {view === 'simple' ? (
-        <div className="grid2">
-          <div className="stack" style={{ gap: 22 }}>
-            {r.now && <section className="stack"><div className="section-label">Now</div><div className="theirs">{r.now}</div></section>}
-            {!!d.claims.length && <section className="stack"><div className="section-label">Active threads</div>{d.claims.map((c) => <ClaimCard key={c.id} c={c} />)}</section>}
-            <section className="stack">
-              <div className="section-label">Status timeline</div>
-              {timeline.data?.map((i) => (
-                <div key={i.id} style={{ display: 'flex', gap: 12, fontSize: 13.5 }}>
-                  <span className="sub" style={{ minWidth: 44, flex: 'none', whiteSpace: 'nowrap' }}>{clock(i.at)}</span>
-                  <span className={`dot ${i.kind === 'control' || i.kind === 'model' ? 'info' : i.kind === 'ask' ? 'warn' : i.kind === 'error' ? 'bad' : ''}`} style={{ marginTop: 7 }} />
-                  <span style={{ color: i.kind === 'control' ? 'var(--infoInk)' : i.kind === 'error' ? 'var(--badInk)' : undefined }}>{i.text}</span>
-                </div>
-              ))}
-            </section>
-          </div>
-          <section className="card">
-            <div className="section-label">Changes</div>
-            {!d.changes.memory.length && !d.changes.work.length && !d.changes.shelved.length && !d.changes.asks.length && !d.changes.threads.length && (
-              <div className="sub">{r.status === 'running' || r.status === 'starting' ? 'Memory changes show when the run ends.' : 'No changes.'}</div>
-            )}
-            {([['Memory', d.changes.memory], ['Work files', d.changes.work]] as const).map(([label, files]) => !!files.length && (
-              <div key={label} className="stack" style={{ gap: 4 }}>
-                <div className="sub">{label}</div>
-                {files.map((f) => (
-                  <div key={f.path} className="row-between" style={{ fontSize: 13 }}>
-                    <code>{f.path}</code>
-                    <span><span style={{ color: 'var(--okInk)' }}>+{f.added}</span> <span style={{ color: 'var(--badInk)' }}>−{f.removed}</span></span>
-                  </div>
-                ))}
-              </div>
-            ))}
-            {([['Shelved', d.changes.shelved], ['Asks filed', d.changes.asks], ['Threads', d.changes.threads]] as const).map(([label, xs]) => !!xs.length && (
-              <div key={label} className="stack" style={{ gap: 4 }}><div className="sub">{label}</div>{xs.map((x) => <div key={x} style={{ fontSize: 13 }}>{x}</div>)}</div>
-            ))}
-          </section>
-        </div>
-      ) : (
-        <div className="stack" style={{ gap: 6 }}>
-          {timeline.data?.map((i) => (
-            <div key={i.id} id={`t${i.id}`} className="card" style={{ padding: '10px 14px', gap: 6, background: i.kind === 'reviewer' ? 'var(--purpleSoft)' : undefined }}>
-              <div className="row-between sub"><span style={{ textTransform: 'capitalize' }}>{i.kind}</span><a href={`#t${i.id}`}>{clock(i.at)}</a></div>
-              <div style={{ fontSize: 13.5, fontStyle: i.kind === 'thinking' ? 'italic' : undefined, fontFamily: i.kind === 'tool' ? 'var(--mono)' : undefined, color: i.kind === 'error' ? 'var(--badInk)' : undefined }}>{i.text}</div>
-              {typeof i.data.patch === 'string' && <pre>{i.data.patch}</pre>}
-              {i.kind === 'tool' && typeof i.data.result === 'string' && (
-                <details><summary className="sub" style={{ cursor: 'pointer' }}>{i.data.is_error ? 'Error output' : 'Output'}</summary><pre style={{ marginTop: 6 }}>{i.data.result}</pre></details>
-              )}
-              {i.kind === 'diff' && Array.isArray(i.data.files) && (
-                <div className="stack" style={{ gap: 2 }}>{(i.data.files as { path: string; added: number | null; removed: number | null }[]).map((f) => (
-                  <div key={f.path} className="row-between" style={{ fontSize: 13 }}><code>{f.path}</code><span><span style={{ color: 'var(--okInk)' }}>+{f.added ?? '?'}</span> <span style={{ color: 'var(--badInk)' }}>−{f.removed ?? '?'}</span></span></div>
-                ))}</div>
-              )}
+        <div className="run-meta">
+          {meta.map(([k, v]) => <div key={k} className="stack" style={{ gap: 3 }}><span className="k">{k}</span><span className="v">{v}</span></div>)}
+          <div className="run-budget">
+            <div className="row-between"><span>Budget</span><span className="v">{pts(r.used)} of {pts(r.budget)} pts</span></div>
+            <div className="bar big">
+              <div style={{ width: `${Math.min(100, (r.used / (r.budget || 1)) * 100)}%` }} />
+              {live && total > 0 && <span className="time-mark" style={{ left: `${Math.min(100, (elapsed / total) * 100)}%` }} title="Time used" />}
             </div>
-          ))}
+            <div className="row-between"><span>{duration(r.started_at, r.ended_at)}{live ? ' elapsed' : ''}</span><span>{r.deadline ? `deadline ${clock(r.deadline)}` : ''}</span></div>
+          </div>
         </div>
-      )}
+      </div>
+      {detailed
+        ? <Detailed id={id} back={() => setParams({})} />
+        : <Summary d={d} open={() => setParams({ view: 'detailed' })} />}
     </div>
   )
+}
+
+function Summary({ d, open }: { d: S['RunDetail']; open: () => void }) {
+  const r = d.run
+  const timeline = useTimeline(r.id, 'simple')
+  const live = r.status === 'running' || r.status === 'starting'
+  const c = d.changes
+  const groups: [string, string][] = [
+    ['Memory', c.memory], ['Work files', c.work],
+  ].filter(([, f]) => (f as S['FileChange'][]).length).map(([g, f]) => {
+    const files = f as S['FileChange'][]
+    const a = files.reduce((n, x) => n + (x.added ?? 0), 0), rm = files.reduce((n, x) => n + (x.removed ?? 0), 0)
+    return [g as string, `${files.length} ${files.length === 1 ? 'file' : 'files'}${a || rm ? `  +${a} −${rm}` : ''}`]
+  })
+  for (const [g, xs] of [['Shelved', c.shelved], ['Asks filed', c.asks], ['Threads', c.threads]] as const) {
+    if (xs.length) groups.push([g, `${xs.length} ${xs.length === 1 ? 'item' : 'items'}`])
+  }
+  return (
+    <div className="stack" style={{ gap: 24 }}>
+      <div className="run-now">
+        <div className="row-start label">{live && <span className="dot working" />}{live ? 'Now' : STATUS[r.status][0]}</div>
+        <div className="headline">{live ? (r.now ?? 'Starting…') : (r.about ?? whyLabel(r))}</div>
+        {live && r.about && <div className="para">{r.about}</div>}
+      </div>
+      <div className="run-grid">
+        <div className="tl-card" role="button" tabIndex={0} onClick={open} onKeyDown={(e) => { if (e.key === 'Enter') open() }}>
+          <div className="tl-card-head"><span>Status timeline</span><span className="accent">Open full timeline →</span></div>
+          <div className="tl-list">
+            {timeline.data?.map((i) => {
+              const tag = i.kind === 'ask' ? 'ask' : i.kind === 'control' || i.kind === 'model' || i.kind === 'reviewer' || i.kind === 'shelf' ? 'control' : i.kind === 'error' ? 'error' : 'note'
+              return (
+                <div key={i.id} className={`tl-row ${tag}`}>
+                  <span className="t">{clock(i.at)}</span><span className="d" /><span className="x">{i.text}</span><span className="tag">{tag}</span>
+                </div>
+              )
+            })}
+            {live && r.now && <div className="tl-row now"><span className="t">now</span><span className="d" /><span className="x">{r.now}…</span></div>}
+            {timeline.isSuccess && !timeline.data.length && !live && <div className="sub" style={{ padding: '10px 0' }}>Nothing recorded.</div>}
+          </div>
+        </div>
+        <div className="stack" style={{ gap: 20, minWidth: 0 }}>
+          <div className="stack" style={{ gap: 8 }}>
+            <div className="mini-label">Active threads</div>
+            {d.claims.length ? d.claims.map((cl) => (
+              <Link key={cl.id} to={`/t/${cl.thread_id}`} className="claim-mini">
+                <div className="row-between"><span>#{cl.thread_title}</span><span className={`ink-${CLAIM[cl.status] ?? 'mute'}`}>{cap(cl.status.replace('_', ' '))}</span></div>
+                <span className="title">{cl.plan}</span>
+              </Link>
+            )) : <span className="sub">None.</span>}
+          </div>
+          <div className="stack" style={{ gap: 6 }}>
+            <div className="mini-label">Changes</div>
+            {groups.length ? groups.map(([g, v]) => <div key={g} className="change-row"><span>{g}</span><span className="mono">{v}</span></div>)
+              : <span className="sub">{live ? 'Memory changes show when the run ends.' : 'No changes.'}</span>}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const DETAIL_FILTERS: [string, (i: S['TimelineItem']) => boolean][] = [
+  ['All', () => true], ['Tools', (i) => i.kind === 'tool'], ['Diffs', (i) => i.kind === 'diff'], ['Reviewer', (i) => i.kind === 'reviewer'],
+  ['Control', (i) => i.kind === 'control' || i.kind === 'model' || i.kind === 'usage' || i.kind === 'error'],
+]
+const KIND_INK: Record<string, string> = {
+  control: 'var(--infoInk)', model: 'var(--infoInk)', thinking: 'var(--faint)', reviewer: 'var(--purpleInk)', ask: 'var(--warnInk)', diff: 'var(--okInk)', usage: 'var(--faint)', error: 'var(--badInk)',
+}
+const KIND_LABEL: Record<string, string> = { text: 'Message', tool: 'Tool', control: 'Control' }
+
+function Detailed({ id, back }: { id: number; back: () => void }) {
+  const timeline = useTimeline(id, 'detailed')
+  const [q, setQ] = useState('')
+  const [f, setF] = useState(0)
+  const [thinking, setThinking] = useState(false)
+  const items = (timeline.data ?? []).filter((i) => (thinking || i.kind !== 'thinking') && DETAIL_FILTERS[f][1](i) && (!q.trim() || i.text.toLowerCase().includes(q.trim().toLowerCase())))
+  return <>
+    <button className="back-link" onClick={back}>← Back to summary</button>
+    <div className="stack" style={{ gap: 14 }}>
+      <div className="row-start" style={{ gap: 10, flexWrap: 'wrap' }}>
+        <input className="input tl-search" placeholder="Search timeline" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search timeline" />
+        {DETAIL_FILTERS.map(([l], i) => <button key={l} className={`filter ${f === i ? 'on' : ''}`} onClick={() => setF(i)}>{l}</button>)}
+        <button className="switch-label" style={{ marginLeft: 'auto' }} role="switch" aria-checked={thinking} onClick={() => setThinking(!thinking)}>
+          <span className={`switch ${thinking ? 'on' : ''}`}><span /></span>Show thinking
+        </button>
+      </div>
+      <div className="detail-list">
+        {items.map((i) => {
+          const code = typeof i.data.patch === 'string' ? i.data.patch : i.kind === 'tool' && typeof i.data.result === 'string' && i.data.result ? i.data.result : null
+          return (
+            <div key={i.id} id={`t${i.id}`} className={`detail-row ${i.kind === 'reviewer' ? 'reviewer' : ''}`}>
+              <span className="t">{new Date(i.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
+              <span className="k" style={{ color: KIND_INK[i.kind] ?? 'var(--muted)' }}>{KIND_LABEL[i.kind] ?? cap(i.kind)}</span>
+              <div className="stack" style={{ gap: 6, minWidth: 0 }}>
+                <span className="x" style={{ fontStyle: i.kind === 'thinking' ? 'italic' : undefined, fontFamily: i.kind === 'tool' ? 'var(--mono)' : undefined, fontSize: i.kind === 'tool' ? 12.5 : undefined }}>{i.text}</span>
+                {i.kind === 'diff' && Array.isArray(i.data.files) && (i.data.files as { path: string; added: number | null; removed: number | null }[]).map((fl) => (
+                  <span key={fl.path} className="mono sub">{fl.path}  <span style={{ color: 'var(--okInk)' }}>+{fl.added ?? '?'}</span> <span style={{ color: 'var(--badInk)' }}>−{fl.removed ?? '?'}</span></span>
+                ))}
+                {code && <pre className={i.data.is_error ? 'err' : ''}>{code}</pre>}
+              </div>
+              <a href={`#t${i.id}`} className="go" title="Link to this step">↗</a>
+            </div>
+          )
+        })}
+        {timeline.isSuccess && !items.length && <div className="sub" style={{ padding: 14 }}>Nothing matches.</div>}
+      </div>
+    </div>
+  </>
 }

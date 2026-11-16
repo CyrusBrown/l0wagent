@@ -135,6 +135,19 @@ class Backend:
     def patch_routine(self, routine_id: int, req: s.RoutinePatch) -> s.Routine: raise NotImplementedError
     def delete_routine(self, routine_id: int) -> None: raise NotImplementedError
 
+    # 1:1 chats (M6)
+    def chats(self, archived: bool) -> list[s.Chat]: raise NotImplementedError
+    def chat(self, chat_id: int) -> s.Chat: raise NotImplementedError
+    def create_chat(self, req: s.ChatCreate) -> s.Chat: raise NotImplementedError
+    def patch_chat(self, chat_id: int, req: s.ChatPatch) -> s.Chat: raise NotImplementedError
+    def chat_messages(self, chat_id: int) -> list[s.ChatMessage]: raise NotImplementedError
+    def send_chat_message(self, chat_id: int, req: s.ChatMessageCreate) -> s.ChatMessage: raise NotImplementedError
+    def stop_chat(self, chat_id: int) -> s.Chat: raise NotImplementedError
+    def decide_chat_card(self, chat_id: int, message_id: int, req: s.ChatCardDecision) -> s.ChatMessage: raise NotImplementedError
+    def chat_handoff(self, chat_id: int, req: s.ChatHandoff) -> s.Chat: raise NotImplementedError
+    def chat_ask(self, chat_id: int, req: s.ChatAsk) -> s.ChatMessage: raise NotImplementedError
+    def chat_pull(self, chat_id: int, req: s.ChatPull) -> s.Chat: raise NotImplementedError
+
     # secrets (write-only)
     def secrets(self) -> list[s.SecretInfo]: raise NotImplementedError
     def set_secret(self, name: str, req: s.SecretSet) -> s.SecretInfo: raise NotImplementedError

@@ -23,6 +23,7 @@ from .. import __version__
 from ..api import schemas as s
 from ..auth import Auth, iso, parse, utcnow
 from ..budgets import LEVELS, OPENCODE_GO, RUNTIME, SUBSCRIPTION, TIERS, Budgets
+from ..chat import Chats
 from ..config import Env, Settings
 from ..conv import Conversations
 from ..db import Database
@@ -90,6 +91,7 @@ class SqliteBackend(Backend):
         self.updates = Updates(self.db)
         self.notifier = Notifier(self.db, self.env.data_dir)
         self.conv.notify = self.notifier.notify
+        self.chats_ = Chats(self.db, self, self.live, self.budgets, self.vault)
         self.signer = Signer(self.vault.key)
         self.files_app = files_app(self.storage, self.signer, self.shelf_.raw)
         self._files_server = None
@@ -109,6 +111,7 @@ class SqliteBackend(Backend):
         self.loop = asyncio.get_running_loop()
         self.notifier.loop = self.loop
         self.live.bind(self.loop)
+        self.chats_.startup()
         await self.runs_mgr.startup()
         self._watcher = asyncio.create_task(self.shelf_.watch(self.runs_mgr.active_run_id))
         self._scheduler = asyncio.create_task(self.scheduler.loop()) if os.environ.get("L0W_SCHEDULER", "1") != "0" else None
@@ -533,6 +536,40 @@ class SqliteBackend(Backend):
 
     def secrets(self) -> list[s.SecretInfo]:
         return [self._secret(r["name"]) for r in self.vault.listing()]
+
+    # ── 1:1 chats ──────────────────────────────────────────────────────────
+    def chats(self, archived: bool) -> list[s.Chat]:
+        return self.chats_.chats(archived)
+
+    def chat(self, chat_id: int) -> s.Chat:
+        return self.chats_.chat(chat_id)
+
+    def create_chat(self, req: s.ChatCreate) -> s.Chat:
+        return self.chats_.create(req)
+
+    def patch_chat(self, chat_id: int, req: s.ChatPatch) -> s.Chat:
+        return self.chats_.patch(chat_id, req)
+
+    def chat_messages(self, chat_id: int) -> list[s.ChatMessage]:
+        return self.chats_.messages(chat_id)
+
+    def send_chat_message(self, chat_id: int, req: s.ChatMessageCreate) -> s.ChatMessage:
+        return self.chats_.send(chat_id, req)
+
+    def stop_chat(self, chat_id: int) -> s.Chat:
+        return self.chats_.stop(chat_id)
+
+    def decide_chat_card(self, chat_id: int, message_id: int, req: s.ChatCardDecision) -> s.ChatMessage:
+        return self.chats_.decide(chat_id, message_id, req)
+
+    def chat_handoff(self, chat_id: int, req: s.ChatHandoff) -> s.Chat:
+        return self.chats_.handoff(chat_id, req)
+
+    def chat_ask(self, chat_id: int, req: s.ChatAsk) -> s.ChatMessage:
+        return self.chats_.ask(chat_id, req)
+
+    def chat_pull(self, chat_id: int, req: s.ChatPull) -> s.Chat:
+        return self.chats_.pull(chat_id, req.thread_id)
 
     def set_secret(self, name: str, req: s.SecretSet) -> s.SecretInfo:
         out = self.vault.set(name, req.value, req.description)

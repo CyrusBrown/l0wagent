@@ -63,7 +63,7 @@ describe('screens render with mock data', () => {
   it('Run detail', async () => {
     renderAt('/runs/123')
     expect(await screen.findByText('Status timeline')).toBeInTheDocument()
-    expect(screen.getByText(/Reproduced the double trigger/)).toBeInTheDocument()
+    expect(await screen.findByText(/Reproduced the double trigger/)).toBeInTheDocument()
   })
   it('Files', async () => {
     renderAt('/files')
@@ -123,7 +123,10 @@ describe('screens render with mock data', () => {
   it('New', async () => {
     renderAt('/new')
     expect(await screen.findByPlaceholderText('What should the assistant work on?')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '1:1 chat' })).toBeDisabled()
+    const chat = screen.getByRole('button', { name: '1:1 chat' })
+    expect(chat).toBeEnabled()
+    fireEvent.click(chat)
+    expect(await screen.findByPlaceholderText('Start a chat. Replies stream right away.')).toBeInTheDocument()
   })
   it('Project tabs', async () => {
     renderAt('/p/garden-irrigation')

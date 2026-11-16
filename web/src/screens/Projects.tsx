@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import type { S } from '../api/client'
 import {
-  problem, uploadFile, useCreateProject, useCreateThread, useInbox, useMe, useProject, useProjects, useRuns, useShelf, useStatus, useThreads,
+  problem, uploadFile, useCreateProject, useCreateChat, useCreateThread, useInbox, useMe, useProject, useProjects, useRuns, useShelf, useStatus, useThreads,
 } from '../api/queries'
 import { InboxCard } from '../components/Cards'
 import { ago, bytes, duration, usageText } from '../components/format'
@@ -178,9 +178,11 @@ export function NewItem() {
   const status = useStatus()
   const waiting = useInbox('waiting')
   const create = useCreateThread()
+  const newChat = useCreateChat()
   const nav = useNavigate()
   const picker = useRef<HTMLInputElement>(null)
   const [text, setText] = useState('')
+  const [chat, setChat] = useState(params.get('chat') === '1' && !project)
   const [files, setFiles] = useState<S['Upload'][]>([])
   const [uploading, setUploading] = useState(0)
   const st = status.data
@@ -193,6 +195,10 @@ export function NewItem() {
   const submit = () => {
     const body = text.trim()
     if (!body || uploading) return
+    if (chat) {
+      newChat.mutate({ message: body }, { onSuccess: (c) => c && nav(`/c/${c.id}`) })
+      return
+    }
     create.mutate({ title: body.split('\n')[0].slice(0, 80), project, first_message: body, upload_ids: files.map((f) => f.id) }, { onSuccess: (t) => nav(t ? `/t/${t.id}` : project ? `/p/${project}` : '/') })  // null: queued offline, sent when back online
   }
   const where = project ? (projectInfo.data?.name ?? project) : 'General'
@@ -201,25 +207,26 @@ export function NewItem() {
       <h1 className="new-greeting">{greeting()}{me.data?.display_name ? `, ${me.data.display_name}` : ''}</h1>
       <div className="stack" style={{ gap: 10 }}>
         <div className="new-composer">
-          <textarea rows={3} autoFocus placeholder={project ? `Start a thread in ${where}…` : 'What should the assistant work on?'} value={text}
+          <textarea rows={3} autoFocus placeholder={chat ? 'Start a chat. Replies stream right away.' : project ? `Start a thread in ${where}…` : 'What should the assistant work on?'} value={text}
             onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit() }} />
           {!!files.length && <div className="attach-row">{files.map((f) => <span key={f.id} className="file-chip"><span className="ext">{f.name.split('.').pop()?.toUpperCase().slice(0, 4)}</span>{f.name}<span className="size">{bytes(f.size)}</span></span>)}</div>}
           <div className="row-start" style={{ gap: 8, flexWrap: 'wrap' }}>
-            <button className="btn square" title="Attach files" onClick={() => picker.current?.click()}>+</button>
+            {!chat && <button className="btn square" title="Attach files" onClick={() => picker.current?.click()}>+</button>}
             <input ref={picker} type="file" multiple hidden onChange={(e) => { if (e.target.files) void attach(e.target.files); e.target.value = '' }} />
             <div className="seg">
-              <button disabled title="1:1 chats arrive with M6">1:1 chat</button>
-              <button className="on">Assistant · {where}</button>
+              <button className={chat ? 'on' : ''} disabled={!!project} onClick={() => setChat(true)} title="A 1:1 chat with live replies">1:1 chat</button>
+              <button className={chat ? '' : 'on'} onClick={() => setChat(false)}>Assistant · {where}</button>
             </div>
             <span style={{ flex: 1 }} />
-            <button className="send" onClick={submit} disabled={!text.trim() || create.isPending || !!uploading} title="Start the thread (⌘↵)">↑</button>
+            <button className="send" onClick={submit} disabled={!text.trim() || create.isPending || newChat.isPending || !!uploading} title={chat ? 'Start the chat (⌘↵)' : 'Start the thread (⌘↵)'}>↑</button>
           </div>
         </div>
         <div className="row-start sub" style={{ padding: '0 8px', fontSize: 12.5, color: 'var(--muted)' }}>
           <span className={`dot ${st?.state === 'working' ? 'ok' : ''}`} />
-          {st?.state === 'working' ? 'The assistant is working now and sees new threads after its next step.' : 'Starts a thread. The assistant picks it up on its next run, or press Reply now in the thread.'}
+          {chat ? 'A 1:1 chat with your own model. It can read the assistant\'s threads and files, and hand work over to it.'
+            : st?.state === 'working' ? 'The assistant is working now and sees new threads after its next step.' : 'Starts a thread. The assistant picks it up on its next run, or press Reply now in the thread.'}
         </div>
-        {create.error && <div className="error">{problem(create.error)}</div>}
+        {(create.error || newChat.error) && <div className="error">{problem(create.error ?? newChat.error)}</div>}
       </div>
       <div className="new-chips">
         <Link to={st?.run_id ? `/runs/${st.run_id}` : '/runs'} className="new-chip">
@@ -228,7 +235,7 @@ export function NewItem() {
           <span className="ellipsis sub" style={{ color: 'var(--muted)' }}>{st?.state === 'working' ? st.now : 'no wakeups planned'}</span>
         </Link>
         <div className="new-chip">
-          <span className="section-label">{st?.budget ? 'Budget this week' : 'Claude usage this week'}</span>
+          <span className="section-label">{st?.budget ? `Budget this ${st.budget.period ?? 'week'}` : 'Claude usage this week'}</span>
           <span style={{ font: '500 14px var(--sans)' }}>{st?.budget ? <>{st.budget.left} <span style={{ fontWeight: 400, color: 'var(--muted)' }}>of {st.budget.allowance} {st.budget.unit} left</span></> : usageText(st?.usage)}</span>
           <div className="gauge"><div style={{ width: `${Math.min(100, st?.budget ? (1 - st.budget.left / st.budget.allowance) * 100 : st?.usage?.seven_day_pct ?? 0)}%` }} /></div>
         </div>

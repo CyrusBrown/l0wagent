@@ -40,6 +40,8 @@ class World:
     file_text: dict[str, str] = field(default_factory=dict)
     sessions: dict[str, s.AuthSession] = field(default_factory=dict)
     secrets: dict[str, s.SecretInfo] = field(default_factory=dict)
+    chats: dict[int, s.Chat] = field(default_factory=dict)
+    chat_messages: dict[int, list[s.ChatMessage]] = field(default_factory=dict)
     wakeups: dict[int, s.Wakeup] = field(default_factory=dict)
     routines: dict[int, s.Routine] = field(default_factory=dict)
     budget: dict[str, Any] = field(default_factory=lambda: {"level": "steady", "overrides": {}, "boost": None, "reply_pts": 30.0, "fallback_pts": None})
@@ -279,6 +281,25 @@ def build(now: datetime | None = None) -> World:
     w.routines[2] = s.Routine(id=2, name="Inbox triage", prompt="Triage /work/_inbox: file each upload under its project and tell me what's new.",
                               schedule={"kind": "daily", "time": "07:00"}, schedule_text="Daily at 07:00", provider="claude-subscription", tier="sonnet/low", budget=8,
                               enabled=True, builtin=None, status="active", created_by="owner", next_at=at(3, 7), last_run_at=ago(days=1))
+    # 1:1 chats (M6), as in the mockup's sidebar; the first sets up an integration.
+    for cid, title, when, msgs in (
+        (1, "Setting up GitHub for the assistant", ago(hours=2), [
+            ("owner", "I want the assistant to read my garden-irrigation repo but never push. Can you set that up?", {}),
+            ("tool", "", {"name": "list_threads", "input": {}, "result": "[…]", "is_error": False}),
+            ("tool", "", {"name": "read_thread", "input": {"thread_id": 1}, "result": "{…}", "is_error": False}),
+            ("assistant", "Yes. GitHub has a preset with separate read and write tools. A fine-grained token with read-only access to that one repo is enough; "
+                          "paste it below and I won't see it.", {"calls": []}),
+            ("card", "", {"kind": "secret", "name": "GITHUB_TOKEN", "description": "Fine-grained, read-only: contents and metadata of garden-irrigation",
+                          "link": "https://github.com/settings/personal-access-tokens/new", "state": "open"}),
+        ]),
+        (2, "Convert feed rates to metric", ago(days=1), [("owner", "What's 12 inches per minute in mm/s?", {}), ("assistant", "12 in/min = 5.08 mm/s.", {"calls": []})]),
+        (3, "Scaling the sourdough recipe", ago(days=6), [("owner", "Scale 500 g flour, 350 g water, 100 g starter to 800 g flour.", {}),
+                                                          ("assistant", "800 g flour, 560 g water, 160 g starter (×1.6).", {"calls": []})]),
+    ):
+        w.chats[cid] = s.Chat(id=cid, title=title, provider="claude-subscription", tier="sonnet/medium", status="open", busy=False, available=True,
+                              last_message_preview=msgs[-1][1][:140] or None, created_at=when - timedelta(minutes=10), updated_at=when)
+        w.chat_messages[cid] = [s.ChatMessage(id=cid * 100 + i, chat_id=cid, role=r, body=b, data=d, created_at=when - timedelta(minutes=10 - i))  # type: ignore[arg-type]
+                                for i, (r, b, d) in enumerate(msgs)]
     return w
 
 

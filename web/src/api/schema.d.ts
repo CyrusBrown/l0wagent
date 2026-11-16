@@ -1049,6 +1049,157 @@ export interface paths {
         patch: operations["patch_routine_api_routines__routine_id__patch"];
         trace?: never;
     };
+    "/api/chats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Chats */
+        get: operations["list_chats_api_chats_get"];
+        put?: never;
+        /**
+         * Create Chat
+         * @description Start a chat with its first message; the reply streams as `chat_delta` live events.
+         */
+        post: operations["create_chat_api_chats_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chats/{chat_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Chat */
+        get: operations["get_chat_api_chats__chat_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Chat */
+        patch: operations["patch_chat_api_chats__chat_id__patch"];
+        trace?: never;
+    };
+    "/api/chats/{chat_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Chat Messages */
+        get: operations["chat_messages_api_chats__chat_id__messages_get"];
+        put?: never;
+        /** Send Chat Message */
+        post: operations["send_chat_message_api_chats__chat_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chats/{chat_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop Chat */
+        post: operations["stop_chat_api_chats__chat_id__stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chats/{chat_id}/cards/{message_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Chat Card
+         * @description Act on a card the chat proposed. Online only. A secret's value is stored write-only.
+         */
+        post: operations["decide_chat_card_api_chats__chat_id__cards__message_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chats/{chat_id}/handoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Chat Handoff
+         * @description Move to the assistant: a new thread with the summary and the transcript attached.
+         */
+        post: operations["chat_handoff_api_chats__chat_id__handoff_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chats/{chat_id}/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Chat Ask */
+        post: operations["chat_ask_api_chats__chat_id__ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chats/{chat_id}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Chat Pull
+         * @description Pull a thread into the chat as read-only context.
+         */
+        post: operations["chat_pull_api_chats__chat_id__context_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/secrets": {
         parameters: {
             query?: never;
@@ -1625,6 +1776,16 @@ export interface components {
              */
             until_reset?: boolean;
         };
+        /**
+         * BudgetCaps
+         * @description Shares of the period's allowance the assistant may spend in any window (opencode Go: 0.2 and 0.5).
+         */
+        BudgetCaps: {
+            /** Five Hour */
+            five_hour?: number | null;
+            /** Week */
+            week?: number | null;
+        };
         /** BudgetLimits */
         BudgetLimits: {
             /**
@@ -1703,6 +1864,15 @@ export interface components {
             /** Level */
             level?: ("dormant" | "frugal" | "steady" | "busy" | "max") | null;
             overrides?: components["schemas"]["BudgetLimitsPatch"] | null;
+            /**
+             * Period
+             * @description Not for the Claude subscription (weekly).
+             */
+            period?: ("week" | "month") | null;
+            /** Reset Day */
+            reset_day?: number | null;
+            /** @description Set both shares; 0 or null turns one off. */
+            caps?: components["schemas"]["BudgetCaps"] | null;
             /** Reply Pts */
             reply_pts?: number | null;
             /** Fallback Pts */
@@ -1733,6 +1903,12 @@ export interface components {
             used_by_chat: number;
             /** Resets At */
             resets_at?: string | null;
+            /**
+             * Period
+             * @default week
+             * @enum {string}
+             */
+            period?: "week" | "month";
         };
         /** Calendar */
         Calendar: {
@@ -1807,6 +1983,175 @@ export interface components {
              * @default []
              */
             extensions?: string[];
+        };
+        /**
+         * Chat
+         * @description A 1:1 chat with the owner's own model. Independent: no memory across chats.
+         */
+        Chat: {
+            /** Id */
+            id: number;
+            /** Title */
+            title: string;
+            /** Provider */
+            provider: string;
+            /**
+             * Tier
+             * @description model/effort, e.g. sonnet/medium (on opencode Go, the tier's mapped model).
+             */
+            tier: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "archived";
+            /**
+             * Busy
+             * @description A reply is being written.
+             */
+            busy: boolean;
+            /**
+             * Available
+             * @description The chat can run on its provider (a key is saved; the subscription needs the sidecar).
+             */
+            available: boolean;
+            handed_off_to?: components["schemas"]["ThreadRef"] | null;
+            /**
+             * Context Threads
+             * @description Threads pulled in as read-only context.
+             * @default []
+             */
+            context_threads?: number[];
+            /** Last Message Preview */
+            last_message_preview?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ChatAsk
+         * @description 'Ask the assistant': a message into an existing thread, labeled via chat.
+         */
+        ChatAsk: {
+            /** Thread Id */
+            thread_id: number;
+            /** Message */
+            message: string;
+        };
+        /**
+         * ChatCardDecision
+         * @description Online only (a card can be a secret, a level, a network rule or a wakeup).
+         */
+        ChatCardDecision: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve" | "decline";
+            /**
+             * Value
+             * @description A secret card's value: stored write-only, never shown to the model.
+             */
+            value?: string | null;
+        };
+        /** ChatCreate */
+        ChatCreate: {
+            /** Message */
+            message: string;
+            /** Title */
+            title?: string | null;
+            /**
+             * Provider
+             * @description Defaults to the chat role's provider.
+             */
+            provider?: string | null;
+            /**
+             * Tier
+             * @description Defaults to the chat role's tier.
+             */
+            tier?: string | null;
+            /**
+             * Idempotency Key
+             * @description Client-generated key; repeating a create with the same key returns the first result.
+             */
+            idempotency_key?: string | null;
+        };
+        /**
+         * ChatHandoff
+         * @description 'Move to the assistant': a new thread whose first message is the summary, with the transcript attached.
+         */
+        ChatHandoff: {
+            /** Title */
+            title?: string | null;
+            /** Project */
+            project?: string | null;
+            /**
+             * Summary
+             * @description Defaults to one built from the chat.
+             */
+            summary?: string | null;
+        };
+        /** ChatMessage */
+        ChatMessage: {
+            /** Id */
+            id: number;
+            /** Chat Id */
+            chat_id: number;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "owner" | "assistant" | "tool" | "card" | "system";
+            /** Body */
+            body: string;
+            /**
+             * Data
+             * @description assistant: {calls}; tool: {name, input, result, is_error}; card: {kind, ..., state}; system: {thread_id?}.
+             * @default {}
+             */
+            data?: {
+                [key: string]: unknown;
+            };
+            /** Model */
+            model?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** ChatMessageCreate */
+        ChatMessageCreate: {
+            /** Body */
+            body: string;
+            /**
+             * Idempotency Key
+             * @description Client-generated key; repeating a create with the same key returns the first result.
+             */
+            idempotency_key?: string | null;
+        };
+        /** ChatPatch */
+        ChatPatch: {
+            /** Title */
+            title?: string | null;
+            /** Provider */
+            provider?: string | null;
+            /** Tier */
+            tier?: string | null;
+            /** Status */
+            status?: ("open" | "archived") | null;
+        };
+        /** ChatPull */
+        ChatPull: {
+            /** Thread Id */
+            thread_id: number;
         };
         /** Claim */
         Claim: {
@@ -2588,6 +2933,24 @@ export interface components {
             pts_per_usd: number;
             /** Fallback Pts */
             fallback_pts: number;
+            /**
+             * Period
+             * @description The budget period: week, or month from reset_day. Fields named week_* mean the period.
+             * @default week
+             * @enum {string}
+             */
+            period?: "week" | "month";
+            /**
+             * Reset Day
+             * @description Monthly periods: the day of the month they reset (1–28).
+             */
+            reset_day?: number | null;
+            caps?: components["schemas"]["BudgetCaps"] | null;
+            /**
+             * Cap Reason
+             * @description Why the caps stop new runs right now, if they do.
+             */
+            cap_reason?: string | null;
             /** Has Credential */
             has_credential: boolean;
         };
@@ -3576,6 +3939,13 @@ export interface components {
             /** Pinned */
             pinned?: boolean | null;
         };
+        /** ThreadRef */
+        ThreadRef: {
+            /** Id */
+            id: number;
+            /** Title */
+            title: string;
+        };
         /** TierModel */
         TierModel: {
             /**
@@ -3855,7 +4225,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "hello" | "heartbeat" | "status" | "message" | "thread" | "project" | "card" | "claim" | "timeline" | "run" | "inbox_counts" | "unread" | "job" | "shelf" | "upload" | "question" | "permission" | "task" | "suggestion" | "promote" | "security" | "budget" | "calendar";
+            type: "hello" | "heartbeat" | "status" | "message" | "thread" | "project" | "card" | "claim" | "timeline" | "run" | "inbox_counts" | "unread" | "job" | "shelf" | "upload" | "question" | "permission" | "task" | "suggestion" | "promote" | "security" | "budget" | "calendar" | "chat" | "chat_delta";
             /**
              * Cursor
              * @description Sync cursor after this event, when it changed cached data.
@@ -6137,6 +6507,374 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Routine"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_chats_api_chats_get: {
+        parameters: {
+            query?: {
+                archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_chat_api_chats_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_chat_api_chats__chat_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_chat_api_chats__chat_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_messages_api_chats__chat_id__messages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatMessage"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_chat_message_api_chats__chat_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatMessageCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatMessage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_chat_api_chats__chat_id__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_chat_card_api_chats__chat_id__cards__message_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+                message_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatCardDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatMessage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_handoff_api_chats__chat_id__handoff_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatHandoff"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_ask_api_chats__chat_id__ask_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatAsk"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatMessage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_pull_api_chats__chat_id__context_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatPull"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"];
                 };
             };
             /** @description Validation Error */

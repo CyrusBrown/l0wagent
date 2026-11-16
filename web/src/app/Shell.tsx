@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
+import type { S } from '../api/client'
 import { useLive } from '../api/live'
-import { useInboxCounts, useProjects, useStatus, useStopRun, useThreads, useUpdateInfo } from '../api/queries'
+import { useChats, useInboxCounts, useProjects, useStatus, useStopRun, useThreads, useUpdateInfo } from '../api/queries'
 import { pts, until, usageText } from '../components/format'
 import { useOnline } from '../components/online'
 import { useOutbox } from '../api/offline'
 import { Palette } from './Palette'
 import { useTheme } from './theme'
 
-const CONVERSATION = /^\/(t|p|projects|new)(\/|$)/
+const CONVERSATION = /^\/(t|c|p|projects|new)(\/|$)/
 
 export function Shell() {
   const live = useLive(true)
@@ -104,7 +105,7 @@ function StatusChip() {
   const label = { working: 'Working', asleep: 'Asleep', dormant: 'Dormant', paused: 'Paused' }[st.state]
   const text = working ? st.now : st.next_wakeup_at ? `next wakeup ${until(st.next_wakeup_at)}` : 'no wakeups planned'
   const budget = st.budget
-    ? working && st.run_budget != null ? `${pts(st.run_used)} / ${pts(st.run_budget)} ${st.budget.unit}` : `${pts(st.budget.left)} ${st.budget.unit} left this week`
+    ? working && st.run_budget != null ? `${pts(st.run_used)} / ${pts(st.run_budget)} ${st.budget.unit}` : `${pts(st.budget.left)} ${st.budget.unit} left this ${st.budget.period ?? 'week'}`
     : usageText(st.usage)
   return <>
     <Link to={working && st.run_id ? `/runs/${st.run_id}` : '/runs'} className="chip" title="Open runs">
@@ -151,7 +152,38 @@ function Sidebar() {
           </div>
         )
       })}
+      <ChatList />
     </aside>
+  )
+}
+
+/** The mockup's Chats list under the assistant's tree: grouped by day, newest first. */
+function ChatList() {
+  const chats = useChats()
+  const groups = new Map<string, S['Chat'][]>()
+  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const today = day(new Date())
+  for (const c of chats.data ?? []) {
+    const t = day(new Date(c.updated_at))
+    const label = t === today ? 'Today' : t === today - 86400_000 ? 'Yesterday' : t > today - 7 * 86400_000 ? 'This week' : 'Earlier'
+    groups.set(label, [...(groups.get(label) ?? []), c])
+  }
+  return (
+    <div className="side-chats">
+      <div className="side-label">Chats <Link to="/new?chat=1" title="New chat (C)">+</Link></div>
+      {!chats.data?.length && <div className="sub" style={{ padding: '2px 10px' }}>No chats yet.</div>}
+      {[...groups].map(([label, list]) => (
+        <div key={label}>
+          <div className="side-group">{label}</div>
+          {list.map((c) => (
+            <NavLink key={c.id} to={`/c/${c.id}`} className={({ isActive }) => (isActive ? 'active' : '')}>
+              <span className="grow">{c.title}</span>
+              {c.busy && <span className="dot working" />}
+            </NavLink>
+          ))}
+        </div>
+      ))}
+    </div>
   )
 }
 
