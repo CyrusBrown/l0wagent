@@ -5,6 +5,8 @@ import {
   problem, uploadChatFile, uploadFile, useCreateProject, useCreateChat, useCreateThread, useInbox, useMe, useProject, useProjects, useRuns, useShelf, useStatus, useThreads,
 } from '../api/queries'
 import { InboxCard } from '../components/Cards'
+import { isSendKey } from '../components/sendKey'
+import { useDraft } from '../components/useDraft'
 import { ago, bytes, duration, usageText } from '../components/format'
 import { ShelfView } from '../components/ShelfView'
 
@@ -181,7 +183,7 @@ export function NewItem() {
   const newChat = useCreateChat()
   const nav = useNavigate()
   const picker = useRef<HTMLInputElement>(null)
-  const [text, setText] = useState('')
+  const [text, setText, clearDraft] = useDraft(`new:${project ?? 'general'}`)  // survives navigating away
   const [chat, setChat] = useState(params.get('chat') === '1' && !project)
   const [files, setFiles] = useState<S['Upload'][]>([])
   const [chatFiles, setChatFiles] = useState<S['ChatFile'][]>([])
@@ -197,12 +199,12 @@ export function NewItem() {
   }
   const submit = () => {
     const body = text.trim()
-    if (!body || uploading) return
+    if (!body || uploading || create.isPending || newChat.isPending) return
     if (chat) {
-      newChat.mutate({ message: body, upload_ids: chatFiles.map((f) => f.id) }, { onSuccess: (c) => c && nav(`/c/${c.id}`) })
+      newChat.mutate({ message: body, upload_ids: chatFiles.map((f) => f.id) }, { onSuccess: (c) => { clearDraft(); if (c) nav(`/c/${c.id}`) } })
       return
     }
-    create.mutate({ title: body.split('\n')[0].slice(0, 80), project, first_message: body, upload_ids: files.map((f) => f.id) }, { onSuccess: (t) => nav(t ? `/t/${t.id}` : project ? `/p/${project}` : '/') })  // null: queued offline, sent when back online
+    create.mutate({ title: body.split('\n')[0].slice(0, 80), project, first_message: body, upload_ids: files.map((f) => f.id) }, { onSuccess: (t) => { clearDraft(); nav(t ? `/t/${t.id}` : project ? `/p/${project}` : '/') } })  // null: queued offline, sent when back online
   }
   const where = project ? (projectInfo.data?.name ?? project) : 'General'
   return (
@@ -211,7 +213,7 @@ export function NewItem() {
       <div className="stack" style={{ gap: 10 }}>
         <div className="new-composer">
           <textarea rows={3} autoFocus placeholder={chat ? 'Start a chat. Replies stream right away.' : project ? `Start a thread in ${where}…` : 'What should the assistant work on?'} value={text}
-            onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit() }} />
+            onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (isSendKey(e)) { e.preventDefault(); submit() } }} />
           {!!(chat ? chatFiles : files).length && <div className="attach-row">{(chat ? chatFiles : files).map((f) => <span key={f.id} className="file-chip"><span className="ext">{f.name.split('.').pop()?.toUpperCase().slice(0, 4)}</span>{f.name}<span className="size">{bytes(f.size)}</span></span>)}</div>}
           <div className="row-start" style={{ gap: 8, flexWrap: 'wrap' }}>
             <button className="btn square" title="Attach files" onClick={() => picker.current?.click()}>+</button>
@@ -221,7 +223,7 @@ export function NewItem() {
               <button className={chat ? '' : 'on'} onClick={() => setChat(false)}>Assistant · {where}</button>
             </div>
             <span style={{ flex: 1 }} />
-            <button className="send" onClick={submit} disabled={!text.trim() || create.isPending || newChat.isPending || !!uploading} title={chat ? 'Start the chat (⌘↵)' : 'Start the thread (⌘↵)'}>↑</button>
+            <button className="send" onClick={submit} disabled={!text.trim() || create.isPending || newChat.isPending || !!uploading} title={chat ? 'Start the chat (Enter)' : 'Start the thread (Enter)'}>↑</button>
           </div>
         </div>
         <div className="row-start sub" style={{ padding: '0 8px', fontSize: 12.5, color: 'var(--muted)' }}>

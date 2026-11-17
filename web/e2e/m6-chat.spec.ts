@@ -9,7 +9,7 @@ test('1:1 chat: tools, a secret card and handing it to the assistant', async ({ 
 
   await page.goto('/new?chat=1')
   await page.getByPlaceholder('Start a chat. Replies stream right away.').fill('fake:tools what is the assistant up to?')
-  await page.getByTitle('Start the chat (⌘↵)').click()
+  await page.getByTitle('Start the chat (Enter)').click()
   await expect(page).toHaveURL(/\/c\/\d+/)
   await expect(page.getByRole('button', { name: /Listed threads · checked the status/ })).toBeVisible()
   await expect(page.locator('.theirs').getByText(/^Done/)).toBeVisible()

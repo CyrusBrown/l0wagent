@@ -595,9 +595,17 @@ class RunChanges(Model):
     threads: list[str]
 
 
+class RunThread(Model):
+    thread_id: int
+    title: str
+    messages: int = Field(description="Messages this run posted there.")
+    last_at: datetime
+
+
 class RunDetail(Model):
     run: Run
     claims: list[Claim]
+    threads: list[RunThread] = Field(default_factory=list, description="Threads this run posted in, newest first (with or without a claim).")
     changes: RunChanges
     reviewer_mode: Literal["off", "advisor", "monitor", "gate"]
     level: str | None

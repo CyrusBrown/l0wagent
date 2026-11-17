@@ -249,7 +249,10 @@
   .tl-list { padding: 8px 14px 12px }
   .tl-row { grid-template-columns: 40px 12px minmax(0, 1fr); gap: 8px }
   .tl-row .tag { display: none }
-  .detail-row { padding: 10px 12px }
+  /* Time and kind on one line above the step, so its text and output get the full width. */
+  .detail-row { padding: 10px 12px; grid-template-columns: auto minmax(0, 1fr) 20px; gap: 4px 10px }
+  .detail-row > .stack { grid-column: 1 / -1; grid-row: 2 }
+  .detail-row .go { grid-column: 3; grid-row: 1 }
   .tl-search { flex: 1 1 100%; max-width: none; min-width: 0 }
   .switch-label { min-height: 36px }
   .job-head { padding: 12px 14px }

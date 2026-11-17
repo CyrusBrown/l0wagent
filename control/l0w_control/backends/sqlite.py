@@ -701,7 +701,10 @@ class SqliteBackend(Backend):
         asks += [f"Promote: {r['reason']} ({r['status']})" for r in self.db.q("SELECT reason, status FROM promote_requests WHERE run_id=?", (run_id,))]
         threads += [f"Planned a wakeup: {r['reason']}" for r in self.db.q("SELECT reason FROM wakeups WHERE created_by='assistant' AND created_at>=? AND created_at<=? ORDER BY id",
                                                                            (iso(run.started_at), iso(run.ended_at or utcnow())))]
-        return s.RunDetail(run=run, claims=claims, changes=s.RunChanges(memory=memory, work=work, shelved=shelved, asks=asks, threads=threads),
+        posted = [s.RunThread(thread_id=r["id"], title=r["title"], messages=r["n"], last_at=parse(r["last_at"]))  # type: ignore[arg-type]
+                  for r in self.db.q("SELECT t.id, t.title, count(*) n, max(m.created_at) last_at FROM messages m JOIN threads t ON t.id=m.thread_id "
+                                     "WHERE m.run_id=? AND m.sender='assistant' GROUP BY t.id ORDER BY last_at DESC", (run_id,))]
+        return s.RunDetail(run=run, claims=claims, threads=posted, changes=s.RunChanges(memory=memory, work=work, shelved=shelved, asks=asks, threads=threads),
                            reviewer_mode=run.reviewer_mode, level=run.level)
 
     def timeline(self, run_id: int, view: str, kinds: list[str] | None, after: int | None) -> list[s.TimelineItem]:

@@ -5,6 +5,8 @@ import { problem, uploadFile, useDelivery, usePatchThread, usePostMessage, usePr
 import { ClaimCard, PermissionCard, PromoteCard, QuestionCard, SuggestionCard, TaskCard } from '../components/Cards'
 import { bytes, pts } from '../components/format'
 import { useLinkPicker } from '../components/LinkPicker'
+import { isSendKey } from '../components/sendKey'
+import { useDraft } from '../components/useDraft'
 import { Markdown } from '../components/Markdown'
 import { useEscape } from '../components/useEscape'
 import { usePresence } from '../components/motion'
@@ -18,6 +20,9 @@ export function Thread() {
   const id = Number(useParams().id)
   const thread = useThread(id)
   const items = useThreadItems(id)
+  // "seen" goes under your newest message the assistant has received, not under every one.
+  const seenId = (items.data?.items ?? []).reduce<number | null>((last, it) =>
+    it.type === 'message' && it.message.sender !== 'assistant' && it.message.sender !== 'system' && it.message.delivery !== 'queued' ? it.message.id : last, null)
   const scroller = useRef<HTMLDivElement>(null)
   const count = items.data?.items.length ?? 0
 
@@ -41,7 +46,7 @@ export function Thread() {
       <div className="thread-scroll" ref={scroller}>
         {t && <div className="thread-head"><div className="thread-head-inner"><ThreadHead t={t} messages={(items.data?.items ?? []).filter((i) => i.type === 'message').length} filesOpen={filesOpen} toggleFiles={() => setFilesOpen(!filesOpen)} /></div></div>}
         <div className="thread-items">
-          {items.data?.items.map((it) => <Item key={`${it.type}-${itemId(it)}`} it={it} />)}
+          {items.data?.items.map((it) => <Item key={`${it.type}-${itemId(it)}`} it={it} seenId={seenId} />)}
           {items.data?.items.length === 0 && <div className="thread-empty">No messages yet. Write the first one below.</div>}
           <Pending threadId={id} />
         </div>
@@ -129,9 +134,9 @@ const itemId = (it: S['ThreadItems']['items'][number]) => {
   }
 }
 
-function Item({ it }: { it: S['ThreadItems']['items'][number] }) {
+function Item({ it, seenId }: { it: S['ThreadItems']['items'][number]; seenId: number | null }) {
   switch (it.type) {
-    case 'message': return <MessageView m={it.message} />
+    case 'message': return <MessageView m={it.message} seen={it.message.id === seenId} />
     case 'question': return <QuestionCard q={it.question} />
     case 'permission': return <PermissionCard p={it.permission} />
     case 'task': return <TaskCard t={it.task} />
@@ -152,7 +157,7 @@ function Pending({ threadId }: { threadId: number }) {
   ))}</>
 }
 
-function MessageView({ m }: { m: S['Message'] }) {
+function MessageView({ m, seen }: { m: S['Message']; seen?: boolean }) {
   if (m.sender === 'system') return <div className="sys">{m.body}</div>
   if (m.sender === 'assistant') return <div className="theirs"><Markdown>{m.body}</Markdown></div>
   return (
@@ -165,13 +170,13 @@ function MessageView({ m }: { m: S['Message'] }) {
           <span className="ext">{a.name.split('.').pop()?.toUpperCase()}</span>{a.name}<span className="size">{bytes(a.size)}</span>
         </Link>
       ))}
-      {m.delivery === 'queued' && <div className="via">queued</div>}
+      {m.delivery === 'queued' ? <div className="via">queued</div> : seen && <div className="via" title="The assistant has received this">seen</div>}
     </div>
   )
 }
 
 function Composer({ threadId, project, append, appended }: { threadId: number; project: string | null; append: string | null; appended: () => void }) {
-  const [text, setText] = useState('')
+  const [text, setText] = useDraft(`thread:${threadId}`)  // an unsent reply survives leaving the thread
   useEffect(() => {
     if (append) { setText((t) => (t && !t.endsWith(' ') ? `${t} ` : t) + append + ' '); appended() }
   }, [append, appended])
@@ -198,7 +203,7 @@ function Composer({ threadId, project, append, appended }: { threadId: number; p
   }
   const send = () => {
     const body = text.trim()
-    if (!body || uploading) return
+    if (!body || uploading || post.isPending) return
     const upload_ids = files.flatMap((f) => (f.upload ? [f.upload.id] : []))
     post.mutate({ body, upload_ids }, { onSuccess: () => { setText(''); setFiles([]) } })
   }
@@ -225,13 +230,13 @@ function Composer({ threadId, project, append, appended }: { threadId: number; p
             onChange={(e) => { setText(e.target.value); setCaret(e.target.selectionStart) }}
             onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
             onPaste={(e) => { if (e.clipboardData.files.length) { e.preventDefault(); attach(e.clipboardData.files) } }}
-            onKeyDown={(e) => { if (links.onKey(e)) return; if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send() }}
+            onKeyDown={(e) => { if (links.onKey(e)) return; if (isSendKey(e)) { e.preventDefault(); send() } }}
           />
           <div className="composer-foot">
             <button className="btn small ghost" onClick={() => picker.current?.click()} disabled={!online}>+ Attach</button>
             <input ref={picker} type="file" multiple hidden onChange={(e) => { if (e.target.files) attach(e.target.files); e.target.value = '' }} />
             {post.isError && <span style={{ color: 'var(--badInk)' }}>Not sent: {problem(post.error)}</span>}
-            <button className="send" onClick={send} disabled={!text.trim() || post.isPending || uploading} title="Send (⌘↵)">↑</button>
+            <button className="send" onClick={send} disabled={!text.trim() || post.isPending || uploading} title="Send (Enter; Shift+Enter for a new line)">↑</button>
           </div>
         </div>
         <div className="delivery">

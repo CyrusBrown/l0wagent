@@ -7,6 +7,7 @@ import {
   uploadChatFile, useReplyNow, useSendChat, useStopChat, useThreads,
 } from '../api/queries'
 import { useOnline } from '../components/online'
+import { CodeBox } from '../components/CopyCode'
 import { useTimeFormat } from '../app/timeFormat'
 import { bytes, stamp } from '../components/format'
 import { Markdown } from '../components/Markdown'
@@ -234,7 +235,7 @@ function ToolLine({ tools }: { tools: S['ChatMessage'][] }) {
       {open && tools.map((t) => (
         <div key={t.id} className="tool-detail">
           <code>{String(t.data?.name)}({JSON.stringify(t.data?.input)})</code>
-          <pre>{String(t.data?.result ?? '').slice(0, 2000)}</pre>
+          <CodeBox text={String(t.data?.result ?? '')}><pre>{String(t.data?.result ?? '').slice(0, 2000)}</pre></CodeBox>
         </div>
       ))}
     </div>

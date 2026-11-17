@@ -8,14 +8,14 @@ test('offline outbox, cached threads, notification settings', async ({ page, req
 
   await page.goto('/new')
   await page.getByPlaceholder('What should the assistant work on?').fill('Order more drip line')
-  await page.getByTitle('Start the thread (⌘↵)').click()
+  await page.getByTitle('Start the thread (Enter)').click()
   await expect(page.getByRole('heading', { name: 'Order more drip line' })).toBeVisible()
   const url = page.url()
 
   await context.setOffline(true)
   await expect(page.locator('.offline-bar')).toContainText('Offline')
   await page.getByPlaceholder(/Reply…/).fill('Twenty metres, 16 mm.')
-  await page.getByTitle('Send (⌘↵)').click()
+  await page.getByTitle('Send (Enter; Shift+Enter for a new line)').click()
   await expect(page.locator('.mine.pending')).toContainText('Twenty metres, 16 mm.')
   await expect(page.getByText('Waiting for connection (on this device)').first()).toBeVisible()
   await expect(page.locator('.offline-bar')).toContainText('1 item waiting')

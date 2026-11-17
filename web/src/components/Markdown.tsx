@@ -1,6 +1,7 @@
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import { Link } from 'react-router'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
+import { CodeBox } from './CopyCode'
 import { routeFor } from './format'
 
 // Agent markdown is untrusted: sanitized, no raw HTML, and only http(s), mailto and l0wagent links.
@@ -33,6 +34,12 @@ export function Markdown({ children, fileBase }: { children: string; fileBase?: 
           const to = href ? routeFor(href) ?? (fileBase ? resolveRelative(href, fileBase) : null) : null
           if (to) return <Link to={to}>{children}</Link>
           return <a href={href} target="_blank" rel="noopener noreferrer nofollow">{children}</a>
+        },
+        pre: ({ children, node }) => {
+          const code = node?.children?.[0]
+          const cls = code && 'properties' in code ? code.properties?.className : undefined
+          const lang = (Array.isArray(cls) ? cls : []).map(String).find((c) => c.startsWith('language-'))?.slice(9)
+          return <CodeBox label={lang || 'Code'}><pre>{children}</pre></CodeBox>
         },
       }}
     >

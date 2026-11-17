@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { type CSSProperties, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import type { S } from '../api/client'
 import { problem, useJobs, useProjects, useRun, useRuns, useStartRun, useStopRun, useTimeline } from '../api/queries'
 import { useTimeFormat } from '../app/timeFormat'
 import { ago, clock, clockSeconds, duration, pts, stamp, until } from '../components/format'
 import { Select } from '../components/Select'
+import { CodeBox } from '../components/CopyCode'
 
 // Runs and one run, ported from the mockup's RUNS LIST and RUN screens. A run opens as its
 // summary; the status timeline card opens the full (detailed) timeline, with "← Back to summary".
@@ -105,7 +106,7 @@ function Jobs({ jobs }: { jobs: S['Job'][] }) {
         </div>
         <span className="mono" style={{ fontSize: 13, color: 'var(--fg2)' }}>{j.progress}</span>
       </div>
-      <pre className="job-log">{j.log_tail}</pre>
+      <CodeBox text={j.log_tail}><pre className="job-log">{j.log_tail}</pre></CodeBox>
       {j.dont_interrupt && <div className="job-foot">Updates are held until this job ends.</div>}
     </div>
   ))}</>
@@ -200,12 +201,20 @@ function Summary({ d, open }: { d: S['RunDetail']; open: () => void }) {
         <div className="stack" style={{ gap: 20, minWidth: 0 }}>
           <div className="stack" style={{ gap: 8 }}>
             <div className="mini-label">Active threads</div>
-            {d.claims.length ? d.claims.map((cl) => (
+            {d.claims.map((cl) => (
               <Link key={cl.id} to={`/t/${cl.thread_id}`} className="claim-mini">
                 <div className="row-between"><span>#{cl.thread_title}</span><span className={`ink-${CLAIM[cl.status] ?? 'mute'}`}>{cap(cl.status.replace('_', ' '))}</span></div>
                 <span className="title">{cl.plan}</span>
               </Link>
-            )) : <span className="sub">None.</span>}
+            ))}
+            {/* Threads it posted in without a claim: still where it's working. */}
+            {(d.threads ?? []).filter((th) => !d.claims.some((cl) => cl.thread_id === th.thread_id)).map((th) => (
+              <Link key={th.thread_id} to={`/t/${th.thread_id}`} className="claim-mini">
+                <div className="row-between"><span>#{th.title}</span><span className="ink-mute">{th.messages === 1 ? 'Replied' : `${th.messages} messages`}</span></div>
+                <span className="sub">Last {clock(th.last_at)} · no claim</span>
+              </Link>
+            ))}
+            {!d.claims.length && !d.threads?.length && <span className="sub">None.</span>}
           </div>
           <div className="stack" style={{ gap: 6 }}>
             <div className="mini-label">Changes</div>
@@ -227,6 +236,21 @@ const KIND_INK: Record<string, string> = {
 }
 const KIND_LABEL: Record<string, string> = { text: 'Message', tool: 'Tool', control: 'Control' }
 
+/** A command, a tool's output or a patch: wrapped (no sideways scrolling), and long ones fold to `lines` with "Show all". */
+function Output({ text, className, lines }: { text: string; className?: string; lines: number }) {
+  const [open, setOpen] = useState(false)
+  const rows = text.split('\n').length
+  const long = rows > lines || text.length > lines * 110
+  return (
+    <div className="out">
+      <CodeBox text={className === 'cmd' ? text.replace(/^\$ /, '') : text}>
+        <pre className={`${className ?? ''} ${long && !open ? 'folded' : ''}`} style={{ '--lines': lines } as CSSProperties}>{text}</pre>
+      </CodeBox>
+      {long && <button className="out-more" onClick={() => setOpen(!open)}>{open ? 'Show less' : `Show all${rows > lines ? ` (${rows} lines)` : ''}`}</button>}
+    </div>
+  )
+}
+
 function Detailed({ id, back }: { id: number; back: () => void }) {
   const timeline = useTimeline(id, 'detailed')
   const [q, setQ] = useState('')
@@ -246,16 +270,21 @@ function Detailed({ id, back }: { id: number; back: () => void }) {
       <div className="detail-list">
         {items.map((i) => {
           const code = typeof i.data.patch === 'string' ? i.data.patch : i.kind === 'tool' && typeof i.data.result === 'string' && i.data.result ? i.data.result : null
+          // The step's text is cut at 300 characters; the full command is in the tool's input.
+          const input = i.kind === 'tool' ? (i.data.input as Record<string, unknown> | undefined) : undefined
+          const cmd = typeof input?.command === 'string' && input.command.length > i.text.length - 2 ? `$ ${input.command}` : null
           return (
             <div key={i.id} id={`t${i.id}`} className={`detail-row ${i.kind === 'reviewer' ? 'reviewer' : ''}`}>
               <span className="t">{clockSeconds(i.at)}</span>
               <span className="k" style={{ color: KIND_INK[i.kind] ?? 'var(--muted)' }}>{KIND_LABEL[i.kind] ?? cap(i.kind)}</span>
               <div className="stack" style={{ gap: 6, minWidth: 0 }}>
-                <span className="x" style={{ fontStyle: i.kind === 'thinking' ? 'italic' : undefined, fontFamily: i.kind === 'tool' ? 'var(--mono)' : undefined, fontSize: i.kind === 'tool' ? 12.5 : undefined }}>{i.text}</span>
+                {cmd
+                  ? <Output text={cmd} className="cmd" lines={6} />
+                  : <span className="x" style={{ fontStyle: i.kind === 'thinking' ? 'italic' : undefined, fontFamily: i.kind === 'tool' ? 'var(--mono)' : undefined, fontSize: i.kind === 'tool' ? 12.5 : undefined }}>{i.text}</span>}
                 {i.kind === 'diff' && Array.isArray(i.data.files) && (i.data.files as { path: string; added: number | null; removed: number | null }[]).map((fl) => (
                   <span key={fl.path} className="mono sub">{fl.path}  <span style={{ color: 'var(--okInk)' }}>+{fl.added ?? '?'}</span> <span style={{ color: 'var(--badInk)' }}>−{fl.removed ?? '?'}</span></span>
                 ))}
-                {code && <pre className={i.data.is_error ? 'err' : ''}>{code}</pre>}
+                {code && <Output text={code} className={i.data.is_error ? 'err' : ''} lines={14} />}
               </div>
               <a href={`#t${i.id}`} className="go" title="Link to this step">↗</a>
             </div>

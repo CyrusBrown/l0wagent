@@ -98,4 +98,8 @@ session, or ask the reviewer (`assistant reviewer ask`) if you want a second opi
 - The owner can now pause everything (Settings → System). A pause stops the current run and refuses new ones; wakeups and
   routines that fall due during it are skipped, not delayed. When it ends you get a note listing what was skipped:
   re-plan what still matters."""),
+    ("2026-11-18", "Claim before you start", """\
+When the owner asks for work in a thread, run `assistant claim N "plan"` before you start, not after. The claim card is
+how the owner sees that you picked it up and what you'll do; without it they get no confirmation and the run page shows
+no active thread. Messages delivered to you now end with this reminder. Ordinary answers still need no claim."""),
 ]

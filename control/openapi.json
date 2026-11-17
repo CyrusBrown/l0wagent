@@ -12545,6 +12545,14 @@
             "type": "array",
             "title": "Claims"
           },
+          "threads": {
+            "items": {
+              "$ref": "#/components/schemas/RunThread"
+            },
+            "type": "array",
+            "title": "Threads",
+            "description": "Threads this run posted in, newest first (with or without a claim)."
+          },
           "changes": {
             "$ref": "#/components/schemas/RunChanges"
           },
@@ -12615,6 +12623,37 @@
         "additionalProperties": false,
         "type": "object",
         "title": "RunStart"
+      },
+      "RunThread": {
+        "properties": {
+          "thread_id": {
+            "type": "integer",
+            "title": "Thread Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "messages": {
+            "type": "integer",
+            "title": "Messages",
+            "description": "Messages this run posted there."
+          },
+          "last_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "thread_id",
+          "title",
+          "messages",
+          "last_at"
+        ],
+        "title": "RunThread"
       },
       "RunnerHealth": {
         "properties": {

@@ -49,6 +49,11 @@ def _j(v: str | None, default: Any = None) -> Any:
     return json.loads(v) if v else default
 
 
+CLAIM_FIRST = ("If a message asks you to do something (more than an answer), claim its thread before you start: "
+               "`assistant claim N \"plan\"` posts the card that tells the owner you've picked it up and what you'll do. "
+               "Close it with `assistant claim done N \"result\"` when it's finished.")
+
+
 class Conversations:
     def __init__(self, db: Database, live: Live, vault: Vault, settings: Settings):
         self.db, self.live, self.vault, self.settings = db, live, vault, settings
@@ -876,6 +881,8 @@ class Conversations:
             for m in msgs:
                 self.live.changed("message", m["id"])
         text = "\n\n".join(f"{where}:\n" + "\n".join(lines) for where, lines in groups.items())
+        if counts.get("messages"):
+            text += "\n\n" + CLAIM_FIRST
         return text, counts
 
     def thread_history(self, thread_id: int, limit: int = 30) -> str:

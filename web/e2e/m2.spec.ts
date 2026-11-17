@@ -8,7 +8,7 @@ test('message, Reply now, and answer its question in place', async ({ page, requ
 
   await page.goto('/new')
   await page.getByPlaceholder('What should the assistant work on?').fill('Can you run the pump test this weekend?')
-  await page.getByTitle('Start the thread (⌘↵)').click()
+  await page.getByTitle('Start the thread (Enter)').click()
   await expect(page.getByRole('heading', { name: 'Can you run the pump test this weekend?' })).toBeVisible()
   await expect(page.getByText(/^Queued for the (next wakeup|assistant's next run)/)).toBeVisible()
 
@@ -29,7 +29,7 @@ test('message, Reply now, and answer its question in place', async ({ page, requ
   await box.fill('Notes are in #pump')
   await page.getByRole('option', { name: /Can you run the pump test/ }).click()
   await expect(box).toHaveValue(/\[Can you run the pump test this weekend\?\]\(l0wagent:\/\/thread\/\d+\)/)
-  await page.getByTitle('Send (⌘↵)').click()
+  await page.getByTitle('Send (Enter; Shift+Enter for a new line)').click()
   await expect(page.locator('.bubble a', { hasText: 'Can you run the pump test this weekend?' })).toHaveAttribute('href', /\/t\/\d+$/)
 
   // The thread shows up in the sidebar, read; the run lists what happened.

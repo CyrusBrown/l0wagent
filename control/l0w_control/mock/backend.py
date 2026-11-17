@@ -461,7 +461,14 @@ class MockBackend(Backend):
                 work=[s.FileChange(path="garden-irrigation/firmware/scheduler.py", added=18, removed=6), s.FileChange(path="garden-irrigation/firmware/test_dst.py", added=64, removed=0)],
                 shelved=["scheduler.py · live"], asks=["Flash the fix?", "Write access"], threads=["Suggested: split calibration"],
             )
-        return s.RunDetail(run=r, claims=[c for c in self.w.claims.values() if c.run_id == run_id], changes=changes,
+        posted: dict[int, s.RunThread] = {}
+        for m in sorted((m for m in self.w.messages.values() if m.run_id == run_id and m.sender == "assistant"), key=lambda m: m.created_at, reverse=True):
+            th = posted.get(m.thread_id)
+            if th:
+                th.messages += 1
+            else:
+                posted[m.thread_id] = s.RunThread(thread_id=m.thread_id, title=self.w.threads[m.thread_id].title, messages=1, last_at=m.created_at)
+        return s.RunDetail(run=r, claims=[c for c in self.w.claims.values() if c.run_id == run_id], threads=list(posted.values()), changes=changes,
                            reviewer_mode="monitor", level="steady")
 
     def timeline(self, run_id: int, view: str, kinds: list[str] | None, after: int | None) -> list[s.TimelineItem]:

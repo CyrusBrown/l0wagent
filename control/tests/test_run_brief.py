@@ -188,3 +188,18 @@ def test_a_run_that_stops_without_idle_is_nudged_once(stack: Stack):
     assert len(nudges) == 1, texts
     assert done["status"] == "done" and done["end_reason"] == "idle", done      # the resumed session ended with IDLE
     assert any(t.startswith("Brief: ") for t in texts)
+
+
+def test_delivered_messages_end_with_the_claim_reminder_and_the_run_lists_its_threads(be):
+    from l0w_control.conv import CLAIM_FIRST
+    tid = add_thread(be, "Pumps")
+    other = add_thread(be, "Garden")
+    rid = add_run(be)
+    be.db.ex("INSERT INTO messages(thread_id, sender, body, created_at) VALUES(?, 'owner', 'fix the pump schedule tonight', ?)", (tid, be.db.now()))
+    text, counts = be.conv.deliver()
+    assert counts["messages"] == 1 and text.endswith(CLAIM_FIRST)
+    assert CLAIM_FIRST not in be.conv.deliver()[0]  # nothing new: no reminder
+    for t, body in ((tid, "On it"), (tid, "Done"), (other, "FYI")):
+        be.db.ex("INSERT INTO messages(thread_id, sender, body, run_id, created_at) VALUES(?, 'assistant', ?, ?, ?)", (t, body, rid, be.db.now()))
+    threads = {th.title: th.messages for th in be.run(rid).threads}
+    assert threads == {"Pumps": 2, "Garden": 1}

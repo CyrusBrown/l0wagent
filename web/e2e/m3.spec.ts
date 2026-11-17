@@ -18,7 +18,7 @@ test('upload, shelve live, rerun, and browse', async ({ page, request }) => {
   await page.getByPlaceholder(/Start a thread in Garden/).fill('Summarize these readings, please.')
   await page.locator('input[type=file]').setInputFiles({ name: 'readings.csv', mimeType: 'text/csv', buffer: Buffer.from('sensor,moisture\na,30\nb,42\n') })
   await expect(page.locator('.file-chip', { hasText: 'readings.csv' })).toBeVisible()
-  await page.getByTitle('Start the thread (⌘↵)').click()
+  await page.getByTitle('Start the thread (Enter)').click()
   await expect(page.locator('.bubble').getByText('Summarize these readings, please.')).toBeVisible()
 
   // Reply now: the assistant reads the upload, shelves the script's output, reruns it.

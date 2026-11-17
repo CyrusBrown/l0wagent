@@ -577,14 +577,39 @@ a.btn:hover { text-decoration: none; color: var(--fg) }
 .detail-row .t { font: 400 11.5px var(--mono); color: var(--faint2); padding-top: 2px }
 .detail-row .k { font: 500 11px var(--sans); padding-top: 2px }
 .detail-row .x { font: 400 13.5px/1.5 var(--sans); color: var(--fg); overflow-wrap: anywhere }
-.detail-row pre { margin: 0; font: 400 12px/1.6 var(--mono); background: var(--code); border: 1px solid var(--soft); border-radius: 7px; padding: 8px 10px; color: var(--fg2); overflow: auto; max-height: 260px }
+.detail-row pre { margin: 0; font: 400 12px/1.6 var(--mono); background: var(--code); border: 1px solid var(--soft); border-radius: 7px; padding: 8px 10px; color: var(--fg2);
+  white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; max-height: 70vh }
+.detail-row pre.folded { max-height: calc(var(--lines) * 1.6em + 16px); overflow: hidden; -webkit-mask-image: linear-gradient(#000 calc(100% - 2.4em), transparent); mask-image: linear-gradient(#000 calc(100% - 2.4em), transparent) }
 .detail-row pre.err { color: var(--badInk) }
+.detail-row pre.cmd { background: none; border: none; padding: 0; color: var(--fg); font-size: 12.5px }
+.detail-row .out { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0 }
+.detail-row .out > pre { align-self: stretch }
+/* Code boxes. A block's own <code> drops the inline-code look; Markdown blocks get a header with the
+   language and Copy; other boxes (run output, logs) a Copy button in the corner on hover. */
+pre code { font: inherit; background: none; padding: 0; border-radius: 0; color: inherit }
+pre { scrollbar-width: thin; scrollbar-color: var(--line) transparent; tab-size: 2 }
+.code-box { position: relative; min-width: 0 }
+.code-box > pre { margin-top: 0 }
+.code-box.headed { border: 1px solid var(--line); border-radius: 10px; background: var(--code); overflow: hidden; margin: .75em 0 }
+.code-box.headed:first-child { margin-top: 0 } .code-box.headed:last-child { margin-bottom: 0 }
+.code-box.headed > pre { border: none; border-radius: 0; background: none; padding: 10px 14px 12px; font: 400 13px/1.6 var(--mono); color: var(--fg); white-space: pre; max-height: 480px }
+.code-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 6px 4px 14px; border-bottom: 1px solid var(--soft);
+  font: 500 11.5px var(--sans); color: var(--faint); text-transform: lowercase; letter-spacing: .02em; background: var(--rowh) }
+.code-copy { position: absolute; top: 6px; right: 6px; border: 1px solid var(--line); background: var(--card); color: var(--fg2); border-radius: 6px; padding: 2px 8px;
+  font: 500 11.5px var(--sans); cursor: pointer; opacity: 0; transition: opacity .15s ease, color .15s ease, background-color .15s ease }
+.code-head .code-copy { position: static; opacity: 1; border-color: transparent; background: none; text-transform: none; letter-spacing: 0 }
+.code-head .code-copy:hover { background: var(--hover) }
+.code-box:hover .code-copy, .code-copy:focus-visible, .code-copy.done { opacity: 1 }
+.code-copy:hover { color: var(--fg) }
+.code-copy.done { color: var(--okInk) }
+@media (hover: none) { .code-copy { opacity: .85 } }
+.bubble .code-box.headed { white-space: normal; background: var(--card) }
+@media (max-width: 760px) { .code-box.headed > pre { font-size: 12.5px; padding: 9px 12px 11px } }
+.out-more { border: none; background: none; padding: 0; color: var(--accentInk); font: 500 12px var(--sans); cursor: pointer }
 .detail-row .go { color: var(--dim); font-size: 12px }
 @media (max-width: 640px) {
   .run-row { grid-template-columns: 40px minmax(0,1fr) 70px; }
   .run-row .run-when, .run-row .run-spend { display: none }
-  .detail-row { grid-template-columns: 52px minmax(0,1fr); }
-  .detail-row .k, .detail-row .go { display: none }
   .tl-card { grid-column: auto }
 }
 .custom-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: var(--warnSoft); color: var(--fg2); border-radius: 10px; padding: 9px 12px; font-size: 13px }

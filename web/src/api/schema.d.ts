@@ -4178,6 +4178,11 @@ export interface components {
             run: components["schemas"]["Run"];
             /** Claims */
             claims: components["schemas"]["Claim"][];
+            /**
+             * Threads
+             * @description Threads this run posted in, newest first (with or without a claim).
+             */
+            threads?: components["schemas"]["RunThread"][];
             changes: components["schemas"]["RunChanges"];
             /**
              * Reviewer Mode
@@ -4201,6 +4206,23 @@ export interface components {
              * @default manual
              */
             reason?: string;
+        };
+        /** RunThread */
+        RunThread: {
+            /** Thread Id */
+            thread_id: number;
+            /** Title */
+            title: string;
+            /**
+             * Messages
+             * @description Messages this run posted there.
+             */
+            messages: number;
+            /**
+             * Last At
+             * Format: date-time
+             */
+            last_at: string;
         };
         /** RunnerHealth */
         RunnerHealth: {
