@@ -2,9 +2,9 @@ import { type JSX, useEffect, useState } from 'react'
 import { NavLink, useParams } from 'react-router'
 import type { S } from '../api/client'
 import {
-  problem, useChangePassword, useMe, useRevokeSession, useSelftest, useSessions, useSystem, useTotpDisable, useTotpEnable, useTotpSetup,
+  problem, useChangePassword, useMe, usePause, usePauseState, useResume, useRevokeSession, useSelftest, useSessions, useSystem, useTotpDisable, useTotpEnable, useTotpSetup,
 } from '../api/queries'
-import { ago, clock, usageText } from '../components/format'
+import { ago, clock, stamp, usageText } from '../components/format'
 import { useTheme, type ThemePref } from '../app/theme'
 import { useTimeFormat, type TimeFormat } from '../app/timeFormat'
 import { Budgets, Instructions, Providers, Reviewer, Roles } from './SettingsBudget'
@@ -215,6 +215,7 @@ function System() {
   const test = useSelftest()
   const d = sys.data
   return <>
+    <EmergencyPause />
     <section className="set-section">
       <div className="set-title">Status</div>
       {sys.error && <div className="error">{problem(sys.error)}</div>}
@@ -257,6 +258,54 @@ function System() {
       {test.data && <SelfTestList r={test.data} />}
     </section>
   </>
+}
+
+const PAUSE_FOR: [minutes: number | null, label: string, start: string][] = [
+  [60, '1 hour from now', 'Pause for 1 hour'], [180, '3 hours from now', 'Pause for 3 hours'], [24 * 60, '24 hours from now', 'Pause for 24 hours'],
+  [null, 'Until I resume', 'Pause until I resume'],
+]
+
+/** Stops the current run and holds everything (wakeups, routines, Reply now, Wake now) at once. */
+export function EmergencyPause() {
+  useTimeFormat()
+  const st = usePauseState()
+  const pause = usePause()
+  const resume = useResume()
+  const p = st.data
+  const err = pause.error ?? resume.error
+  return (
+    <section className={`set-section pause-section ${p?.paused ? 'on' : ''}`}>
+      <div className="set-title">Emergency pause</div>
+      {p?.paused ? (
+        <div className="pause-box">
+          <div className="stack" style={{ gap: 2 }}>
+            <span style={{ font: '500 14px var(--sans)' }}>Everything is paused {p.until ? `until ${stamp(p.until)}` : 'until you resume'}</span>
+            <span className="sub">Since {stamp(p.since).replace(/^Today/, 'today')}.{p.skipped ? ` ${p.skipped} wakeup${p.skipped === 1 ? '' : 's'} skipped so far; the assistant is told when you resume.` : ' Wakeups that come due are skipped.'}</span>
+          </div>
+          <button className="btn primary" disabled={resume.isPending} onClick={() => resume.mutate(undefined)}>Resume</button>
+        </div>
+      ) : (
+        <>
+          <div className="sub" style={{ fontSize: 13 }}>
+            Stops the current run and holds everything: no wakeups, routines, Reply now or Wake now until it ends. Wakeups that come due are
+            skipped, not saved up. Chat and the connector keep working.
+          </div>
+          <div className="pause-opts">
+            {PAUSE_FOR.map(([m, , start]) => (
+              <button key={start} className="btn danger" disabled={pause.isPending || st.isLoading} onClick={() => pause.mutate(m)}>{start}</button>
+            ))}
+          </div>
+        </>
+      )}
+      {p?.paused && (
+        <div className="pause-opts">
+          <span className="sub">Change the end:</span>
+          {PAUSE_FOR.map(([m, label]) => <button key={label} className="btn small" disabled={pause.isPending} onClick={() => pause.mutate(m)}>{label}</button>)}
+        </div>
+      )}
+      {err && <div className="error" role="alert">{problem(err)}</div>}
+    </section>
+  )
 }
 
 function bytes(n: number): string {

@@ -90,4 +90,12 @@ care you'd give any outside text. Secrets kept for integrations only are no long
 Running `claude -p` or `opencode run` from a tool call starts a second model session that control can't see or budget.
 The runner now spots such processes during a run and control notes it on the run's timeline. Do the work in your own
 session, or ask the reviewer (`assistant reviewer ask`) if you want a second opinion."""),
+    ("2026-11-18", "Notes on planned wakeups, and the owner's emergency pause", """\
+- `assistant wake at … --note FILE` (`-` reads stdin) leaves a note for that one wakeup; it opens the wakeup's brief under
+  "Your note for this wakeup". Use it for where to start, what's already done and what not to redo; `notify` reaches
+  whichever run comes next, a note reaches that wakeup. `assistant wake note ID FILE` sets or clears a note on a planned
+  wakeup of yours. `wake plan --replace` keeps the note on a wakeup whose time doesn't change (JSON items may carry a `note`).
+- The owner can now pause everything (Settings → System). A pause stops the current run and refuses new ones; wakeups and
+  routines that fall due during it are skipped, not delayed. When it ends you get a note listing what was skipped:
+  re-plan what still matters."""),
 ]

@@ -205,7 +205,11 @@ def m4_scenario(sess: Session, prompt: str) -> int:
     proc = subprocess.Popen(["sleep", os.environ.get("FAKE_JOB_S", "30")], start_new_session=True)
     sess.run("job", "start", "Nightly sensor export", "--pid", str(proc.pid), "--log", log.replace(WORK_ROOT, "/work"), "--expect", "1h")
     later = time.strftime("%Y-%m-%d", time.gmtime(time.time() + 2 * 86400))  # owner's local date may differ by up to a day
-    sess.run("wake", "at", f"{later}T03:00", "--budget", "12", "--tier", "sonnet/medium", "--reason", "Check the sensor export and summarize it")
+    note = f"{WORK_ROOT}/garden/next-wakeup.md"
+    with open(note, "w") as f:
+        f.write("The export job is registered; read export.log first. Don't restart the export.\n")
+    sess.run("wake", "at", f"{later}T03:00", "--budget", "12", "--tier", "sonnet/medium", "--reason", "Check the sensor export and summarize it",
+             "--note", note)
     sess.run("note", "Export running; next wakeup planned")
     return sess.finish("IDLE: export running as a job; next wakeup planned.")
 

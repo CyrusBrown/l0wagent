@@ -375,6 +375,12 @@ function WakeupEditor({ w, tz, tiers, onClose }: { w?: S['Wakeup']; tz: string; 
               onChange={setTier} /></label>
         </div>
         <input className="input" placeholder="Reason" value={reason} onChange={(e) => setReason(e.target.value)} disabled={!editable} />
+        {w?.note && (
+          <div className="stack" style={{ gap: 3 }}>
+            <span className="sub" style={{ fontSize: 12 }}>The assistant's note for this wakeup</span>
+            <div className="sub" style={{ fontSize: 12.5, lineHeight: 1.45, whiteSpace: 'pre-wrap', maxHeight: 160, overflow: 'auto', background: 'var(--side)', borderRadius: 8, padding: '8px 10px' }}>{w.note}</div>
+          </div>
+        )}
         {w?.run_id && <Link to={`/runs/${w.run_id}`} className="sub">Run #{w.run_id}{w.used != null ? ` · used ${w.used} pts` : ''}</Link>}
         {err && <div className="error">{err}</div>}
         {editable && (

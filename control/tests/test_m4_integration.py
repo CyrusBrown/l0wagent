@@ -39,6 +39,7 @@ def test_a_wakeup_plans_the_next_one_with_the_reviewer_and_a_job(stack: Stack):
     planned = [w for w in c.get("/api/calendar").json()["wakeups"] + c.get("/api/calendar", params={"start": done["started_at"]}).json()["wakeups"]
                if w["reason"] == "Check the sensor export and summarize it"]
     assert planned and planned[0]["created_by"] == "assistant" and planned[0]["budget"] == 12
+    assert "Don't restart the export" in planned[0]["note"]  # `wake at --note FILE` through the real CLI
     jobs = c.get("/api/jobs").json()
     assert jobs[0]["label"] == "Nightly sensor export" and "rows 0..5000" in jobs[0]["log_tail"]
     # Its spend is in the ledger: the budget shows it as the assistant's.

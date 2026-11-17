@@ -422,11 +422,15 @@ def budget(request: Request) -> dict:
     return {"text": be.budgets.check_text(pid), "budget": be.budgets.summary(pid).model_dump(mode="json")}
 
 
+NOTE_MAX = 8000  # a wakeup note: a few paragraphs, not a document (point at a file for more)
+
+
 class WakeIn(BaseModel):
     at: str
     budget: float = Field(gt=0, le=1000)
     tier: str | None = None
     reason: str = Field(min_length=3, max_length=300)
+    note: str | None = Field(None, max_length=NOTE_MAX)
 
 
 @router.get("/wake")
@@ -442,10 +446,12 @@ def wake_plan(request: Request) -> dict:
 @router.post("/wake")
 def wake_at(body: WakeIn, request: Request) -> dict:
     be = _be(request)
-    w = be.scheduler.plan(_worker(be), _when(be, body.at), body.budget, body.tier, be.vault.redact(body.reason) or body.reason, by="assistant")
+    w = be.scheduler.plan(_worker(be), _when(be, body.at), body.budget, body.tier, be.vault.redact(body.reason) or body.reason, by="assistant",
+                          note=_note_text(be, body.note))
     run_id = be.runs_mgr.active_run_id()
     if run_id:
-        be.runs_mgr.timeline(run_id, Item("control", f"Planned a wakeup: {be.budgets.local(w.at):%a %H:%M}, {w.budget:g} pts, {w.tier} ({w.reason})", True, {"wakeup_id": w.id}))
+        noted = " with a note" if w.note else ""
+        be.runs_mgr.timeline(run_id, Item("control", f"Planned a wakeup{noted}: {be.budgets.local(w.at):%a %H:%M}, {w.budget:g} pts, {w.tier} ({w.reason})", True, {"wakeup_id": w.id}))
     return w.model_dump(mode="json")
 
 
@@ -456,11 +462,27 @@ class WakePlanIn(BaseModel):
 @router.put("/wake")
 def wake_replace(body: WakePlanIn, request: Request) -> dict:
     be = _be(request)
-    made = be.scheduler.replace_plan(_worker(be), [(_when(be, i.at), i.budget, i.tier, be.vault.redact(i.reason) or i.reason) for i in body.items])
+    made = be.scheduler.replace_plan(_worker(be), [(_when(be, i.at), i.budget, i.tier, be.vault.redact(i.reason) or i.reason, _note_text(be, i.note))
+                                                    for i in body.items])
     run_id = be.runs_mgr.active_run_id()
     if run_id:
         be.runs_mgr.timeline(run_id, Item("control", f"Replaced its wakeup plan: {len(made)} wakeup(s)", True))
     return {"wakeups": [w.model_dump(mode="json") for w in made], "text": be.budgets.check_text(_worker(be))}
+
+
+class WakeNoteIn(BaseModel):
+    note: str | None = Field(None, max_length=NOTE_MAX)
+
+
+@router.patch("/wake/{wakeup_id}")
+def wake_note(wakeup_id: int, body: WakeNoteIn, request: Request) -> dict:
+    be = _be(request)
+    return be.scheduler.set_note(wakeup_id, _note_text(be, body.note)).model_dump(mode="json")
+
+
+def _note_text(be: SqliteBackend, note: str | None) -> str | None:
+    note = (note or "").strip()
+    return (be.vault.redact(note) or note) if note else None
 
 
 @router.delete("/wake/{wakeup_id}")

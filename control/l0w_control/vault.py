@@ -40,7 +40,7 @@ SCRUB = [("messages", "body"), ("run_events", "raw_json"), ("timeline_items", "t
          ("threads", "title"), ("notifications", "title"), ("notifications", "body"),
          ("questions", "answer_json"), ("questions", "options_json"), ("questions", "default_json"), ("suggestions", "payload_json"),
          ("permission_actions", "payload_json"), ("permission_actions", "error"), ("security_alerts", "text"), ("routines", "name"),
-         ("routines", "prompt"), ("runs", "why_detail"), ("runs", "stop_reason"), ("wakeups", "status_reason"), ("shelf_items", "label"),
+         ("routines", "prompt"), ("runs", "why_detail"), ("runs", "stop_reason"), ("wakeups", "status_reason"), ("wakeups", "note"), ("shelf_items", "label"),
          ("integrations", "last_error"), ("secrets", "description"), ("promote_requests", "reason"), ("promote_requests", "note")]
 
 

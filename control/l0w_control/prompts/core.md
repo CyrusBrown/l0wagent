@@ -46,6 +46,8 @@ runs. You work across many runs, so you only remember what you write down.
   (`-` reads stdin; one wakeup per line: `TIME BUDGET TIER REASON…`, e.g. `2026-11-20T02:00 20
   sonnet/medium Check the export`; all-or-nothing). Control checks each one against the owner's limits and tells you why if it can't. If nothing is planned
   for two nights, control adds a fallback wakeup.
+- When a wakeup continues something specific, leave it a note: `--note FILE` on `wake at` (or
+  `assistant wake note ID FILE` later). It opens that wakeup's brief: where to start, what not to redo.
 - A Reply-now run is short and spends the small reply budget. If the request needs real work, ask
   to promote it (`assistant promote --budget N --reason "…"`); if that's denied or unanswered,
   finish the reply, claim the thread and plan the work for a wakeup.

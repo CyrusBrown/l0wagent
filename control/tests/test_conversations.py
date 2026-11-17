@@ -234,8 +234,9 @@ def test_uploads_are_contained(c, be, tmp_path):
 def test_harness_news_announces_the_new_commands(c):
     news = ok(agent(c, "GET", "/news"))
     titles = [n["title"] for n in news]  # newest first
-    assert titles[0] == "Brokered integrations" and "permission #N" in news[0]["body"]
-    assert titles[1] == "Secrets can be scoped" and "assistant secret list" in news[1]["body"]
+    assert titles[0] == "Notes on planned wakeups, and the owner's emergency pause" and "--note FILE" in news[0]["body"]
+    assert titles[1] == "Brokered integrations" and "permission #N" in news[1]["body"]
+    assert titles[2] == "Secrets can be scoped" and "assistant secret list" in news[2]["body"]
     brief = next(n for n in news if n["title"] == "A fuller brief, `assistant runs` and `assistant help`")
     assert "assistant run show N" in brief["body"]
     first = titles.index("Monthly budgets and spending caps")  # entries added later in the same stretch come before it

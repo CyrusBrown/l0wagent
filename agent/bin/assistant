@@ -43,10 +43,13 @@ The shelf (deliverables in front of the owner, on the project's Files tab):
 Budget and your wakeup plan (you plan, control enforces the owner's limits):
   assistant budget                       what's left this period, your limits, a suggested pace, your plan
   assistant wake plan                    your planned wakeups (same as `budget`)
-  assistant wake at TIME --budget N --reason "…" [--tier sonnet/medium]
-                                         TIME is the owner's local time, e.g. 2026-11-20T02:00
+  assistant wake at TIME --budget N --reason "…" [--tier sonnet/medium] [--note FILE|-]
+                                         TIME is the owner's local time, e.g. 2026-11-20T02:00;
+                                         --note: a note to yourself that opens that wakeup's brief
+  assistant wake note ID FILE|-          set (or, with an empty file, clear) a planned wakeup's note
   assistant wake plan --replace FILE|-   replace your planned wakeups; one per line: TIME BUDGET TIER REASON…
-                                         (or a JSON list of {at, budget, tier, reason}); all-or-nothing
+                                         (or a JSON list of {at, budget, tier, reason, note}); all-or-nothing.
+                                         A wakeup whose time stays the same keeps its note
   assistant wake cancel ID
   assistant promote --budget N --reason "…"   Reply-now runs: ask to become a full run on the allowance
   assistant routine list
@@ -185,6 +188,10 @@ def duration_minutes(spec: str | None) -> float | None:
         sys.exit(f"not a duration: {spec!r} (like 2h, 30m or 90)")
 
 
+def read_arg_file(path: str) -> str:
+    return sys.stdin.read() if path == "-" else open(path).read()
+
+
 def plan_items(raw: str) -> list[dict]:
     raw = raw.strip()
     if raw.startswith("["):
@@ -318,6 +325,10 @@ def main() -> None:
     wka.add_argument("--budget", "-b", type=float, required=True)
     wka.add_argument("--tier")
     wka.add_argument("--reason", "-r", required=True)
+    wka.add_argument("--note", metavar="FILE", help="a note to yourself that opens that wakeup's brief ('-' reads stdin)")
+    wkn = wks.add_parser("note")
+    wkn.add_argument("id", type=int)
+    wkn.add_argument("file", help="'-' reads stdin; an empty file clears the note")
     wkc = wks.add_parser("cancel")
     wkc.add_argument("id", type=int)
     pm = sub.add_parser("promote", help="ask to turn this Reply-now run into a full run")
@@ -544,8 +555,12 @@ def main() -> None:
         print(call("GET", "/budget")["text"])
     elif a.cmd == "wake":
         if a.wcmd == "at":
-            r = call("POST", "/wake", {"at": a.time, "budget": a.budget, "tier": a.tier, "reason": a.reason})
-            print(f"planned wakeup #{r['id']}: {r['at']} UTC, {r['budget']:g} pts, {r['tier']}")
+            note = read_arg_file(a.note) if a.note else None
+            r = call("POST", "/wake", {"at": a.time, "budget": a.budget, "tier": a.tier, "reason": a.reason, "note": note})
+            print(f"planned wakeup #{r['id']}: {r['at']} UTC, {r['budget']:g} pts, {r['tier']}" + (" (with your note)" if r.get("note") else ""))
+        elif a.wcmd == "note":
+            r = call("PATCH", f"/wake/{a.id}", {"note": read_arg_file(a.file)})
+            print(f"wakeup #{a.id}: " + ("note saved" if r.get("note") else "note cleared"))
         elif a.wcmd == "cancel":
             call("DELETE", f"/wake/{a.id}")
             print(f"wakeup #{a.id} cancelled")

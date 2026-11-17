@@ -141,6 +141,11 @@ export const useStartRun = () =>
 
 export const useSystem = () => useQuery({ queryKey: ['system'], queryFn: () => ok(api.GET('/api/system')), refetchInterval: 30_000 })
 export const useSelftest = () => useMutation({ mutationFn: () => ok(api.POST('/api/system/selftest')) })
+// The emergency pause. Online only: never queued (it's a control over runs, like settings).
+export const usePauseState = () => useQuery({ queryKey: ['system', 'pause'], queryFn: () => ok(api.GET('/api/system/pause')) })
+export const usePause = () =>
+  useInvalidating((minutes: number | null) => ok(api.PUT('/api/system/pause', { body: { minutes } })), [['system'], ['status'], ['runs'], ['calendar']])
+export const useResume = () => useInvalidating(() => ok(api.DELETE('/api/system/pause')), [['system'], ['status'], ['calendar']])
 
 export const useSessions = () => useQuery({ queryKey: ['sessions'], queryFn: () => ok(api.GET('/api/account/sessions')) })
 export const useRevokeSession = () =>

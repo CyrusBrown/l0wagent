@@ -230,6 +230,11 @@ h2 { margin: 0; font: 500 18px/1.3 var(--serif) }
 .set-row .k { font-weight: 500; flex: none }
 .selftest-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--soft); font-size: 13.5px }
 .set-form { display: flex; flex-direction: column; gap: 8px; max-width: 380px }
+/* The emergency pause (Settings → System) and its banner on every screen. */
+.pause-opts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px }
+.pause-opts .btn.danger { border-color: var(--badInk) }
+.pause-box { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--badSoft); border: 1px solid var(--badInk); border-radius: 12px; padding: 14px 16px; animation: rise .22s cubic-bezier(.2,.7,.3,1) both }
+.banner.pause-banner { background: var(--badSoft); border-bottom-color: var(--badInk) }
 .totp { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap }
 .totp img { border-radius: 10px; border: 1px solid var(--line); background: #fff }
 .theme-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; max-width: 560px }

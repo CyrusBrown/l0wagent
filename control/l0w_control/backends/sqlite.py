@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 from .. import __version__, network
+from .. import pause as pausing
 from ..api import schemas as s
 from ..auth import Auth, iso, parse, utcnow
 from ..budgets import LEVELS, OPENCODE_GO, RUNTIME, SUBSCRIPTION, TIERS, Budgets
@@ -167,6 +168,7 @@ class SqliteBackend(Backend):
             state=state, now=run.now if run else None, run_id=run_id, run_used=run.used if run else None,  # type: ignore[arg-type]
             run_budget=run.budget if run else None, next_wakeup_at=nxt.at if nxt else None, budget=self.budgets.budget_summary(pid), usage=self.usage.cached(),
             inbox_waiting=self.inbox_counts().waiting, reply_budget_left=self.budgets.reply_left(self.budgets.role("replier").provider),
+            pause=self.pause_state() if pausing.active(self.db, self.budgets.now()) else None,
         )
 
     def sync(self, since: str | None) -> s.SyncResponse:
@@ -846,6 +848,24 @@ class SqliteBackend(Backend):
     def cancel_update(self) -> s.UpdateInfo:
         return self.updates.cancel()
 
+    # ── the emergency pause ────────────────────────────────────────────────
+    def pause_state(self) -> s.PauseState:
+        return pausing.model(pausing.active(self.db, self.budgets.now()))
+
+    def pause(self, req: s.PauseRequest) -> s.PauseState:
+        now = self.budgets.now()
+        p = pausing.start(self.db, now, now + timedelta(minutes=req.minutes) if req.minutes else None)
+        run_id = self.runs_mgr.active_run_id()
+        if run_id:
+            self._await(self.runs_mgr.stop(run_id, "you paused everything"))
+        self.live.emit("status")
+        self.live.emit("calendar", {})
+        return pausing.model(p)
+
+    def resume(self) -> s.PauseState:
+        self.scheduler.end_pause(self.budgets.now(), by="owner")
+        return s.PauseState(paused=False)
+
     # ── budgets and providers ──────────────────────────────────────────────
     def budget_overview(self) -> s.BudgetOverview:
         return s.BudgetOverview(
@@ -1065,6 +1085,8 @@ class SqliteBackend(Backend):
         gate = s.GateState(open=g.open, reason=g.reason)
         if self.runs_mgr.active_run_id() is not None:
             gate = s.GateState(open=False, reason="A run is in progress.")
+        if pausing.active(self.db, self.budgets.now()):
+            gate = s.GateState(open=False, reason="Everything is paused.")
         problems = [s.SchedulerProblem(step=p["step"], error=p["error"], count=p["count"], last_at=parse(p["last_at"]))  # type: ignore[arg-type]
                     for p in self.scheduler.problems_raw().values()]
         return s.SystemStatus(server_version=__version__, runner=runner, egress=egress, usage=reading, gate=gate, scheduler_problems=problems,

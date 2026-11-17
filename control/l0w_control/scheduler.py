@@ -25,6 +25,7 @@ import logging
 from datetime import UTC, datetime, time, timedelta
 from typing import TYPE_CHECKING
 
+from . import pause as pausing
 from .api import schemas as s
 from .auth import iso, parse
 from .backends.base import Conflict
@@ -48,7 +49,8 @@ def wakeup_model(db: Database, r: dict) -> s.Wakeup:
         run = db.q1("SELECT used FROM runs WHERE id=?", (r["run_id"],))
         used = round(run["used"] or 0, 1) if run else None
     return s.Wakeup(id=r["id"], provider=r["provider"], at=parse(r["at"]), budget=r["budget"], tier=r["tier"], reason=r["reason"], kind=r["kind"],  # type: ignore[arg-type]
-                    created_by=r["created_by"], routine_id=r["routine_id"], status=r["status"], status_reason=r["status_reason"], run_id=r["run_id"], used=used)
+                    created_by=r["created_by"], routine_id=r["routine_id"], status=r["status"], status_reason=r["status_reason"], run_id=r["run_id"], used=used,
+                    note=r["note"])
 
 
 def schedule_text(sch: dict, unit: str = "week") -> str:
@@ -81,6 +83,15 @@ class Scheduler:
 
     async def tick(self, now: datetime | None = None) -> None:
         now = now or self.budgets.now()
+        p = pausing.raw(self.db)
+        if p and pausing.expired(p, now):
+            self.end_pause(now, by="time")
+        elif p:
+            # Paused: nothing is planned or started; what falls due is skipped, not saved up.
+            self._step("paused", self.skip_paused, now)
+            for job in self.housekeeping:
+                await self._step_async(getattr(job, "__name__", "housekeeping"), job, now)
+            return
         # Each step on its own, so one bad routine can't stop wakeups from starting.
         for name, step in (("routines", self.routines_to_plan), ("fallback", self.fallback), ("sweep", self.sweep)):
             self._step(name, step, now)
@@ -138,10 +149,11 @@ class Scheduler:
         self.live.emit("calendar", {"id": wid} if wid else {})
         self.live.emit("status")
 
-    def _insert(self, pid: str, at: datetime, budget: float, tier: str, reason: str, kind: str, by: str, routine_id: int | None = None) -> int:
+    def _insert(self, pid: str, at: datetime, budget: float, tier: str, reason: str, kind: str, by: str, routine_id: int | None = None,
+                note: str | None = None) -> int:
         now = self.db.now()
-        wid = self.db.ex("INSERT INTO wakeups(provider, at, budget, tier, reason, kind, created_by, routine_id, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                         (pid, iso(at), round(budget, 1), tier, reason, kind, by, routine_id, now, now))
+        wid = self.db.ex("INSERT INTO wakeups(provider, at, budget, tier, reason, kind, created_by, routine_id, note, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                         (pid, iso(at), round(budget, 1), tier, reason, kind, by, routine_id, note or None, now, now))
         self._changed(wid)
         return wid
 
@@ -153,6 +165,31 @@ class Scheduler:
         self.db.ex("UPDATE wakeups SET status=?, status_reason=COALESCE(?, status_reason), run_id=COALESCE(?, run_id), updated_at=? WHERE id=?",
                    (status, reason, run_id, self.db.now(), wid))
         self._changed(wid)
+
+    # ── the emergency pause ────────────────────────────────────────────────
+    def skip_paused(self, now: datetime) -> None:
+        for w in self.db.q("SELECT id FROM wakeups WHERE status='planned' AND at<=? ORDER BY at, id", (iso(now),)):
+            self._set(w["id"], "skipped", "Everything was paused")
+            pausing.add_skipped(self.db, w["id"])
+
+    def end_pause(self, now: datetime, by: str) -> None:
+        """End the pause (the owner resumed, or its time ran out) and tell the agent what it missed."""
+        p = pausing.clear(self.db)
+        if not p:
+            return
+        since = parse(p.get("since")) or now
+        ids = p.get("skipped", [])
+        how = "they resumed it" if by == "owner" else "it ended at the time they set"
+        text = f"The owner paused everything from {self.budgets.local(since):%a %b %d %H:%M} to {self.budgets.local(now):%a %b %d %H:%M} ({how})."
+        if ids:
+            rows = self.db.q(f"SELECT id, at, reason, kind FROM wakeups WHERE id IN ({','.join('?' * len(ids))}) ORDER BY at", tuple(ids))
+            lines = [f"#{r['id']} {self.budgets.local(parse(r['at'])):%a %H:%M} ({r['kind']}): {r['reason']}" for r in rows[:10]]  # type: ignore[arg-type]
+            more = f"; and {len(rows) - 10} more" if len(rows) > 10 else ""
+            text += " Skipped while paused: " + "; ".join(lines) + more + ". Re-plan what still matters (`assistant budget`)."
+        else:
+            text += " Nothing of yours was skipped."
+        self._note(text)
+        self._changed()
 
     # ── routines ───────────────────────────────────────────────────────────
     def next_occurrence(self, sch: dict, provider: str, after: datetime) -> datetime | None:
@@ -395,7 +432,7 @@ class Scheduler:
         for wid in ids:
             self.db.ex("UPDATE wakeups SET status='planned', status_reason=NULL, updated_at=? WHERE id=?", (self.db.now(), wid))
 
-    def plan(self, pid: str, at: datetime, budget: float, tier: str | None, reason: str, by: str) -> s.Wakeup:
+    def plan(self, pid: str, at: datetime, budget: float, tier: str | None, reason: str, by: str, note: str | None = None) -> s.Wakeup:
         from .backends.base import BadRequest
         tier = tier or self.budgets.role("worker").tier
         dropped = self._drop_fallbacks(pid, [at]) if by == "assistant" else []
@@ -403,26 +440,28 @@ class Scheduler:
         if problem:
             self._restore(dropped)
             raise BadRequest("wakeup_rejected", problem)
-        wid = self._insert(pid, at, budget, tier, reason, "planned" if by == "assistant" else "owner", by)
+        wid = self._insert(pid, at, budget, tier, reason, "planned" if by == "assistant" else "owner", by, note=note)
         return wakeup_model(self.db, self.db.q1("SELECT * FROM wakeups WHERE id=?", (wid,)))  # type: ignore[arg-type]
 
-    def replace_plan(self, pid: str, items: list[tuple[datetime, float, str | None, str]]) -> list[s.Wakeup]:
+    def replace_plan(self, pid: str, items: list[tuple[datetime, float, str | None, str, str | None]]) -> list[s.Wakeup]:
         """The agent's `wake plan --replace`: its own future wakeups become exactly these.
-        All are validated first; nothing changes if one is rejected."""
+        All are validated first; nothing changes if one is rejected. A wakeup that keeps its
+        time keeps its note unless the new item brings one."""
         from .backends.base import BadRequest
-        old = self.db.q("SELECT id FROM wakeups WHERE provider=? AND status='planned' AND created_by='assistant'", (pid,))
+        old = self.db.q("SELECT id, at, note FROM wakeups WHERE provider=? AND status='planned' AND created_by='assistant'", (pid,))
+        old_notes = {parse(r["at"]): r["note"] for r in old if r["note"]}
         old_ids = [r["id"] for r in old] + self._drop_fallbacks(pid, [i[0] for i in items])
         with self.db.tx() as db:
             for wid in old_ids:
                 db.ex("UPDATE wakeups SET status='cancelled', status_reason='replaced by a new plan', updated_at=? WHERE id=?", (db.now(), wid))
         made: list[int] = []
         try:
-            for i, (at, budget, tier, reason) in enumerate(sorted(items, key=lambda x: x[0])):
+            for i, (at, budget, tier, reason, note) in enumerate(sorted(items, key=lambda x: x[0])):
                 tier = tier or self.budgets.role("worker").tier
                 problem = self.budgets.validate(pid, at, budget, tier, by="assistant")
                 if problem:
                     raise BadRequest("wakeup_rejected", f"Item {i + 1} ({self.budgets.local(at):%a %H:%M}): {problem}")
-                made.append(self._insert(pid, at, budget, tier, reason, "planned", "assistant"))
+                made.append(self._insert(pid, at, budget, tier, reason, "planned", "assistant", note=note or old_notes.get(at)))
         except BadRequest:
             with self.db.tx() as db:
                 for wid in made:
@@ -432,6 +471,18 @@ class Scheduler:
             raise
         self._changed()
         return [wakeup_model(self.db, self.db.q1("SELECT * FROM wakeups WHERE id=?", (w,))) for w in made]  # type: ignore[arg-type]
+
+    def set_note(self, wid: int, note: str | None) -> s.Wakeup:
+        """The agent's `wake note ID`: only on its own wakeups that haven't started."""
+        from .backends.base import BadRequest, NotFound
+        w = self.db.q1("SELECT * FROM wakeups WHERE id=?", (wid,))
+        if not w or w["created_by"] != "assistant":
+            raise NotFound(f"wakeup {wid}")
+        if w["status"] != "planned":
+            raise BadRequest("not_planned", f"Wakeup #{wid} is {w['status']}; notes go on planned wakeups.")
+        self.db.ex("UPDATE wakeups SET note=?, updated_at=? WHERE id=?", (note or None, self.db.now(), wid))
+        self._changed(wid)
+        return wakeup_model(self.db, self.db.q1("SELECT * FROM wakeups WHERE id=?", (wid,)))  # type: ignore[arg-type]
 
     def cancel(self, wid: int, by: str) -> s.Wakeup:
         from .backends.base import BadRequest, NotFound

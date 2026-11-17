@@ -779,6 +779,24 @@ def cancel_update(be: Be) -> s.UpdateInfo:
     return be.cancel_update()
 
 
+@api.get("/system/pause", tags=["system"])
+def pause_state(be: Be) -> s.PauseState:
+    return be.pause_state()
+
+
+@api.put("/system/pause", tags=["system"])
+def pause(req: s.PauseRequest, be: Be) -> s.PauseState:
+    """Online only. The emergency pause: stops the current run, refuses new ones and skips due wakeups
+    until it ends or you resume. The chat and the connector keep working."""
+    return be.pause(req)
+
+
+@api.delete("/system/pause", tags=["system"])
+def resume(be: Be) -> s.PauseState:
+    """End the pause now. The assistant is told which wakeups it skipped."""
+    return be.resume()
+
+
 # ── Files and shelf ────────────────────────────────────────────────────────
 @api.get("/files/list", tags=["files"])
 def list_dir(be: Be, volume: s.Volume, path: str = "") -> s.Listing:

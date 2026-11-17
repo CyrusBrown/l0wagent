@@ -9,7 +9,13 @@ workspace; between runs it remembers nothing else.
   small reply budget). If a run is in progress, it sees new messages after its next step.
 - **Wakeups**: the assistant plans its own wakeups within your budget and limits (allowed hours,
   how many a day, points per wakeup). If nothing is planned for two nights, control adds a
-  **fallback** wakeup. You can add wakeups on the Calendar or press **Wake now** on Runs.
+  **fallback** wakeup. You can add wakeups on the Calendar or press **Wake now** on Runs. A
+  wakeup can carry the assistant's **note** to itself (where to start, what not to redo); it opens
+  that wakeup's brief and shows on the Calendar.
+- **Emergency pause** (Settings → System): stops the current run and holds everything (wakeups,
+  routines, Reply now, Wake now) for 1, 3 or 24 hours or until you resume. Wakeups that come due
+  meanwhile are skipped, not saved up; when it ends, the assistant is told what it missed. A
+  banner shows on every screen while it's on. The chat and the connector keep working.
 - **Asks**: when it needs you, it files a **question** (answer in place), a **permission** (allow
   for the project, once, or deny; e.g. a network rule or a setting), a **task** (something only you
   can do), or a **promote request** (turn a reply into a full run that spends the allowance).

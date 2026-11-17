@@ -1711,6 +1711,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/system/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pause State */
+        get: operations["pause_state_api_system_pause_get"];
+        /**
+         * Pause
+         * @description Online only. The emergency pause: stops the current run, refuses new ones and skips due wakeups
+         *     until it ends or you resume. The chat and the connector keep working.
+         */
+        put: operations["pause_api_system_pause_put"];
+        post?: never;
+        /**
+         * Resume
+         * @description End the pause now. The assistant is told which wakeups it skipped.
+         */
+        delete: operations["resume_api_system_pause_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/files/list": {
         parameters: {
             query?: never;
@@ -3325,6 +3351,32 @@ export interface components {
             /** Detail */
             detail: string;
         };
+        /** PauseRequest */
+        PauseRequest: {
+            /**
+             * Minutes
+             * @description How long to pause; none = until you resume. On a pause already on, sets a new end.
+             */
+            minutes?: number | null;
+        };
+        /** PauseState */
+        PauseState: {
+            /** Paused */
+            paused: boolean;
+            /** Since */
+            since?: string | null;
+            /**
+             * Until
+             * @description When the pause ends on its own; none = until the owner resumes.
+             */
+            until?: string | null;
+            /**
+             * Skipped
+             * @description Wakeups and routines skipped so far because of the pause.
+             * @default 0
+             */
+            skipped?: number;
+        };
         /** Permission */
         Permission: {
             /** Id */
@@ -4464,6 +4516,8 @@ export interface components {
             inbox_waiting: number;
             /** Reply Budget Left */
             reply_budget_left?: number | null;
+            /** @description Set while the owner has paused everything. */
+            pause?: components["schemas"]["PauseState"] | null;
         };
         /** StorageStatus */
         StorageStatus: {
@@ -5006,6 +5060,11 @@ export interface components {
              * @description Points the wakeup's run used, once it ran.
              */
             used: number | null;
+            /**
+             * Note
+             * @description The assistant's note to itself for this wakeup; it opens the wakeup's brief.
+             */
+            note?: string | null;
         };
         /**
          * WakeupCreate
@@ -8604,6 +8663,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UpdateInfo"];
+                };
+            };
+        };
+    };
+    pause_state_api_system_pause_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PauseState"];
+                };
+            };
+        };
+    };
+    pause_api_system_pause_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PauseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PauseState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_api_system_pause_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PauseState"];
                 };
             };
         };

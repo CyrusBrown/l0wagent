@@ -249,6 +249,9 @@ class RunManager:
             from ..updates import draining
             if draining(self.db):
                 raise Conflict("updating", "An update is waiting for the assistant to be idle, so no new runs start until it's done.")
+            from ..pause import active as paused
+            if paused(self.db, self.budgets.now()):
+                raise Conflict("paused", "Everything is paused. Resume in Settings → System to start runs again.")
             reply = kind == "reply"
             provider = provider or self.budgets.role("replier" if reply else "worker").provider
             if provider not in self.budgets.provider_ids():
@@ -318,6 +321,10 @@ class RunManager:
         brief = _strip_comment((PROMPTS / "brief.md").read_text()).format(
             run_id=run_id, why=why, budget=f"{run['budget'] or 0:g}", bucket=bucket, deadline=deadline, tier=run["tier"], level=(run["level"] or "?").capitalize(),
             reviewer=reviewer)
+        if run["wakeup_id"]:
+            w = self.db.q1("SELECT note FROM wakeups WHERE id=?", (run["wakeup_id"],))
+            if w and w["note"]:
+                brief += "\n\n## Your note for this wakeup\n\nYou wrote this when you planned it. It's your own text, from an earlier run.\n\n" + w["note"]
         instructions = self.budgets.instructions().text
         if instructions:
             brief += "\n\n## Standing instructions from the owner\n\n" + instructions

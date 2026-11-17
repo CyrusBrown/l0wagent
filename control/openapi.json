@@ -5901,6 +5901,111 @@
         ]
       }
     },
+    "/api/system/pause": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Pause State",
+        "operationId": "pause_state_api_system_pause_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PauseState"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Pause",
+        "description": "Online only. The emergency pause: stops the current run, refuses new ones and skips due wakeups\nuntil it ends or you resume. The chat and the connector keep working.",
+        "operationId": "pause_api_system_pause_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PauseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PauseState"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Resume",
+        "description": "End the pause now. The assistant is told which wakeups it skipped.",
+        "operationId": "resume_api_system_pause_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PauseState"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
     "/api/files/list": {
       "get": {
         "tags": [
@@ -10307,6 +10412,72 @@
         ],
         "title": "PasswordProblem"
       },
+      "PauseRequest": {
+        "properties": {
+          "minutes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 20160.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minutes",
+            "description": "How long to pause; none = until you resume. On a pause already on, sets a new end."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PauseRequest"
+      },
+      "PauseState": {
+        "properties": {
+          "paused": {
+            "type": "boolean",
+            "title": "Paused"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until",
+            "description": "When the pause ends on its own; none = until the owner resumes."
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped",
+            "description": "Wakeups and routines skipped so far because of the pause.",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "paused"
+        ],
+        "title": "PauseState"
+      },
       "Permission": {
         "properties": {
           "id": {
@@ -13249,6 +13420,17 @@
               }
             ],
             "title": "Reply Budget Left"
+          },
+          "pause": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PauseState"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set while the owner has paused everything."
           }
         },
         "additionalProperties": false,
@@ -14720,6 +14902,18 @@
             ],
             "title": "Used",
             "description": "Points the wakeup's run used, once it ran."
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "The assistant's note to itself for this wakeup; it opens the wakeup's brief."
           }
         },
         "additionalProperties": false,

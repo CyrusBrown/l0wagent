@@ -195,6 +195,9 @@ class Backend:
     def push_test(self) -> s.PushTestResult: raise NotImplementedError
     def check_update(self) -> s.UpdateInfo: raise NotImplementedError
     def cancel_update(self) -> s.UpdateInfo: raise NotImplementedError
+    def pause_state(self) -> s.PauseState: raise NotImplementedError
+    def pause(self, req: s.PauseRequest) -> s.PauseState: raise NotImplementedError
+    def resume(self) -> s.PauseState: raise NotImplementedError
 
     # files
     def list_dir(self, volume: str, path: str) -> s.Listing: raise NotImplementedError

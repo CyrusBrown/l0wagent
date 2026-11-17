@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { type CSSProperties, useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import type { S } from '../api/client'
 import { useLive } from '../api/live'
-import { useChats, useInboxCounts, useProjects, useStatus, useStopRun, useThreads, useUpdateInfo, useCancelUpdate } from '../api/queries'
-import { pts, until, usageText } from '../components/format'
+import { useChats, useInboxCounts, useProjects, useResume, useStatus, useStopRun, useThreads, useUpdateInfo, useCancelUpdate } from '../api/queries'
+import { pts, stamp, until, usageText } from '../components/format'
 import { useOnline } from '../components/online'
 import { useEscape } from '../components/useEscape'
 import { useOutbox } from '../api/offline'
@@ -53,6 +53,7 @@ export function Shell() {
   return (
     <div className="app">
       <Header onSearch={() => setPalette(true)} moreOpen={moreOpen} setMoreOpen={setMoreOpen} onDrawer={phone && inConversation ? () => setDrawer(true) : undefined} drawerOpen={drawer} />
+      <PauseBanner />
       <UpdateBanner />
       {(!online || live === 'offline') && (
         <div className="offline-bar">{!online ? `Offline. ${waiting ? `${waiting} item${waiting === 1 ? '' : 's'} waiting on this device until the connection returns.` : 'Thread messages, answers and finished tasks wait on this device until the connection returns; chat needs a connection.'}` : 'Reconnecting to the server…'}</div>
@@ -148,8 +149,12 @@ function TabBar({ chatsActive, openDrawer, openMore, moreOpen }: { chatsActive: 
   const moreActive = MORE_PHONE.some(([to]) => pathname.startsWith(to))
   const cur = (on: boolean) => (on ? 'page' : undefined)
   const cls = (on: boolean) => `tab ${on ? 'active' : ''}`
+  // One highlight for the whole bar, wrapping icon and label; it slides to the active tab.
+  const on = [pathname === '/', chatsActive, pathname.startsWith('/inbox'), pathname.startsWith('/runs'), moreActive || moreOpen]
+  const idx = moreOpen ? 4 : on.indexOf(true)
   return (
     <nav className="tabbar" aria-label="Main">
+      <span className={`tab-pill ${idx < 0 ? 'none' : ''}`} style={{ '--i': Math.max(idx, 0) } as CSSProperties} aria-hidden="true" />
       <Link to="/" className={cls(pathname === '/')} aria-current={cur(pathname === '/')}><span className="tab-ic">{Icon.home()}</span><span className="tab-label">Home</span></Link>
       <Link to="/projects" className={cls(chatsActive)} aria-current={cur(chatsActive)} onClick={(e) => { if (chatsActive) { e.preventDefault(); openDrawer() } }}>
         <span className="tab-ic">{Icon.chats()}</span><span className="tab-label">Chats</span>
@@ -299,6 +304,23 @@ function ThreadLink({ t, indent }: { t: { id: number; title: string; unread: num
   )
 }
 
+
+/** While the owner has paused everything: on every screen, so it isn't forgotten. */
+function PauseBanner() {
+  useTimeFormat()
+  const p = useStatus().data?.pause
+  const resume = useResume()
+  if (!p?.paused) return null
+  return (
+    <div className="banner pause-banner" role="status">
+      <span><span style={{ fontWeight: 500 }}>Everything is paused</span> {p.until ? `until ${stamp(p.until)}` : 'until you resume'}</span>
+      <span className="muted-text">No runs start; wakeups that come due are skipped.</span>
+      <span style={{ flex: 1 }} />
+      <Link to="/settings/system">Settings</Link>
+      <button className="btn" disabled={resume.isPending} onClick={() => resume.mutate(undefined)}>Resume</button>
+    </div>
+  )
+}
 
 /** The mockup's update banner. Applying an update happens on the server (`./l0w update`, which
  * waits for the current run and don't-interrupt jobs), so the button shows how. Dismissed per version. */

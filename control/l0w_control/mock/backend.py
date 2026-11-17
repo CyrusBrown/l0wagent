@@ -76,6 +76,7 @@ class MockBackend(Backend):
             next_wakeup_at=_now().replace(hour=2, minute=0, second=0) + timedelta(days=1),
             budget=s.BudgetSummary(unit="pts", left=102, allowance=150, used_by_assistant=48, used_by_owner=300, used_by_chat=22, resets_at=_now() + timedelta(days=3)),
             usage=self._usage(), inbox_waiting=self.inbox_counts().waiting, reply_budget_left=14,
+            pause=self._pause if self._pause.paused else None,
         )
 
     def sync(self, since: str | None) -> s.SyncResponse:
@@ -501,6 +502,28 @@ class MockBackend(Backend):
 
     def cancel_update(self) -> s.UpdateInfo:
         return self.update_info()
+
+    _pause = s.PauseState(paused=False)
+
+    def pause_state(self) -> s.PauseState:
+        if self._pause.until and self._pause.until <= _now():
+            self._pause = s.PauseState(paused=False)
+        return self._pause
+
+    def pause(self, req: s.PauseRequest) -> s.PauseState:
+        since = self._pause.since if self._pause.paused else _now()
+        self._pause = s.PauseState(paused=True, since=since, until=_now() + timedelta(minutes=req.minutes) if req.minutes else None, skipped=self._pause.skipped)
+        for r in self.w.runs.values():
+            if r.status == "running":
+                r.status, r.ended_at, r.now = "stopped", _now(), None
+                self._changed("run", r.id, r)
+        self._emit(s.LiveEvent(type="status", data=self.status().model_dump(mode="json")))
+        return self._pause
+
+    def resume(self) -> s.PauseState:
+        self._pause = s.PauseState(paused=False)
+        self._emit(s.LiveEvent(type="status", data=self.status().model_dump(mode="json")))
+        return self._pause
 
     def claude_login_start(self) -> s.ClaudeLoginStart:
         return s.ClaudeLoginStart(url="https://claude.ai/oauth/authorize?code=true&client_id=mock")
@@ -1021,7 +1044,8 @@ class MockBackend(Backend):
 
     def system_status(self) -> s.SystemStatus:
         return s.SystemStatus(server_version=__version__, runner=s.RunnerHealth(reachable=True, busy=False, runtime_version="2.9.0 (Claude Code)", logged_in=True),
-                              egress=s.EgressHealth(reachable=True, lease_active=False), usage=self._usage(), gate=s.GateState(open=True),
+                              egress=s.EgressHealth(reachable=True, lease_active=False), usage=self._usage(),
+                              gate=s.GateState(open=False, reason="Everything is paused.") if self.pause_state().paused else s.GateState(open=True),
                               storage=s.StorageStatus(disk_free_bytes=212 * 1024**3, disk_total_bytes=500 * 1024**3, warn_free_gb=5, low=False, db_bytes=18 * 1024**2, measured_at=_now(),
                                                       volumes=[s.VolumeUsage(name="workspace", bytes=42 * 1024**2), s.VolumeUsage(name="work", bytes=3 * 1024**3),
                                                                s.VolumeUsage(name="cache", note="Not visible to control (it belongs to the agent computer).")]))

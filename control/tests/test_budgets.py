@@ -371,3 +371,70 @@ def test_the_subscription_stays_weekly(be):
     with pytest.raises(BadRequest):
         be.budgets.set_budget("claude-subscription", s.BudgetPatch(period="month"))
     assert be.budgets.summary("claude-subscription").period == "week"
+
+
+# ── wakeup notes (idea #42) ────────────────────────────────────────────────
+def test_a_wakeup_note_opens_its_brief_and_survives_a_replan(c, be):
+    r = c.post("/api/agent/wake", json={"at": "2027-03-01T23:00", "budget": 20, "tier": "sonnet/medium", "reason": "importer",
+                                        "note": "Start with step 3; the fixture is in /work/x/tmp."}, headers=AGENT)
+    assert r.status_code == 200 and r.json()["note"].startswith("Start with step 3")
+    other = wake(c, "2027-03-02T03:00", 20).json()
+    # Replacing the plan keeps the note on the wakeup whose time didn't change; a new item may bring its own.
+    items = [{"at": "2027-03-01T23:00", "budget": 25, "tier": "sonnet/medium", "reason": "importer again"},
+             {"at": "2027-03-02T03:00", "budget": 20, "tier": "sonnet/medium", "reason": "tests", "note": "only the flaky one"}]
+    assert c.put("/api/agent/wake", json={"items": items}, headers=AGENT).status_code == 200
+    notes = {w["reason"]: w["note"] for w in c.get("/api/agent/wake", headers=AGENT).json()["wakeups"]}
+    assert notes == {"importer again": "Start with step 3; the fixture is in /work/x/tmp.", "tests": "only the flaky one"}
+    # `wake note` sets and clears; only on the agent's own planned wakeups.
+    w = be.db.q1("SELECT id FROM wakeups WHERE reason='tests' AND status='planned'")
+    assert c.patch(f"/api/agent/wake/{w['id']}", json={"note": ""}, headers=AGENT).json()["note"] is None
+    assert c.patch(f"/api/agent/wake/{other['id']}", json={"note": "x"}, headers=AGENT).status_code == 400  # cancelled by the replan
+    mine = c.post("/api/wakeups", json={"at": "2027-03-01T20:00:00Z", "budget": 5, "reason": "mine"}).json()
+    assert c.patch(f"/api/agent/wake/{mine['id']}", json={"note": "x"}, headers=AGENT).status_code == 404
+    # The owner sees it on the calendar; the run's brief opens with it.
+    assert any(x["note"] for x in c.get("/api/calendar").json()["wakeups"])
+    be.clock.t = datetime(2027, 3, 1, 23, 0, 5, tzinfo=UTC)
+    be.db.ex("UPDATE wakeups SET status='cancelled' WHERE id=?", (mine["id"],))
+    tick(be)
+    brief, _ = be.runs_mgr._prompt(be.started[-1])
+    assert "## Your note for this wakeup" in brief and "Start with step 3" in brief
+
+
+# ── the emergency pause (idea #27) ─────────────────────────────────────────
+def test_pause_skips_due_wakeups_refuses_runs_and_tells_the_agent(c, be):
+    w = wake(c, "2027-03-01T23:00", 20, reason="the importer").json()
+    r = c.put("/api/system/pause", json={"minutes": 24 * 60})
+    assert r.status_code == 200 and r.json()["paused"] and r.json()["until"]
+    assert c.get("/api/status").json()["pause"]["paused"]
+    be.clock.t = datetime(2027, 3, 1, 23, 0, 5, tzinfo=UTC)
+    tick(be)
+    assert be.started == [] and be.db.q1("SELECT status, status_reason FROM wakeups WHERE id=?", (w["id"],)) == {"status": "skipped", "status_reason": "Everything was paused"}
+    assert not be.db.q1("SELECT 1 FROM wakeups WHERE kind='fallback'")  # nothing new is planned while paused
+    assert c.get("/api/system/pause").json()["skipped"] == 1
+    # Changing the end keeps what it skipped; resuming tells the agent.
+    assert c.put("/api/system/pause", json={}).json() == {"paused": True, "since": "2027-03-01T12:00:00Z", "until": None, "skipped": 1}
+    assert c.delete("/api/system/pause").json()["paused"] is False
+    text = c.get("/api/agent/inbox", headers=AGENT).json()["text"]
+    assert "paused everything" in text and f"#{w['id']}" in text and "the importer" in text
+    assert c.get("/api/status").json()["pause"] is None
+
+
+def test_a_pause_ends_at_its_time(c, be):
+    c.put("/api/system/pause", json={"minutes": 60})
+    be.clock.t = MONDAY + timedelta(hours=13, minutes=1)
+    tick(be)
+    assert not c.get("/api/system/pause").json()["paused"]
+    assert "ended at the time they set" in c.get("/api/agent/inbox", headers=AGENT).json()["text"]
+
+
+def test_the_run_manager_refuses_to_start_while_paused(tmp_path, monkeypatch):
+    from l0w_control.backends.base import Conflict
+    monkeypatch.setenv("L0W_SCHEDULER", "0")
+    env = Env(data_dir=tmp_path / "data", agent_token="agent-secret", sandbox_subnet="10.255.255.0/24", runner_url="http://127.0.0.1:9",
+              egress_url="http://127.0.0.1:9", agent_home=tmp_path / "agent-home")
+    b = SqliteBackend(env=env)
+    b.setup_owner(s.SetupOwnerRequest(username="mara", password=PW, timezone="UTC"))
+    b.pause(s.PauseRequest())
+    with pytest.raises(Conflict) as e:
+        asyncio.run(b.runs_mgr.start(s.RunStart(budget=5, reason="x")))
+    assert e.value.error == "paused"

@@ -86,6 +86,7 @@ class Status(Model):
     usage: UsageReading | None = None
     inbox_waiting: int
     reply_budget_left: float | None = None
+    pause: PauseState | None = Field(None, description="Set while the owner has paused everything.")
 
 
 class SyncChange(Model):
@@ -828,6 +829,7 @@ class Wakeup(Model):
     status_reason: str | None
     run_id: int | None
     used: float | None = Field(description="Points the wakeup's run used, once it ran.")
+    note: str | None = Field(None, description="The assistant's note to itself for this wakeup; it opens the wakeup's brief.")
 
 
 class WakeupCreate(Model):
@@ -1237,6 +1239,17 @@ class SystemStatus(Model):
     usage: UsageReading | None
     gate: GateState
     scheduler_problems: list[SchedulerProblem] = Field(default_factory=list, description="Scheduler steps failing right now; wakeups may be late or missing.")
+
+
+class PauseState(Model):
+    paused: bool
+    since: datetime | None = None
+    until: datetime | None = Field(None, description="When the pause ends on its own; none = until the owner resumes.")
+    skipped: int = Field(0, description="Wakeups and routines skipped so far because of the pause.")
+
+
+class PauseRequest(Model):
+    minutes: int | None = Field(None, ge=1, le=60 * 24 * 14, description="How long to pause; none = until you resume. On a pause already on, sets a new end.")
 
 
 class UpdateInfo(Model):
