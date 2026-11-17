@@ -125,6 +125,8 @@ class Backend:
     def set_reviewer_config(self, req: s.ReviewerConfig) -> s.ReviewerConfig: raise NotImplementedError
     def instructions(self) -> s.StandingInstructions: raise NotImplementedError
     def set_instructions(self, req: s.StandingInstructions) -> s.StandingInstructions: raise NotImplementedError
+    def advanced_settings(self) -> list[s.AdvancedSetting]: raise NotImplementedError
+    def set_advanced_settings(self, values: dict) -> list[s.AdvancedSetting]: raise NotImplementedError
 
     # the calendar, wakeups and routines (M4)
     def calendar(self, start: str | None, end: str | None) -> s.Calendar: raise NotImplementedError
@@ -165,6 +167,15 @@ class Backend:
     def delete_integration(self, name: str) -> None: raise NotImplementedError
     def sync_integration(self, name: str) -> s.Integration: raise NotImplementedError
     def set_integration_tool_policy(self, name: str, tool: str, policy: str) -> s.Integration: raise NotImplementedError
+
+    # extensions (M8; online only: enabling one and its settings are the owner's, never queued offline)
+    def extensions(self) -> list[s.ExtensionInfo]: raise NotImplementedError
+    def rescan_extensions(self) -> list[s.ExtensionInfo]: raise NotImplementedError
+    def set_extension_enabled(self, name: str, enabled: bool) -> s.ExtensionInfo: raise NotImplementedError
+    def set_extension_settings(self, name: str, values: dict) -> s.ExtensionInfo: raise NotImplementedError
+    def extension_ui_file(self, name: str, path: str) -> str: raise NotImplementedError
+    def extension_cards(self, status: str | None) -> list[s.ExtensionCard]: raise NotImplementedError
+    def resolve_extension_card(self, card_id: int, req: s.ExtensionCardResolve) -> s.ExtensionCard: raise NotImplementedError
 
     # the MCP connector (consent and connected apps; online only)
     def connect_request(self, params: dict[str, str]) -> s.ConnectRequest: raise NotImplementedError

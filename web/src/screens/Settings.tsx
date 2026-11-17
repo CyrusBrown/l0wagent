@@ -9,6 +9,8 @@ import { useTheme, type ThemePref } from '../app/theme'
 import { useTimeFormat, type TimeFormat } from '../app/timeFormat'
 import { Budgets, Instructions, Providers, Reviewer, Roles } from './SettingsBudget'
 import { Notifications } from './SettingsNotify'
+import { Extensions } from './SettingsExtensions'
+import { Advanced } from './SettingsAdvanced'
 
 // Tab list and order from the mockup. Tabs without a screen yet say which milestone brings them.
 const TABS: [slug: string, label: string, later?: string][] = [
@@ -20,7 +22,8 @@ const TABS: [slug: string, label: string, later?: string][] = [
   ['instructions', 'Standing instructions'],
   ['account', 'Account'],
   ['notifications', 'Notifications'],
-  ['extensions', 'Extensions', 'Extensions arrive with M8. They can add pages, sidebar sections, cards and settings panels here.'],
+  ['extensions', 'Extensions'],
+  ['advanced', 'Advanced'],
   ['system', 'System'],
 ]
 
@@ -44,7 +47,7 @@ export function Settings() {
 
 const PAGES: Record<string, JSX.Element> = {
   appearance: <Appearance />, budgets: <Budgets />, providers: <Providers />, roles: <Roles />, reviewer: <Reviewer />, instructions: <Instructions />,
-  account: <Account />, system: <System />, notifications: <Notifications />,
+  account: <Account />, system: <System />, notifications: <Notifications />, extensions: <Extensions />, advanced: <Advanced />,
 }
 
 function Later({ title, text }: { title: string; text: string }) {

@@ -100,9 +100,11 @@ describe('screens render with mock data', () => {
     expect(twentyFour).toHaveAttribute('aria-pressed', 'true')
     await waitFor(() => expect(localStorage.getItem('l0w.timeFormat')).toBe('24h'))
   })
-  it('Settings: a later tab says when it arrives', async () => {
+  it('Settings: extensions, none installed', async () => {
+    overrides['/api/extensions'] = []
     renderAt('/settings/extensions')
-    expect(await screen.findByText(/arrive with M8/)).toBeInTheDocument()
+    expect(await screen.findByText('No extensions installed.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Rescan' })).toBeInTheDocument()
   })
   it('Settings: budgets and levels', async () => {
     renderAt('/settings/budgets')

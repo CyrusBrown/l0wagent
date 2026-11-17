@@ -745,7 +745,13 @@ class Budgets:
 
     def instructions(self) -> s.StandingInstructions:
         row = self.db.q1("SELECT value, updated_at FROM kv WHERE key='standing_instructions'")
-        return s.StandingInstructions(text=json.loads(row["value"]) if row else "", updated_at=parse(row["updated_at"]) if row else None)
+        rev = self.db.q1("SELECT value, updated_at FROM kv WHERE key='reviewer_instructions'")
+        stamps = [parse(r["updated_at"]) for r in (row, rev) if r]
+        return s.StandingInstructions(text=json.loads(row["value"]) if row else "", reviewer_text=json.loads(rev["value"]) if rev else "",
+                                      updated_at=max(stamps) if stamps else None)
 
     def set_instructions(self, text: str) -> None:
         self._kv_set("standing_instructions", text.strip())
+
+    def set_reviewer_instructions(self, text: str) -> None:
+        self._kv_set("reviewer_instructions", text.strip())

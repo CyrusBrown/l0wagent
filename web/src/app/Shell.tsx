@@ -14,6 +14,9 @@ import { Caret } from '../components/Caret'
 import { Overlay } from '../components/Overlay'
 import { useIsPhone } from '../components/useIsPhone'
 import { Icon } from './icons'
+import { ExtSlot } from '../ext/ExtElement'
+import { pages, slotItems } from '../ext/registry'
+import { useExtensions } from '../ext/useExtensions'
 
 const CONVERSATION = /^\/(t|c|p|projects|general|new)(\/|$)/
 
@@ -96,7 +99,8 @@ function Header({ onSearch, moreOpen, setMoreOpen, onDrawer, drawerOpen }: { onS
   const counts = useInboxCounts()
   const loc = useLocation()
   const convActive = CONVERSATION.test(loc.pathname)
-  const more = MORE_DESKTOP
+  const exts = useExtensions()
+  const more = [...MORE_DESKTOP, ...pages(exts.data).map((p) => [p.to, p.page.title, p.ext.title])]
   const moreCur = more.find(([to]) => loc.pathname.startsWith(to))
   useEscape(moreOpen, () => setMoreOpen(false))
   return (
@@ -144,9 +148,10 @@ function Header({ onSearch, moreOpen, setMoreOpen, onDrawer, drawerOpen }: { onS
  * you're already in a conversation, and the Projects list otherwise. */
 function TabBar({ chatsActive, openDrawer, openMore, moreOpen }: { chatsActive: boolean; openDrawer: () => void; openMore: () => void; moreOpen: boolean }) {
   const counts = useInboxCounts()
+  const morePhone = useMorePhone()
   const { pathname } = useLocation()
   const waiting = counts.data?.waiting ?? 0
-  const moreActive = MORE_PHONE.some(([to]) => pathname.startsWith(to))
+  const moreActive = morePhone.some(([to]) => pathname.startsWith(to))
   const cur = (on: boolean) => (on ? 'page' : undefined)
   const cls = (on: boolean) => `tab ${on ? 'active' : ''}`
   // One highlight for the whole bar, wrapping icon and label; it slides to the active tab.
@@ -170,13 +175,20 @@ function TabBar({ chatsActive, openDrawer, openMore, moreOpen }: { chatsActive: 
   )
 }
 
+/** The phone's More list: the built-in places, then any extension pages. */
+function useMorePhone(): [string, string, string, keyof typeof Icon][] {
+  const exts = useExtensions()
+  return [...MORE_PHONE, ...pages(exts.data).map((p): [string, string, string, keyof typeof Icon] => [p.to, p.page.title, p.ext.title, 'more'])]
+}
+
 function MoreSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { pathname } = useLocation()
+  const morePhone = useMorePhone()
   return (
     <Overlay open={open} onClose={onClose} side="bottom" label="More" className="more-sheet">
       <div className="sheet-title">More</div>
       <div className="sheet-list">
-        {MORE_PHONE.map(([to, label, desc, icon]) => {
+        {morePhone.map(([to, label, desc, icon]) => {
           const on = pathname.startsWith(to)
           return (
             <Link key={to} to={to} className={`sheet-row ${on ? 'on' : ''}`} aria-current={on ? 'page' : undefined} onClick={onClose}>
@@ -217,6 +229,7 @@ function StatusChip() {
 }
 
 function Sidebar() {
+  const exts = useExtensions()
   const projects = useProjects()
   const threads = useThreads()
   const general = (threads.data ?? []).filter((t) => t.project === null)
@@ -247,6 +260,12 @@ function Sidebar() {
           </div>
         )
       })}
+      {slotItems(exts.data, 'sidebar').map(({ ext, item }) => (
+        <div key={`${ext.name}:${item.element}`} className="ext-side">
+          <div className="side-label">{item.title ?? ext.title}</div>
+          <ExtSlot ext={ext} element={item.element} context={{}} />
+        </div>
+      ))}
       <ChatList />
     </aside>
   )

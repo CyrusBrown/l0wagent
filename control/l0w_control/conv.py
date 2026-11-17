@@ -57,6 +57,7 @@ CLAIM_FIRST = ("If a message asks you to do something (more than an answer), cla
 class Conversations:
     def __init__(self, db: Database, live: Live, vault: Vault, settings: Settings):
         self.db, self.live, self.vault, self.settings = db, live, vault, settings
+        self.fire: Callable[[str, dict], None] = lambda event, data: None  # extensions' event hooks (set by the backend)
         # Set by the backend: applies an egress-rule action through the egress admin API.
         self.add_egress_rule: Callable[[str, str, str], int] | None = None
         self.delete_egress_rule: Callable[[int], None] | None = None
@@ -403,6 +404,7 @@ class Conversations:
             self.db.ex("UPDATE threads SET last_read_message_id=? WHERE id=?", (mid, thread_id))
             self.live.changed("message", mid)
             self._touch_thread(thread_id)
+            self.fire("message_posted", {"message_id": mid, "thread_id": thread_id, "sender": sender, "body": self.r(body)})
             return self.message(mid)
 
         return self.once(key, f"message:{thread_id}", s.Message, make)
@@ -415,6 +417,7 @@ class Conversations:
                          (thread_id, "assistant", self.r(body), run_id, self.db.now()))
         self.live.changed("message", mid)
         self._touch_thread(thread_id)
+        self.fire("message_posted", {"message_id": mid, "thread_id": thread_id, "sender": "assistant", "body": self.r(body)})
         self.notify("assistant_message", f"The assistant in “{t['title']}”", self._preview(self.r(body)), self._url(thread_id), "message", str(mid))
         return self.message(mid)
 
@@ -526,6 +529,7 @@ class Conversations:
             self.db.ex("UPDATE questions SET status='answered', answer_json=?, note=?, answered_at=? WHERE id=?",
                        (json.dumps(value), self.r(req.note), self.db.now(), qid))
             self._card("question", qid, x.thread_id)
+            self.fire("ask_decided", {"kind": "question", "id": qid, "decision": value})
             return self.question(qid)
 
         return self.once(req.idempotency_key, f"answer:{qid}", s.Question, make)
@@ -545,6 +549,7 @@ class Conversations:
         self.db.ex("UPDATE permissions SET status=?, scope=?, note=?, decided_at=? WHERE id=?",
                    ("allowed" if req.decision == "allow" else "denied", req.scope if req.decision == "allow" else None, self.r(req.note), self.db.now(), pid))
         self._card("permission", pid, p.thread_id)
+        self.fire("ask_decided", {"kind": "permission", "id": pid, "decision": req.decision})
         return self.permission(pid)
 
     def _apply(self, a: dict, scope: str | None = None) -> None:
@@ -606,6 +611,7 @@ class Conversations:
             row = self._open_row("tasks", tid, "task")
             self.db.ex("UPDATE tasks SET status=?, note=?, resolved_at=? WHERE id=?", (req.outcome, self.r(req.note), self.db.now(), tid))
             self._card("task", tid, row["thread_id"])
+            self.fire("ask_decided", {"kind": "task", "id": tid, "decision": req.outcome})
             return self.task(tid)
 
         return self.once(req.idempotency_key, f"task:{tid}", s.Task, make)
@@ -631,6 +637,7 @@ class Conversations:
         self.db.ex("UPDATE promote_requests SET status=?, note=?, decided_at=? WHERE id=?",
                    ("approved" if req.decision == "approve" else "denied", self.r(req.note), self.db.now(), pid))
         self._card("promote", pid, row["thread_id"])
+        self.fire("ask_decided", {"kind": "promote", "id": pid, "decision": req.decision})
         return self.promote(pid)
 
     # ── claims ─────────────────────────────────────────────────────────────
@@ -724,6 +731,7 @@ class Conversations:
             self._carry_out(row)
         self.db.ex("UPDATE suggestions SET status=?, decided_at=? WHERE id=?", ("accepted" if req.decision == "accept" else "dismissed", self.db.now(), sid))
         self._card("suggestion", sid, row["target_id"] if row["target_kind"] == "thread" else None)
+        self.fire("ask_decided", {"kind": "suggestion", "id": sid, "decision": req.decision})
         return self.suggestion(sid)
 
     def accept_all(self) -> list[s.Suggestion]:
@@ -781,7 +789,7 @@ class Conversations:
             tid = obj.target_id
         t = self.db.q1("SELECT t.title, p.slug FROM threads t LEFT JOIN projects p ON p.id=t.project_id WHERE t.id=?", (tid,)) if tid else None
         return s.InboxEntry(kind=kind, id=obj.id, at=obj.created_at, thread_id=tid, thread_title=t["title"] if t else None,  # type: ignore[arg-type]
-                            project=t["slug"] if t else None, **{kind: obj})
+                            project=t["slug"] if t else None, **{"extension_card" if kind == "extension" else kind: obj})
 
     def inbox_entries(self, waiting: bool, extra: list[tuple[str, Any]]) -> list[s.InboxEntry]:
         where = "status='open'" if waiting else "status NOT IN ('open','withdrawn')"

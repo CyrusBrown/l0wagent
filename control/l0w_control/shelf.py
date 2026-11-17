@@ -30,6 +30,7 @@ SHELF_MAX_BYTES = 500 * 1024 * 1024
 class Shelf:
     def __init__(self, db: Database, live: Live, storage: Storage, blob_dir: Path):
         self.db, self.live, self.storage, self.blob_dir = db, live, storage, blob_dir
+        self.fire = lambda event, data: None  # extensions' event hooks (set by the backend)
         live.getters["shelf_item"] = lambda i: self.item(int(i))
 
     # ── reading ────────────────────────────────────────────────────────────
@@ -96,6 +97,8 @@ class Shelf:
         elif info.st_size <= SHELF_MAX_BYTES:
             self.db.ex("UPDATE shelf_items SET last_sha256=? WHERE id=?", (hashlib.sha256(self.storage.read(volume, path)).hexdigest(), iid))
         self._changed(iid)
+        slug = self.db.q1("SELECT slug FROM projects WHERE id=?", (project_id,))
+        self.fire("file_shelved", {"shelf_item_id": iid, "project": slug["slug"] if slug else None, "volume": volume, "path": path})
         return self.item(iid)
 
     def remove(self, item_id: int, by: str) -> None:

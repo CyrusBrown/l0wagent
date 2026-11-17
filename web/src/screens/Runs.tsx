@@ -1,4 +1,7 @@
 import { type CSSProperties, useState } from 'react'
+import { ExtSlot } from '../ext/ExtElement'
+import { slotItems } from '../ext/registry'
+import { useExtensions } from '../ext/useExtensions'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import type { S } from '../api/client'
 import { problem, useJobs, useProjects, useRun, useRuns, useStartRun, useStopRun, useTimeline } from '../api/queries'
@@ -101,7 +104,9 @@ function Jobs({ jobs }: { jobs: S['Job'][] }) {
             {j.dont_interrupt && <span className="pill warn">Don't interrupt</span>}
           </div>
           <span className="sub">
-            Started {j.run_id ? <>by <Link to={`/runs/${j.run_id}`}>run #{j.run_id}</Link> · </> : ''}{ago(j.started_at)}{j.expected_end && ` · expected ${until(j.expected_end)}`}
+            Started {j.run_id ? <>by <Link to={`/runs/${j.run_id}`}>run #{j.run_id}</Link> · </> : ''}{ago(j.started_at)}{j.expected_end && (new Date(j.expected_end).getTime() > Date.now()
+              ? ` · expected ${until(j.expected_end)}`
+              : <> · <span style={{ color: 'var(--warnInk)' }}>running past its estimate ({stamp(j.expected_end)})</span></>)}
           </span>
         </div>
         <span className="mono" style={{ fontSize: 13, color: 'var(--fg2)' }}>{j.progress}</span>
@@ -156,8 +161,19 @@ export function Run() {
       {detailed
         ? <Detailed id={id} back={() => setParams({})} />
         : <Summary d={d} open={() => setParams({ view: 'detailed' })} />}
+      {!detailed && <RunWidgets runId={id} />}
     </div>
   )
+}
+
+function RunWidgets({ runId }: { runId: number }) {
+  const exts = useExtensions()
+  return <>{slotItems(exts.data, 'run_widgets').map(({ ext, item }) => (
+    <div key={`${ext.name}:${item.element}`} className="stack" style={{ gap: 8 }}>
+      <div className="mini-label">{item.title ?? ext.title}</div>
+      <ExtSlot ext={ext} element={item.element} context={{ run_id: runId }} />
+    </div>
+  ))}</>
 }
 
 function Summary({ d, open }: { d: S['RunDetail']; open: () => void }) {

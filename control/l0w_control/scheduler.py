@@ -67,6 +67,7 @@ def schedule_text(sch: dict, unit: str = "week") -> str:
 class Scheduler:
     def __init__(self, db: Database, settings: Settings, budgets: Budgets, runs: RunManager, live: Live):
         self.db, self.settings, self.budgets, self.runs, self.live = db, settings, budgets, runs, live
+        self.fire = lambda event, data: None  # extensions' event hooks (set by the backend)
         self.housekeeping: list = []   # async (now) -> None, run each tick (promote expiry, job liveness)
         runs.on_finish.append(self._run_finished)
 
@@ -155,6 +156,7 @@ class Scheduler:
         wid = self.db.ex("INSERT INTO wakeups(provider, at, budget, tier, reason, kind, created_by, routine_id, note, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                          (pid, iso(at), round(budget, 1), tier, reason, kind, by, routine_id, note or None, now, now))
         self._changed(wid)
+        self.fire("wakeup_planned", {"wakeup_id": wid, "at": iso(at), "budget": round(budget, 1), "tier": tier, "reason": reason, "by": by})
         return wid
 
     def _note(self, text: str) -> None:

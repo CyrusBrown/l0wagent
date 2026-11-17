@@ -77,7 +77,11 @@ SPECS: dict[str, Spec] = {
     "REPLY_TIER": Spec("str", "sonnet", "Model (optionally model/effort) for Reply-now runs."),
     "REPLY_MAX_MINUTES": Spec("int", 15, "Wall-clock cap for a Reply-now run, including time held open for your reply.", "agent", 1, 240),
     "HOLD_MINUTES": Spec("float", 5.0, "If the assistant messaged you or asked something, hold the run open this long for your reply (0 = off).", "agent", 0, 60),
-    "HOLD_MAX_ROUNDS": Spec("int", 3, "How many times one run may wait for and resume on your replies.", "agent", 0, 20),
+    "HOLD_MAX_ROUNDS": Spec("int", 10, "How many times one run may wait for and resume on your replies.", "agent", 0, 50),
+    "USE_WHOLE_BUDGET": Spec("bool", True, "Use it or lose it: a wakeup keeps working (backlog, free-time queue, new tasks it writes) until its budget is spent, "
+                             "instead of stopping when the planned work is done. Busywork still doesn't count. Off: a wakeup's budget is planned and it may stop early."),
+    "NUDGE_MAX": Spec("int", 2, "How many times a wakeup that stops on its own with budget left is told to carry on.", lo=0, hi=10),
+    "NUDGE_MIN_LEFT_PCT": Spec("float", 15.0, "Only nudge a wakeup that stopped with more than this share of its budget left (%).", lo=0, hi=100),
     "RUN_MAX_RESUMES": Spec("int", 3, "How many times a run is resumed after the agent computer restarts mid-run.", lo=0, hi=20),
     "STOP_GRACE_SECONDS": Spec("int", 90, "After asking a session to stop, force it this many seconds later.", lo=1, hi=3600),
     "LOGIN_MAX_FAILURES_PER_IP": Spec("int", 10, "Failed logins from one address within 15 minutes before it's rate-limited.", lo=1, hi=1000),
@@ -85,6 +89,34 @@ SPECS: dict[str, Spec] = {
     "SESSION_DAYS": Spec("int", 30, "Browser sessions expire after this many days without use.", lo=1, hi=365),
     "DISK_WARN_FREE_GB": Spec("float", 5.0, "Warn (Settings → System, and one notification a day) when the server's free disk space drops below this many GB.", lo=0.5, hi=1000),
     "SELFTEST_LAN_TARGETS": Spec("str", "host.docker.internal:22,192.168.1.1:80,10.0.0.1:80", "LAN/host addresses the self-test checks the agent can't reach (host:port, comma-separated)."),
+}
+
+
+# Settings → Advanced (and the chat's `advanced.<KEY>` settings): the tunables above that have no screen of
+# their own, grouped and labeled. Left out on purpose: USAGE_UNKNOWN_POLICY (the usage gate fails closed; only
+# the host's environment can loosen it), DEFAULT_TIER and REPLY_TIER (roles set these now), and the reserve and
+# sweep numbers (Settings → Budget). key → (group, label, unit)
+ADVANCED: dict[str, tuple[str, str, str | None]] = {
+    "USE_WHOLE_BUDGET": ("Runs", "Use the whole budget (use it or lose it)", None),
+    "NUDGE_MAX": ("Runs", "Times a wakeup that stops early is told to carry on", None),
+    "NUDGE_MIN_LEFT_PCT": ("Runs", "Carry on only if more than this is left", "%"),
+    "HOLD_MINUTES": ("Conversation", "Wait for your reply", "min"),
+    "HOLD_MAX_ROUNDS": ("Conversation", "Replies one run may wait for", None),
+    "PROMOTE_WAIT_MINUTES": ("Conversation", "Promote request stays open", "min"),
+    "REPLY_RUN_MAX_PTS": ("Runs", "Most one Reply now may spend", "pts"),
+    "REPLY_MAX_MINUTES": ("Runs", "Reply now time limit", "min"),
+    "MANUAL_RUN_PTS": ("Runs", "Wake now budget", "pts"),
+    "MANUAL_RUN_MAX_MINUTES": ("Runs", "Wake now time limit", "min"),
+    "WAKEUP_MAX_MINUTES": ("Runs", "Wakeup and routine time limit", "min"),
+    "WAKEUP_LATE_MINUTES": ("Runs", "A wakeup counts as missed after", "min"),
+    "RUN_MAX_RESUMES": ("Runs", "Resumes after the agent computer restarts", None),
+    "STOP_GRACE_SECONDS": ("Runs", "Force a stop after", "s"),
+    "SESSION_DAYS": ("System", "Sign out idle browsers after", "days"),
+    "LOGIN_MAX_FAILURES_PER_IP": ("System", "Failed logins per address (15 min)", None),
+    "RUN_EVENTS_KEEP_DAYS": ("System", "Keep raw run logs for", "days"),
+    "DISK_WARN_FREE_GB": ("System", "Warn when free disk is below", "GB"),
+    "UPDATE_CHECK": ("System", "Check for updates", None),
+    "SELFTEST_LAN_TARGETS": ("System", "Self-test LAN addresses", None),
 }
 
 
@@ -133,3 +165,15 @@ class Settings:
             "ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json, updated_at=excluded.updated_at",
             (key, json.dumps(value), self.db.now()),
         )
+
+
+def advanced_view(get) -> list:
+    """Settings → Advanced, with current values from `get(key)`."""
+    from .api import schemas as s
+
+    out = []
+    for key, (group, label, unit) in ADVANCED.items():
+        sp = SPECS[key]
+        out.append(s.AdvancedSetting(key=key, group=group, label=label, help=sp.desc, kind=sp.kind, value=get(key), default=sp.default,  # type: ignore[arg-type]
+                                     min=sp.lo, max=sp.hi, unit=unit))
+    return out

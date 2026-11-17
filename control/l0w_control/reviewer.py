@@ -50,6 +50,19 @@ MODE_TEXT = {
     "gate": ("**Gate.** As Monitor, and you also approve the end of the wakeup and finished tasks: until you end a reply "
              "with `AGREE`, it keeps working."),
 }
+# The end-of-run rule, by the owner's USE_WHOLE_BUDGET setting (2026-11-18; on = the old assistant's mindset).
+STOP_TEXT = {
+    True: ("**the default is no.** The owner runs on use it or lose it: what the wakeup leaves unspent isn't saved for anything, "
+           "and \"the planned work is done\" is not a reason to stop. Its own `CLAUDE.md` may say to stop when the plan is done; that "
+           "doesn't apply. Look at its backlog, free-time queue, roadmap and projects, and name the next concrete task (what, where, "
+           "what done looks like). If the backlog is genuinely exhausted, tell it to write new substantial backlog items and start the "
+           "first. Never push it into busywork. Agree only when continuing really has no value: the budget is nearly spent, or "
+           "everything worthwhile is blocked on the owner. To agree, end with `AGREE` on its own line."),
+    False: ("agree when continuing really has no value: the budget is nearly spent, everything worthwhile is blocked on the owner, "
+            "or more work would be busywork. Then end with `AGREE` on its own line. Otherwise name the next concrete task (what, "
+            "where, what done looks like). Its budget is planned, not use-it-or-lose-it, except in a sweep wakeup, where unspent "
+            "budget is lost."),
+}
 LEVEL_RE = re.compile(r"^\s*LEVEL:\s*([a-z]+/[a-z]+)\s*$", re.M | re.I)
 AGREE_RE = re.compile(r"^\s*AGREE\s*$", re.M)
 
@@ -58,6 +71,7 @@ class Reviewer:
     def __init__(self, db: Database, settings: Settings, budgets: Budgets, runner: RunnerClient, live: Live, redact):
         self.db, self.settings, self.budgets, self.runner, self.live, self.redact = db, settings, budgets, runner, live, redact
         self.runs: RunManager | None = None
+        self.ext_prompt = lambda slot: ""  # extensions' prompt fragments, by slot
         self._last_watch: dict[int, tuple[float, int]] = {}   # run → (time, last timeline id seen)
         self._lock = asyncio.Lock()
 
@@ -116,7 +130,12 @@ class Reviewer:
                      + (", a strong model)" if strong else ", a cheaper model, but still the owner's usage)"))
         return Template(_strip_comment((PROMPTS / "reviewer.md").read_text())).safe_substitute(
             mode=cfg.mode.capitalize(), mode_text=MODE_TEXT.get(cfg.mode, ""), tier_text=tier_text,
-            worker_text=worker_text, cost_text=cost_text, share=f"{cfg.budget_share:.0%}", timezone=str(self.budgets.tz()))
+            worker_text=worker_text, cost_text=cost_text, stop_text=STOP_TEXT[bool(self.settings.get("USE_WHOLE_BUDGET"))],
+            share=f"{cfg.budget_share:.0%}", timezone=str(self.budgets.tz())) + self._owner_text() + self.ext_prompt("reviewer")
+
+    def _owner_text(self) -> str:
+        text = (self.budgets.instructions().reviewer_text or "").strip()
+        return f"\n\n## Standing instructions from the owner, for you\n\nThe assistant doesn't see these.\n\n{text}" if text else ""
 
     def _header(self, run: dict) -> str:
         now = self.budgets.local(utcnow())

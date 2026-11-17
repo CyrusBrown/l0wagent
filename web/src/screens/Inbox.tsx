@@ -12,27 +12,27 @@ import { useOnline } from '../components/online'
 
 type Kind = S['InboxEntry']['kind']
 const FILTERS: [string, Kind[] | null][] = [
-  ['All', null], ['Security', ['security']], ['Questions', ['question']], ['Permissions', ['permission', 'task']], ['Suggestions', ['suggestion']], ['Promote', ['promote']],
+  ['All', null], ['Security', ['security']], ['Questions', ['question']], ['Permissions', ['permission', 'task']], ['Suggestions', ['suggestion']], ['Promote', ['promote']], ['Extensions', ['extension']],
 ]
 const GROUPS: [string, Kind[], boolean][] = [
   ['Security', ['security'], false],  // first: a sign-in you don't recognize matters most (owner, 2026-11-17)
   ['Questions', ['question'], false], ['Permissions & tasks', ['permission', 'task'], false], ['Thread suggestions', ['suggestion'], true],
-  ['Promote requests', ['promote'], false],
+  ['Promote requests', ['promote'], false], ['From extensions', ['extension'], false],
 ]
-const KIND: Record<Kind, string> = { question: 'Question', permission: 'Permission', task: 'Task', suggestion: 'Suggestion', promote: 'Promote', security: 'Security' }
+const KIND: Record<Kind, string> = { question: 'Question', permission: 'Permission', task: 'Task', suggestion: 'Suggestion', promote: 'Promote', security: 'Security', extension: 'Extension' }
 
 function outcome(e: S['InboxEntry']): [string, string] {
-  const st = (e.question ?? e.permission ?? e.task ?? e.suggestion ?? e.promote ?? e.security)?.status ?? ''
+  const st = (e.question ?? e.permission ?? e.task ?? e.suggestion ?? e.promote ?? e.security ?? e.extension_card)?.status ?? ''
   const label: Record<string, [string, string]> = {
     answered: ['Answered', 'info'], allowed: ['Allowed', 'ok'], denied: ['Denied', 'bad'], done: ['Done', 'ok'], declined: ['Declined', 'mute'],
     accepted: ['Accepted', 'ok'], dismissed: ['Dismissed', 'mute'], approved: ['Approved', 'ok'], withdrawn: ['Withdrawn', 'mute'], expired: ['Expired', 'mute'],
-    confirmed: ['That was me', 'ok'], revoked: ['Revoked', 'bad'],
+    confirmed: ['That was me', 'ok'], revoked: ['Revoked', 'bad'], resolved: ['Resolved', 'ok'],
   }
   return label[st] ?? [st, 'mute']
 }
 
 function text(e: S['InboxEntry']): string {
-  return e.question?.text ?? e.permission?.text ?? e.task?.text ?? e.suggestion?.text ?? e.promote?.reason ?? e.security?.text ?? ''
+  return e.question?.text ?? e.permission?.text ?? e.task?.text ?? e.suggestion?.text ?? e.promote?.reason ?? e.security?.text ?? e.extension_card?.title ?? ''
 }
 
 function note(e: S['InboxEntry']): string | null | undefined {
@@ -47,7 +47,7 @@ function when(iso: string): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-const where = (e: S['InboxEntry']) => (e.thread_id ? <Link to={`/t/${e.thread_id}`}>#{e.thread_title}</Link> : <span>{e.kind === 'security' ? 'Account' : 'Settings'}</span>)
+const where = (e: S['InboxEntry']) => (e.thread_id ? <Link to={`/t/${e.thread_id}`}>#{e.thread_title}</Link> : <span>{e.kind === 'security' ? 'Account' : e.kind === 'extension' ? 'Extension' : 'Settings'}</span>)
 
 export function Inbox() {
   useTimeFormat()

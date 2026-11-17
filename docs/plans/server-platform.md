@@ -72,7 +72,7 @@ The instance-side parts of **hub services** (email, the board, shared spaces, an
 - **Agent commands and prompt fragments** (`assistant board …`, board-reading guidance)
 - **Calls to hub services through the gateway**, using the instance's identity and any service-role credentials. The extension never sees the instance key.
 - **Background jobs** (fetching held mail, syncing a shared space)
-- **Managed folders**: an area of the agent's storage the extension may write (e.g. `/shared/<space>`), with containment enforced by control
+- **Managed folders**: an area of the agent's storage the extension may write (`/work/_inbox/_ext/<name>/<folder>/` in SDK v1), with containment enforced by control
 - **Events** in and out (a new mail arrives → a message in a thread)
 
 ### What an extension can add (SDK v1)

@@ -487,6 +487,17 @@ def get_instructions(be: Be) -> s.StandingInstructions:
     return be.instructions()
 
 
+@api.get("/settings/advanced", tags=["settings"])
+def get_advanced_settings(be: Be) -> list[s.AdvancedSetting]:
+    """Tuning knobs without a screen of their own (Settings → Advanced)."""
+    return be.advanced_settings()
+
+
+@api.patch("/settings/advanced", tags=["settings"])
+def set_advanced_settings(req: s.AdvancedSettingsUpdate, be: Be) -> list[s.AdvancedSetting]:
+    return be.set_advanced_settings(req.values)
+
+
 @api.put("/instructions", tags=["budgets"])
 def set_instructions(req: s.StandingInstructions, be: Be) -> s.StandingInstructions:
     return be.set_instructions(req)
@@ -916,3 +927,46 @@ async def upload(
     """The only way control writes into the agent's storage: into an _inbox/ folder."""
     data = await file.read()
     return be.upload(project, file.filename or "upload", data, file.content_type, idempotency_key)
+
+
+# ── extensions (M8) ─────────────────────────────────────────────────────────
+@api.get("/extensions", tags=["extensions"])
+def list_extensions(be: Be) -> list[s.ExtensionInfo]:
+    """Everything found under extensions/, on or off, with errors. An extension's own routes are at /api/ext/<name>/."""
+    return be.extensions()
+
+
+@api.post("/extensions/rescan", tags=["extensions"])
+def rescan_extensions(be: Be) -> list[s.ExtensionInfo]:
+    """Read the extensions folder again (after adding one or pulling a new version). Enabled ones reload."""
+    return be.rescan_extensions()
+
+
+@api.put("/extensions/{name}/enabled", tags=["extensions"])
+def set_extension_enabled(name: str, req: s.ExtensionEnable, be: Be) -> s.ExtensionInfo:
+    return be.set_extension_enabled(name, req.enabled)
+
+
+@api.put("/extensions/{name}/settings", tags=["extensions"])
+def set_extension_settings(name: str, req: s.ExtensionSettingsUpdate, be: Be) -> s.ExtensionInfo:
+    return be.set_extension_settings(name, req.values)
+
+
+@api.get("/extensions/{name}/ui/{path:path}", include_in_schema=False)
+def extension_ui(name: str, path: str, be: Be) -> Response:
+    """The extension's UI bundle (its module's folder), for the web app to import."""
+    from fastapi.responses import FileResponse
+
+    target = be.extension_ui_file(name, path)
+    media = "text/javascript" if target.endswith((".js", ".mjs")) else None
+    return FileResponse(target, media_type=media, headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"})
+
+
+@api.get("/extension-cards", tags=["extensions"])
+def extension_cards(be: Be, status: Literal["open", "closed"] | None = None) -> list[s.ExtensionCard]:
+    return be.extension_cards(status)
+
+
+@api.post("/extension-cards/{card_id}/resolve", tags=["extensions"])
+def resolve_extension_card(card_id: int, req: s.ExtensionCardResolve, be: Be) -> s.ExtensionCard:
+    return be.resolve_extension_card(card_id, req)

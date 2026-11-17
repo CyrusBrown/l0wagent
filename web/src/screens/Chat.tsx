@@ -7,6 +7,7 @@ import {
   uploadChatFile, useReplyNow, useSendChat, useStopChat, useThreads,
 } from '../api/queries'
 import { useOnline } from '../components/online'
+import { isSendKey } from '../components/sendKey'
 import { CodeBox } from '../components/CopyCode'
 import { useTimeFormat } from '../app/timeFormat'
 import { bytes, stamp } from '../components/format'
@@ -66,7 +67,7 @@ export function Chat() {
           <div className="composer" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) void attach(e.dataTransfer.files) }}>
             <textarea rows={2} placeholder="Message" value={text} aria-label="Message" onChange={(e) => setText(e.target.value)}
               onPaste={(e) => { if (e.clipboardData.files.length) { e.preventDefault(); void attach(e.clipboardData.files) } }}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit() } }} />
+              onKeyDown={(e) => { if (isSendKey(e)) { e.preventDefault(); submit() } }} />
             {(files.length > 0 || uploading > 0) && (
               <div className="attach-row">
                 {files.map((f) => (

@@ -171,6 +171,7 @@ def finished(stack: Stack, run_id: int) -> dict:
 
 def test_a_wrap_up_before_idle_still_counts_as_idle(stack: Stack):
     c = stack.client
+    assert c.patch("/api/settings/advanced", json={"values": {"USE_WHOLE_BUDGET": False}}).status_code == 200
     assert c.put("/api/instructions", json={"text": "fake:wrapup"}).status_code == 200
     run_id = c.post("/api/runs", json={"budget": 15}).json()["id"]
     done = finished(stack, run_id)
@@ -180,6 +181,7 @@ def test_a_wrap_up_before_idle_still_counts_as_idle(stack: Stack):
 
 def test_a_run_that_stops_without_idle_is_nudged_once(stack: Stack):
     c = stack.client
+    assert c.patch("/api/settings/advanced", json={"values": {"USE_WHOLE_BUDGET": False}}).status_code == 200
     assert c.put("/api/instructions", json={"text": "fake:noidle"}).status_code == 200
     run_id = c.post("/api/runs", json={"budget": 15}).json()["id"]
     done = finished(stack, run_id)
@@ -188,6 +190,24 @@ def test_a_run_that_stops_without_idle_is_nudged_once(stack: Stack):
     assert len(nudges) == 1, texts
     assert done["status"] == "done" and done["end_reason"] == "idle", done      # the resumed session ended with IDLE
     assert any(t.startswith("Brief: ") for t in texts)
+
+
+def test_use_the_whole_budget_nudges_an_early_idle_up_to_the_limit(stack: Stack):
+    """The owner's default (USE_WHOLE_BUDGET): even `IDLE:` with budget left is told to carry on, NUDGE_MAX times."""
+    c = stack.client
+    assert c.put("/api/instructions", json={"text": "fake:wrapup"}).status_code == 200
+    run_id = c.post("/api/runs", json={"budget": 15}).json()["id"]
+    done = finished(stack, run_id)
+    nudges = [i["text"] for i in stack.timeline(run_id) if i["kind"] == "control" and i["text"].startswith("Nudged to carry on")]
+    assert len(nudges) == 2, nudges                      # NUDGE_MAX's default
+    assert done["status"] == "done" and done["end_reason"] == "idle", done
+
+
+def test_the_stopping_rule_follows_the_setting(be):
+    assert "use it or lose it" in be.runs_mgr._system() and "the default is no" in be.reviewer._system()
+    be.settings.set("USE_WHOLE_BUDGET", False)
+    assert "use it or lose it" not in be.runs_mgr._system() and "planned, not use-it-or-lose-it" in be.runs_mgr._system()
+    assert "the default is no" not in be.reviewer._system()
 
 
 def test_delivered_messages_end_with_the_claim_reminder_and_the_run_lists_its_threads(be):

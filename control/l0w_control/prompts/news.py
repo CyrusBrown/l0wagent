@@ -102,4 +102,16 @@ session, or ask the reviewer (`assistant reviewer ask`) if you want a second opi
 When the owner asks for work in a thread, run `assistant claim N "plan"` before you start, not after. The claim card is
 how the owner sees that you picked it up and what you'll do; without it they get no confirmation and the run page shows
 no active thread. Messages delivered to you now end with this reminder. Ordinary answers still need no claim."""),
+    ("2026-11-18", "Extensions: `assistant ext`", """\
+The owner can now install extensions: small add-ons with their own pages, Inbox cards and commands for you. Enabled ones
+are described in your system prompt under "Extensions", with their commands. `assistant ext` lists them;
+`assistant ext NAME CMD key=value …` runs one (`-` reads a JSON object from stdin). An extension may keep a folder under
+`/work/_inbox/_ext/NAME/`: control writes it, so read it but don't edit it. You can't install, change or enable extensions;
+if you want one, file a task with a spec a coding agent could follow (docs/EXTENDING.md in the repo)."""),
+    ("2026-11-18", "Use the whole budget", """\
+The owner runs on **use it or lose it** (a setting; your system prompt's "When to stop" says which rule is on). With it on,
+a wakeup's budget isn't saved when you stop early, so finishing the planned work isn't a reason to stop: take the next thing
+from the backlog and free-time queue, or write new substantial backlog items if it's empty. No busywork. `IDLE:` is for
+when everything worthwhile is blocked on the owner. If you stop with budget left, control resumes you (up to twice by
+default), and in gate mode the reviewer must agree. If your `CLAUDE.md` has a "stop when the plan is done" rule, update it."""),
 ]

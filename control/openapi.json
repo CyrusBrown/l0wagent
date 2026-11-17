@@ -1588,7 +1588,8 @@
                     "task",
                     "suggestion",
                     "promote",
-                    "security"
+                    "security",
+                    "extension"
                   ],
                   "type": "string"
                 },
@@ -3490,6 +3491,91 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StandingInstructions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/settings/advanced": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get Advanced Settings",
+        "description": "Tuning knobs without a screen of their own (Settings → Advanced).",
+        "operationId": "get_advanced_settings_api_settings_advanced_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdvancedSetting"
+                  },
+                  "type": "array",
+                  "title": "Response Get Advanced Settings Api Settings Advanced Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Set Advanced Settings",
+        "operationId": "set_advanced_settings_api_settings_advanced_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdvancedSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdvancedSetting"
+                  },
+                  "type": "array",
+                  "title": "Response Set Advanced Settings Api Settings Advanced Patch"
                 }
               }
             }
@@ -6838,10 +6924,420 @@
           }
         ]
       }
+    },
+    "/api/extensions": {
+      "get": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "List Extensions",
+        "description": "Everything found under extensions/, on or off, with errors. An extension's own routes are at /api/ext/<name>/.",
+        "operationId": "list_extensions_api_extensions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExtensionInfo"
+                  },
+                  "type": "array",
+                  "title": "Response List Extensions Api Extensions Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/extensions/rescan": {
+      "post": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "Rescan Extensions",
+        "description": "Read the extensions folder again (after adding one or pulling a new version). Enabled ones reload.",
+        "operationId": "rescan_extensions_api_extensions_rescan_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExtensionInfo"
+                  },
+                  "type": "array",
+                  "title": "Response Rescan Extensions Api Extensions Rescan Post"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/extensions/{name}/enabled": {
+      "put": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "Set Extension Enabled",
+        "operationId": "set_extension_enabled_api_extensions__name__enabled_put",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtensionEnable"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/extensions/{name}/settings": {
+      "put": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "Set Extension Settings",
+        "operationId": "set_extension_settings_api_extensions__name__settings_put",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtensionSettingsUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/extension-cards": {
+      "get": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "Extension Cards",
+        "operationId": "extension_cards_api_extension_cards_get",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "open",
+                    "closed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExtensionCard"
+                  },
+                  "title": "Response Extension Cards Api Extension Cards Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/extension-cards/{card_id}/resolve": {
+      "post": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "Resolve Extension Card",
+        "operationId": "resolve_extension_card_api_extension_cards__card_id__resolve_post",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "card_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Card Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtensionCardResolve"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionCard"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AdvancedSetting": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "group": {
+            "type": "string",
+            "title": "Group"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "help": {
+            "type": "string",
+            "title": "Help"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "int",
+              "float",
+              "bool",
+              "str"
+            ],
+            "title": "Kind"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "default": {
+            "title": "Default"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "group",
+          "label",
+          "help",
+          "kind",
+          "value",
+          "default"
+        ],
+        "title": "AdvancedSetting",
+        "description": "A tuning knob without a screen of its own (Settings → Advanced)."
+      },
+      "AdvancedSettingsUpdate": {
+        "properties": {
+          "values": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Values"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "values"
+        ],
+        "title": "AdvancedSettingsUpdate"
+      },
       "AllowedWindow": {
         "properties": {
           "days": {
@@ -8775,6 +9271,570 @@
         "title": "EgressRuleCreate",
         "description": "Online only."
       },
+      "ExtensionCard": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "ext": {
+            "type": "string",
+            "title": "Ext"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "resolved",
+              "withdrawn"
+            ],
+            "title": "Status"
+          },
+          "resolution": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "ext",
+          "kind",
+          "title",
+          "data",
+          "thread_id",
+          "status",
+          "resolution",
+          "created_at",
+          "resolved_at"
+        ],
+        "title": "ExtensionCard",
+        "description": "An Inbox card of an extension's own kind; the extension's UI element renders it."
+      },
+      "ExtensionCardResolve": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "title": "Action",
+            "description": "What the owner chose, e.g. 'approve'; the extension decides what it means."
+          },
+          "data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Data",
+            "default": {}
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "ExtensionCardResolve"
+      },
+      "ExtensionCommand": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "help": {
+            "type": "string",
+            "title": "Help",
+            "default": ""
+          },
+          "usage": {
+            "type": "string",
+            "title": "Usage",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ExtensionCommand"
+      },
+      "ExtensionEnable": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "ExtensionEnable"
+      },
+      "ExtensionInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "sdk": {
+            "type": "string",
+            "title": "Sdk"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "'local', or the git URL and commit from extensions.toml."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "loaded": {
+            "type": "boolean",
+            "title": "Loaded"
+          },
+          "present": {
+            "type": "boolean",
+            "title": "Present",
+            "description": "False when the folder is gone; the row stays so its data and settings survive."
+          },
+          "compatible": {
+            "type": "boolean",
+            "title": "Compatible"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "settings": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionSetting"
+            },
+            "type": "array",
+            "title": "Settings"
+          },
+          "commands": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionCommand"
+            },
+            "type": "array",
+            "title": "Commands"
+          },
+          "folders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Folders"
+          },
+          "prompt_slots": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Prompt Slots"
+          },
+          "ui": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExtensionUi"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set while the extension is loaded."
+          },
+          "routines": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Routines"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "title",
+          "version",
+          "sdk",
+          "source",
+          "description",
+          "enabled",
+          "loaded",
+          "present",
+          "compatible",
+          "last_error",
+          "settings",
+          "commands",
+          "folders",
+          "prompt_slots",
+          "ui",
+          "routines"
+        ],
+        "title": "ExtensionInfo"
+      },
+      "ExtensionSetting": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "int",
+              "float",
+              "bool",
+              "str",
+              "choice"
+            ],
+            "title": "Kind"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "help": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Help"
+          },
+          "default": {
+            "title": "Default"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "choices": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Choices"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "kind",
+          "default",
+          "value"
+        ],
+        "title": "ExtensionSetting"
+      },
+      "ExtensionSettingsUpdate": {
+        "properties": {
+          "values": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Values"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "values"
+        ],
+        "title": "ExtensionSettingsUpdate"
+      },
+      "ExtensionUi": {
+        "properties": {
+          "module": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Module",
+            "description": "URL of the ES module that defines the extension's custom elements."
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionUiPage"
+            },
+            "type": "array",
+            "title": "Pages",
+            "default": []
+          },
+          "sidebar": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionUiItem"
+            },
+            "type": "array",
+            "title": "Sidebar",
+            "default": []
+          },
+          "project_tabs": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionUiItem"
+            },
+            "type": "array",
+            "title": "Project Tabs",
+            "default": []
+          },
+          "run_widgets": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionUiItem"
+            },
+            "type": "array",
+            "title": "Run Widgets",
+            "default": []
+          },
+          "inbox_cards": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionUiItem"
+            },
+            "type": "array",
+            "title": "Inbox Cards",
+            "default": []
+          },
+          "previewers": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionUiItem"
+            },
+            "type": "array",
+            "title": "Previewers",
+            "default": []
+          },
+          "thread_types": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionUiItem"
+            },
+            "type": "array",
+            "title": "Thread Types",
+            "default": []
+          },
+          "settings_panel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExtensionUiItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "module"
+        ],
+        "title": "ExtensionUi"
+      },
+      "ExtensionUiItem": {
+        "properties": {
+          "element": {
+            "type": "string",
+            "title": "Element"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "extensions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extensions"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "element"
+        ],
+        "title": "ExtensionUiItem",
+        "description": "One UI contribution: a custom element in a slot. Which fields are set depends on the slot."
+      },
+      "ExtensionUiPage": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "element": {
+            "type": "string",
+            "title": "Element"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path",
+          "title",
+          "element"
+        ],
+        "title": "ExtensionUiPage"
+      },
       "FileChange": {
         "properties": {
           "path": {
@@ -9074,7 +10134,8 @@
                 "task",
                 "suggestion",
                 "promote",
-                "security"
+                "security",
+                "extension"
               ]
             },
             "type": "object",
@@ -9099,7 +10160,8 @@
               "task",
               "suggestion",
               "promote",
-              "security"
+              "security",
+              "extension"
             ],
             "title": "Kind"
           },
@@ -9199,6 +10261,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/SecurityAlert"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "extension_card": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExtensionCard"
               },
               {
                 "type": "null"
@@ -13333,7 +14405,21 @@
           "text": {
             "type": "string",
             "maxLength": 8000,
-            "title": "Text"
+            "title": "Text",
+            "description": "For the assistant: in every brief."
+          },
+          "reviewer_text": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 8000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Text",
+            "description": "For the reviewer only: in its system prompt. Omit to leave it unchanged."
           },
           "updated_at": {
             "anyOf": [
@@ -15129,7 +16215,8 @@
               "budget",
               "calendar",
               "chat",
-              "chat_delta"
+              "chat_delta",
+              "extension"
             ],
             "title": "Type",
             "type": "string"

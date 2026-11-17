@@ -113,6 +113,8 @@ class Jobs:
         out = []
         for r in rows:
             end = f", expected by {r['expected_end']}" if r["expected_end"] else ""
+            if r["expected_end"] and r["expected_end"] < self.db.now():
+                end += " (past its estimate: check it's still progressing; `assistant job progress ID TEXT` keeps the owner informed)"
             prog = f": {r['progress']}" if r["progress"] else ""
             out.append(f"- job #{r['id']} “{r['label']}” since {r['started_at']}{end}{prog}" + (" (don't interrupt)" if r["dont_interrupt"] else ""))
         return "\n".join(out)

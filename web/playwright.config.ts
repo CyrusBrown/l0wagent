@@ -16,7 +16,7 @@ export default defineConfig({
   use: { baseURL: `http://localhost:${WEB_PORT}`, trace: 'retain-on-failure' },
   webServer: [
     {
-      command: `uv run python scripts/dev_stack.py --port ${API_PORT} --dir ${STACK_DIR} --steps 10 --delay 1.2 --hold 0.2`,
+      command: `uv run python scripts/dev_stack.py --port ${API_PORT} --dir ${STACK_DIR} --steps 10 --delay 1.2 --hold 0.2 --extensions example`,
       cwd: '../control',
       env: { L0W_CHAT_FAKE: '1', L0W_CORS_ORIGINS: `http://localhost:${WEB_PORT}` },  // 1:1 chats use the scripted model (no provider key in tests)
       url: `http://127.0.0.1:${API_PORT}/api/meta`,

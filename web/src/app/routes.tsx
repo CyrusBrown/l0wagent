@@ -20,6 +20,7 @@ import { Setup } from '../screens/Setup'
 import { Thread } from '../screens/Thread'
 import { Tools } from '../screens/Tools'
 import { WebPage } from '../screens/WebPage'
+import { ExtPage } from '../screens/ExtPage'
 import { Shell } from './Shell'
 import { TimeFormatProvider } from './timeFormat'
 
@@ -61,6 +62,7 @@ export const routes: RouteObject[] = [
       { path: 'tools', element: <Tools /> },
       { path: 'network', element: <Network /> },
       { path: 'web', element: <WebPage /> },
+      { path: 'x/:ext/*', element: <ExtPage /> },
       { path: 'settings', element: <Settings /> },
       { path: 'settings/:tab', element: <Settings /> },
       { path: '*', element: <NotPorted name="Not found" /> },

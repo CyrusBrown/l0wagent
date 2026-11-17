@@ -2,7 +2,7 @@
 
 A long-running personal AI assistant on the owner's own server. **Start with [docs/plans/development.md](docs/plans/development.md)**: it says which milestone is current and what "done" means. Don't build ahead of the current milestone; ideas for later go in that file's "Later" list.
 
-Current milestone: **M6 (chat, tools and the connector, plus the opencode adapter for opencode Go)**, on top of M1–M5, which are waiting on the owner's review.
+Current milestone: **M9 (more opencode providers and the model registry)**, not started. M1–M8 are waiting on the owner's review; the desktop app is on the Later list.
 
 ## Sources of truth
 - **UI and styling: the mockup** (`design/mockup/`; readable sources in `design/mockup/src/`). It outranks `docs/plans/ui.md`. Port screens from its markup and tokens; where ui.md disagrees, update ui.md. [design/mockup/REVIEW.md](design/mockup/REVIEW.md) lists every known difference and how it was settled.
@@ -25,6 +25,7 @@ control/   FastAPI app (Python 3.12, SQLite, no ORM). api/ = schemas + owner rou
            catalog.py (opencode model catalogs and prices); notify.py (web push, ntfy);
            integrations.py (brokered MCP servers); connector.py + api/connector_routes.py (/mcp, OAuth);
            updates.py (update check, draining); hostctl.py (host-side commands for ./l0w);
+           extensions.py + sdk.py (the owner's extensions: loader, isolation, the SDK v1 contract);
            db/migrations/ = versioned SQL
 agent/     the agent image: runner/ (runner.py, fake_claude.py, fake_opencode.py, opencode-plugin.js, selftest.py),
            bin/ (assistant CLI, hook), seed/. Two runtimes: Claude Code and opencode (for opencode Go)
@@ -36,6 +37,7 @@ design/mockup/  the mockup bundle as exported, its extracted sources, and REVIEW
 cli/       l0w.py, the host CLI (`./l0w`: install, update, ops parity); stdlib only
 deploy/    control.Dockerfile (control + built web app); compose.yaml at the root is the release stack
 chat-runtime/  the stateless sidecar for Claude-subscription chats (Claude Code, no tools of its own, its own network)
+extensions/    the owner's extensions (git-ignored) + AGENTS.md and examples/plantlog; the guide is docs/EXTENDING.md
 ```
 
 ## Commands
@@ -74,6 +76,8 @@ dev/isolation-test.sh                                  # isolation probes agains
   messages, asks, claims and suggestions and withdraw its own asks, never answer, decide, resolve or
   edit existing threads. Approved permission actions are applied by control (`conv._apply`).
 - Everything stored from the agent or the owner goes through `vault.redact`.
+- `l0w_control/sdk.py` is a public contract (SDK 1.x): add to it, don't break it; any change goes into
+  `docs/EXTENDING.md` and a test in `control/tests/test_extensions.py`. Core code never imports an extension.
 - The fake runtime's scenarios (`agent/runner/fake_claude.py`) are how the agent's side is tested
   without a login: extend them when you add agent-facing behavior. `fake_opencode.py` wraps them in
   opencode's event format, so they cover both runtimes.

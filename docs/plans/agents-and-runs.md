@@ -172,7 +172,7 @@ Decided 2026-11-16; not built. Today everything above runs against one provider,
 - The subscription's calibration is kept per model family, as a median of recent runs, seeded from the plan size the owner names in the wizard.
 
 ### Groups and routing
-- Three **groups**, `light`, `standard` and `strong`, each naming a model and effort per provider, editable by the owner. Named models still work. This is the first piece of M8's model registry.
+- Three **groups**, `light`, `standard` and `strong`, each naming a model and effort per provider, editable by the owner. Named models still work. This is the first piece of M9's model registry.
 - A wakeup says what it needs: `assistant wake at TIME --needs standard --budget 20 --reason "…"`, optionally `--on <pool>`.
 - **Control picks the pool when the wakeup starts**, among pools that offer the group, have room and an open gate:
   1. the wakeup's pin

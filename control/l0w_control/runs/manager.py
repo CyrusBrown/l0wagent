@@ -96,6 +96,8 @@ class RunManager:
         # Hooks other parts of control attach: brief sections, run endings, the reviewer.
         self.brief_extra = None      # (run row) -> str: the wakeup brief's budget/plan sections
         self.on_finish: list = []    # (run row after finishing) -> None
+        self.fire = lambda event, data: None         # extensions' event hooks
+        self.ext_prompt = lambda slot: ""            # extensions' prompt fragments, by slot
         self.reviewer = None         # reviewer.Reviewer, attached by the backend
         self.tasks: dict[int, asyncio.Task] = {}
         self._bg: set[asyncio.Task] = set()
@@ -284,6 +286,7 @@ class RunManager:
             self.timeline(run_id, Item("control", f"{label} · {tier} · {budget:g} pts ({bucket})", True, {"usage": reading and reading.model_dump(mode="json")}))
             self._run_changed(run_id)
             self._drive_task(run_id)
+            self.fire("run_started", {"run_id": run_id, "kind": kind, "why": why, "thread_id": thread_id, "provider": provider})
             return self.run(run_id)
 
     async def _refresh_login(self) -> None:
@@ -306,10 +309,14 @@ class RunManager:
         "promoted": "a Reply-now run the owner promoted to a full run",
     }
 
+    def _system(self) -> str:
+        stopping = "stopping_use_it.md" if self.settings.get("USE_WHOLE_BUDGET") else "stopping_planned.md"
+        return _strip_comment((PROMPTS / "core.md").read_text()) + "\n\n" + _strip_comment((PROMPTS / stopping).read_text()).strip() + self.ext_prompt("system")
+
     def _prompt(self, run_id: int) -> tuple[str, str]:
         run = self.db.q1("SELECT * FROM runs WHERE id=?", (run_id,))
         assert run
-        system = _strip_comment((PROMPTS / "core.md").read_text())
+        system = self._system()
         detail = run["why_detail"] or ""
         why = self.WHY.get(run["why"], run["why"]).format(detail=detail)
         unit = self.budgets.period_unit(run["provider"] or SUBSCRIPTION)
@@ -362,6 +369,8 @@ class RunManager:
                 extra = self.brief_extra(run)
                 if extra:
                     brief += "\n\n" + extra
+        if run["kind"] != "reply":
+            brief += self.ext_prompt("wakeup")
         news = self.db.q("SELECT id, date, title, body FROM harness_news WHERE shown_in_run_id IS NULL ORDER BY date, id")
         if news:
             shown = news[-NEWS_CAP:]  # the newest; all count as shown, and `assistant news` has the rest
@@ -430,9 +439,9 @@ class RunManager:
         spec = self.budgets.runtime_spec(pid, run["tier"])  # type: ignore[index]
         adapter = self.adapter(spec["runtime"])
         if prompt is not None:
-            system = _strip_comment((PROMPTS / "core.md").read_text())
+            system = self._system()
         elif resume:
-            prompt, system = adapter.interrupted_prompt(reason or "restart"), _strip_comment((PROMPTS / "core.md").read_text())
+            prompt, system = adapter.interrupted_prompt(reason or "restart"), self._system()
         else:
             prompt, system = self._prompt(run_id)
         env = {**self.vault.env(run_id), **self.budgets.provider_env(pid)}
@@ -632,28 +641,46 @@ class RunManager:
             self.db.q1(f"SELECT 1 FROM {t} WHERE run_id=? AND status='open' LIMIT 1", (run_id,)) for t in ("questions", "permissions", "tasks")))
 
     async def _nudge(self, run_id: int, sess: Session, result: dict | None) -> bool:
-        """Outside gate mode: a run that stopped on its own without `IDLE:` while more than a
-        quarter of its budget is left gets one nudge to carry on (or say why it's done)."""
+        """Outside gate mode: a wakeup that stopped on its own without `IDLE:` while more than
+        NUDGE_MIN_LEFT_PCT of its budget is left is told to carry on, up to NUDGE_MAX times. With
+        USE_WHOLE_BUDGET on, an `IDLE:` with budget left is nudged too (the owner's use-it-or-lose-it)."""
         run = self.db.q1("SELECT * FROM runs WHERE id=?", (run_id,))
         assert run
         if run["kind"] == "reply" or run["bucket"] == "reply" or run["stop_requested_at"] or not sess.runtime_session or not run["budget"]:
             return False
         if run["reviewer_mode"] == "gate" and self.reviewer:
             return False
-        if ends_idle((result or {}).get("text")) or self._reached_out(run_id, sess, run):
+        use_it = bool(self.settings.get("USE_WHOLE_BUDGET")) or run["bucket"] == "sweep"
+        text = (result or {}).get("text")
+        if (ends_idle(text) and not use_it) or self._reached_out(run_id, sess, run):
             return False
-        if self.db.q1("SELECT 1 FROM timeline_items WHERE run_id=? AND kind='control' AND text LIKE ? LIMIT 1", (run_id, NUDGE_MARK + "%")):
+        done = self.db.q1("SELECT COUNT(*) AS n FROM timeline_items WHERE run_id=? AND kind='control' AND text LIKE ?", (run_id, NUDGE_MARK + "%"))["n"]
+        if done >= self.settings.get("NUDGE_MAX"):
             return False
         used = self.budgets.run_pts(run_id)
         left = run["budget"] - used
-        if left <= run["budget"] / 4:
+        if left <= run["budget"] * self.settings.get("NUDGE_MIN_LEFT_PCT") / 100:
             return False
         if run["deadline"] and parse(run["deadline"]) <= utcnow() + timedelta(minutes=3):  # type: ignore[operator]
             return False
-        self.timeline(run_id, Item("control", f"{NUDGE_MARK}: it stopped without IDLE with {left:.0f} {UNIT} of its budget left", True))
+        minutes = (parse(run["deadline"]) - utcnow()).total_seconds() / 60 if run["deadline"] else None  # type: ignore[operator]
+        time_left = f" and about {minutes:.0f} minutes" if minutes is not None else ""
+        why = "You wrote IDLE" if ends_idle(text) else "You ended your turn"
+        self.timeline(run_id, Item("control", f"{NUDGE_MARK} ({done + 1}): it stopped with {left:.0f} {UNIT} of its budget left", True))
+        if use_it:
+            prompt = (f"[control] {why}, but this wakeup still has {left:.0f} {UNIT}{time_left} left (carry-on {done + 1} of "
+                      f"{self.settings.get('NUDGE_MAX')}). The owner runs on use it or lose it: what you leave isn't saved for anything. "
+                      "Finishing the planned work isn't a reason to stop. Take the next worthwhile thing: the backlog's \"This week\", "
+                      "the free-time queue, a project's next milestone, a tool, research, your own time. If the backlog is really empty, "
+                      "write new substantial items first (each with a \"stop when\"), then start the first. No busywork. Leave an "
+                      "`assistant note` about what you pick up, and keep going until control stops you. Only if everything worthwhile "
+                      "is blocked on the owner, end with `IDLE: <reason>` saying so.")
+        else:
+            prompt = (f"[control] You ended your turn with {left:.0f} {UNIT}{time_left} of this wakeup's budget left. Carry on with the "
+                      "next useful thing (the backlog, then the free-time queue), or end with `IDLE: <reason>` as the last line if "
+                      "nothing worthwhile is left.")
         try:
-            await self._start_session(run_id, resume=sess.runtime_session, prompt=(
-                f"[control] You have {left:.0f} {UNIT} left of this run's budget. Carry on with the next useful thing, or end with `IDLE: <reason>` as the last line."))
+            await self._start_session(run_id, resume=sess.runtime_session, prompt=prompt)
         except RunnerError as e:
             self.timeline(run_id, Item("error", f"Couldn't resume after the nudge: {e}", True))
             return False
@@ -668,16 +695,17 @@ class RunManager:
         minutes = self.settings.get("HOLD_MINUTES")
         if run["stop_requested_at"] or minutes <= 0 or not sess.runtime_session or run["hold_rounds"] >= self.settings.get("HOLD_MAX_ROUNDS"):
             return False
-        if run["deadline"] and parse(run["deadline"]) <= utcnow():  # type: ignore[operator]
-            return False
         if not run["waiting_until"]:
+            if run["deadline"] and parse(run["deadline"]) <= utcnow():  # type: ignore[operator]
+                return False
             reached_out = self._reached_out(run_id, sess, run)
             if not reached_out:
                 return False
+            # Every wait gets the full window, and waiting doesn't use up the run's wall-clock time: the
+            # deadline moves by the time spent waiting (owner, 2026-11-18: the window restarts on each reply).
             until = utcnow() + timedelta(minutes=minutes)
-            if run["deadline"]:
-                until = min(until, parse(run["deadline"]))  # type: ignore[type-var]
-            self.db.ex("UPDATE runs SET waiting_until=?, now_sentence=? WHERE id=?", (iso(until), "Waiting for your reply", run_id))
+            self.db.ex("UPDATE runs SET waiting_until=?, hold_started_at=?, now_sentence=? WHERE id=?",
+                       (iso(until), self.db.now(), "Waiting for your reply", run_id))
             self.timeline(run_id, Item("control", f"Waiting up to {minutes:g} min for your reply", True))
             self._run_changed(run_id)
         until = parse(self.db.q1("SELECT waiting_until FROM runs WHERE id=?", (run_id,))["waiting_until"])
@@ -688,9 +716,10 @@ class RunManager:
                 break
             await asyncio.sleep(1)
         else:
-            self.db.ex("UPDATE runs SET waiting_until=NULL WHERE id=?", (run_id,))
+            self._end_hold(run_id)
             self.timeline(run_id, Item("control", "No reply in time; finishing", True))
             return False
+        self._end_hold(run_id)
         text, counts = self.conv.deliver()
         self.db.ex("UPDATE runs SET waiting_until=NULL, hold_rounds=hold_rounds+1, now_sentence=? WHERE id=?", ("Reading your reply", run_id))
         try:
@@ -701,6 +730,14 @@ class RunManager:
         self.timeline(run_id, Item("control", "Resumed with your reply: " + _counts_text(counts), True, {"counts": counts}))
         self._run_changed(run_id)
         return True
+
+    def _end_hold(self, run_id: int) -> None:
+        """Clear the wait and move the deadline by the time spent waiting."""
+        row = self.db.q1("SELECT deadline, hold_started_at FROM runs WHERE id=?", (run_id,))
+        if row and row["deadline"] and row["hold_started_at"]:
+            waited = utcnow() - parse(row["hold_started_at"])  # type: ignore[operator]
+            self.db.ex("UPDATE runs SET deadline=? WHERE id=?", (iso(parse(row["deadline"]) + waited), run_id))  # type: ignore[operator]
+        self.db.ex("UPDATE runs SET waiting_until=NULL, hold_started_at=NULL WHERE id=?", (run_id,))
 
     async def _finish(self, run_id: int, end_state: str, result: dict | None) -> None:
         run = self.db.q1("SELECT * FROM runs WHERE id=?", (run_id,))
@@ -813,8 +850,8 @@ class RunManager:
                     except RunnerError:
                         pass
                 continue
-            if run["deadline"] and now >= parse(run["deadline"]):  # type: ignore[operator]
-                await self.stop(run_id, "deadline reached")
+            if run["deadline"] and now >= parse(run["deadline"]) and not run["waiting_until"]:  # type: ignore[operator]
+                await self.stop(run_id, "deadline reached")  # (time held open for the owner doesn't count: _hold moves the deadline)
                 continue
             if run["budget"] is not None and (run["used"] or 0) >= run["budget"]:
                 await self.stop(run_id, f"budget reached ({run['used']:.1f} of {run['budget']:g} pts)")

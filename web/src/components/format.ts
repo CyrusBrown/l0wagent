@@ -24,6 +24,7 @@ export function ago(iso: string | null | undefined, now = Date.now()): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
+/** A future time, relative ("in 5 minutes"). Past times clamp to "in 1 minute": callers show those differently. */
 export function until(iso: string, now = Date.now()): string {
   const s = Math.round((new Date(iso).getTime() - now) / 1000)
   if (s < 3600) return rtf.format(Math.max(1, Math.round(s / 60)), 'minute')

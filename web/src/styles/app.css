@@ -877,3 +877,13 @@ input, textarea { transition: border-color .16s ease }
 .int-call { display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; gap: 10px; font-size: 12.5px; align-items: baseline; animation: rise .32s cubic-bezier(.2,.7,.3,1) both }
 .app-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 14px; border-bottom: 1px solid var(--soft); animation: rise .32s cubic-bezier(.2,.7,.3,1) both }
 .app-name { font: 500 14px var(--sans) }
+
+/* ── Extensions: slots and the Settings panel ───────────────────────────────── */
+.ext-slot { display: block; min-width: 0 }
+.ext-side { padding: 0 0 4px }
+.ext-side .ext-slot { padding: 0 10px }
+.ext-problem { font-size: 12.5px; padding: 8px 10px }
+.thread-ext { max-width: 928px; margin: 0 auto; padding: 12px 24px 0 }
+.ext-error { margin: 0; white-space: pre-wrap; font: 12.5px var(--mono); overflow-x: auto }
+.ext-row .set-row { align-items: flex-start }
+@media (max-width: 760px) { .thread-ext { padding: 10px 16px 0 } }

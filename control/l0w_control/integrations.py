@@ -173,6 +173,10 @@ def _j(text: str | None, default: Any) -> Any:
 class Integrations:
     def __init__(self, db: Database, vault, file_permission: Callable[..., Any], transport: httpx.BaseTransport | None = None):
         self.db, self.vault, self.file_permission, self.transport = db, vault, file_permission, transport
+        self.extra_presets: Callable[[], dict[str, dict[str, Any]]] = dict  # enabled extensions' presets
+
+    def all_presets(self) -> dict[str, dict[str, Any]]:
+        return {**self.extra_presets(), **PRESETS}
 
     # ── owner side ─────────────────────────────────────────────────────────
     def _row(self, name: str) -> dict:
@@ -200,10 +204,10 @@ class Integrations:
         return self.view(self._row(name))
 
     def presets(self) -> list[dict]:
-        return [{"id": k, **v} for k, v in PRESETS.items()]
+        return [{"id": k, **{f: x for f, x in v.items() if f != "extension"}} for k, v in self.all_presets().items()]
 
     def create(self, name: str, title: str | None, preset: str | None, url: str | None, auth_secret: str | None, allow_private: bool = False) -> dict:
-        p = PRESETS.get(preset or "") if preset else {}
+        p = self.all_presets().get(preset or "") if preset else {}
         if preset and not p:
             raise BadRequest("bad_preset", f"Unknown preset {preset!r}.")
         name = (name or preset or "").strip().lower()
@@ -292,7 +296,7 @@ class Integrations:
                 schema = t.get("inputSchema") if isinstance(t.get("inputSchema"), dict) else {"type": "object"}
                 desc = str(t.get("description") or "")[:2000]
                 digest = spec_hash(desc, schema)
-                vetted = tname in (PRESETS.get(row["preset"] or "") or {}).get("read_only_tools", ())
+                vetted = tname in (self.all_presets().get(row["preset"] or "") or {}).get("read_only_tools", ())
                 old = db.q1("SELECT policy, spec_hash FROM integration_tools WHERE integration_id=? AND name=?", (row["id"], tname))
                 if old is None:
                     db.ex("INSERT INTO integration_tools(integration_id, name, description, input_schema_json, read_only, policy, spec_hash) VALUES(?,?,?,?,?,?,?)",

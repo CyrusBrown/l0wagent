@@ -493,7 +493,103 @@ class ThreadItems(Model):
 
 
 # ── Inbox ──────────────────────────────────────────────────────────────────
-InboxKind = Literal["question", "permission", "task", "suggestion", "promote", "security"]
+# ── Extensions (M8) ────────────────────────────────────────────────────────
+class ExtensionCard(Model):
+    """An Inbox card of an extension's own kind; the extension's UI element renders it."""
+
+    id: int
+    ext: str
+    kind: str
+    title: str
+    data: dict[str, Any]
+    thread_id: int | None
+    status: Literal["open", "resolved", "withdrawn"]
+    resolution: dict[str, Any] | None
+    created_at: datetime
+    resolved_at: datetime | None
+
+
+class ExtensionCardResolve(Model):
+    action: str = Field(description="What the owner chose, e.g. 'approve'; the extension decides what it means.")
+    data: dict[str, Any] = {}
+
+
+class ExtensionSetting(Model):
+    key: str
+    kind: Literal["int", "float", "bool", "str", "choice"]
+    label: str | None = None
+    help: str | None = None
+    default: Any
+    value: Any
+    min: float | None = None
+    max: float | None = None
+    choices: list[Any] | None = None
+
+
+class ExtensionCommand(Model):
+    name: str
+    help: str = ""
+    usage: str = ""
+
+
+class ExtensionUiPage(Model):
+    path: str
+    title: str
+    element: str
+
+
+class ExtensionUiItem(Model):
+    """One UI contribution: a custom element in a slot. Which fields are set depends on the slot."""
+
+    element: str
+    title: str | None = None
+    id: str | None = None
+    kind: str | None = None
+    type: str | None = None
+    extensions: list[str] | None = None
+
+
+class ExtensionUi(Model):
+    module: str | None = Field(description="URL of the ES module that defines the extension's custom elements.")
+    pages: list[ExtensionUiPage] = []
+    sidebar: list[ExtensionUiItem] = []
+    project_tabs: list[ExtensionUiItem] = []
+    run_widgets: list[ExtensionUiItem] = []
+    inbox_cards: list[ExtensionUiItem] = []
+    previewers: list[ExtensionUiItem] = []
+    thread_types: list[ExtensionUiItem] = []
+    settings_panel: ExtensionUiItem | None = None
+
+
+class ExtensionInfo(Model):
+    name: str
+    title: str
+    version: str
+    sdk: str
+    source: str = Field(description="'local', or the git URL and commit from extensions.toml.")
+    description: str
+    enabled: bool
+    loaded: bool
+    present: bool = Field(description="False when the folder is gone; the row stays so its data and settings survive.")
+    compatible: bool
+    last_error: str | None
+    settings: list[ExtensionSetting]
+    commands: list[ExtensionCommand]
+    folders: list[str]
+    prompt_slots: list[str]
+    ui: ExtensionUi | None = Field(description="Set while the extension is loaded.")
+    routines: list[int]
+
+
+class ExtensionEnable(Model):
+    enabled: bool
+
+
+class ExtensionSettingsUpdate(Model):
+    values: dict[str, Any]
+
+
+InboxKind = Literal["question", "permission", "task", "suggestion", "promote", "security", "extension"]
 
 
 class InboxEntry(Model):
@@ -509,6 +605,7 @@ class InboxEntry(Model):
     suggestion: Suggestion | None = None
     promote: PromoteRequest | None = None
     security: SecurityAlert | None = None
+    extension_card: ExtensionCard | None = None
 
 
 class InboxCounts(Model):
@@ -815,8 +912,28 @@ class ReviewerConfig(Model):
 
 
 class StandingInstructions(Model):
-    text: str = Field(max_length=8000)
+    text: str = Field(max_length=8000, description="For the assistant: in every brief.")
+    reviewer_text: str | None = Field(None, max_length=8000, description="For the reviewer only: in its system prompt. Omit to leave it unchanged.")
     updated_at: datetime | None = None
+
+
+class AdvancedSetting(Model):
+    """A tuning knob without a screen of its own (Settings → Advanced)."""
+
+    key: str
+    group: str
+    label: str
+    help: str
+    kind: Literal["int", "float", "bool", "str"]
+    value: Any
+    default: Any
+    min: float | None = None
+    max: float | None = None
+    unit: str | None = None
+
+
+class AdvancedSettingsUpdate(Model):
+    values: dict[str, Any]
 
 
 # ── Wakeups, the calendar, routines ────────────────────────────────────────
@@ -1442,7 +1559,7 @@ class LiveEvent(Model):
     type: Literal[
         "hello", "heartbeat", "status", "message", "thread", "project", "card", "claim",
         "timeline", "run", "inbox_counts", "unread", "job", "shelf", "upload", "question", "permission",
-        "task", "suggestion", "promote", "security", "budget", "calendar", "chat", "chat_delta",
+        "task", "suggestion", "promote", "security", "budget", "calendar", "chat", "chat_delta", "extension",
     ]
     cursor: str | None = Field(None, description="Sync cursor after this event, when it changed cached data.")
     data: dict[str, Any] = {}

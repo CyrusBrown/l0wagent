@@ -52,6 +52,8 @@ services:
         source: agent-work
         target: /work/_inbox
         volume: { subpath: _inbox }
+      # The owner's extensions (M8), read-only: control loads them; the agent never sees this folder.
+      - ./extensions:/app/extensions:ro
     networks: [outside, sandbox, ctl, chat]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]

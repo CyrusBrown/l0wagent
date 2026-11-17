@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { ExtSlot } from '../ext/ExtElement'
+import { threadTypeFor } from '../ext/registry'
+import { useExtensions } from '../ext/useExtensions'
 import { Link, useParams } from 'react-router'
 import { ApiError, newKey, type S } from '../api/client'
 import { problem, uploadFile, useDelivery, usePatchThread, usePostMessage, useProject, useProjects, useReplyNow, useThread, useThreadItems } from '../api/queries'
@@ -45,6 +48,7 @@ export function Thread() {
     <div className="thread">
       <div className="thread-scroll" ref={scroller}>
         {t && <div className="thread-head"><div className="thread-head-inner"><ThreadHead t={t} messages={(items.data?.items ?? []).filter((i) => i.type === 'message').length} filesOpen={filesOpen} toggleFiles={() => setFilesOpen(!filesOpen)} /></div></div>}
+        {t && <ThreadTypeSlot t={t} />}
         <div className="thread-items">
           {items.data?.items.map((it) => <Item key={`${it.type}-${itemId(it)}`} it={it} seenId={seenId} />)}
           {items.data?.items.length === 0 && <div className="thread-empty">No messages yet. Write the first one below.</div>}
@@ -63,6 +67,14 @@ export function Thread() {
     )}
     </>
   )
+}
+
+/** A thread an extension created (type ext:<name>:<type>) shows the extension's element above the messages. */
+function ThreadTypeSlot({ t }: { t: S['Thread'] }) {
+  const exts = useExtensions()
+  const hit = threadTypeFor(exts.data, t.type)
+  if (!hit) return null
+  return <div className="thread-ext"><ExtSlot ext={hit.ext} element={hit.item.element} context={{ thread_id: t.id }} /></div>
 }
 
 function ThreadHead({ t, messages, filesOpen, toggleFiles }: { t: S['Thread']; messages: number; filesOpen: boolean; toggleFiles: () => void }) {

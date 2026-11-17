@@ -26,7 +26,7 @@ from ..api import schemas as s
 from ..auth import Auth, iso, parse, utcnow
 from ..budgets import LEVELS, OPENCODE_GO, RUNTIME, SUBSCRIPTION, TIERS, Budgets
 from ..chat import Chats
-from ..config import Env, Settings
+from ..config import Env, Settings, advanced_view
 from ..connector import Connector
 from ..conv import Conversations
 from ..db import Database
@@ -105,6 +105,20 @@ class SqliteBackend(Backend):
         self.chats_ = Chats(self.db, self, self.live, self.budgets, self.vault)
         self.connector = Connector(self.db, self)
         self.signer = Signer(self.vault.key)
+        from ..extensions import Extensions
+
+        ext_dir = os.environ.get("L0W_EXTENSIONS_DIR", "/app/extensions")
+        self.ext = Extensions(self, Path(ext_dir) if ext_dir else None)
+        self.integrations.extra_presets = self.ext.presets
+        fire = self.ext.fire
+        self.conv.fire = fire
+        self.shelf_.fire = fire
+        self.scheduler.fire = fire
+        self.runs_mgr.fire = fire
+        self.runs_mgr.ext_prompt = self.ext.prompt
+        self.reviewer.ext_prompt = self.ext.prompt
+        self.chats_.ext_prompt = self.ext.prompt
+        self.runs_mgr.on_finish.append(lambda r: fire("run_ended", {"run_id": r["id"], "status": r["status"], "result": r.get("result")}))
         self.files_app = files_app(self.storage, self.signer, self.shelf_.raw)
         self._files_server = None
         self._seed_news()
@@ -124,6 +138,7 @@ class SqliteBackend(Backend):
         self.notifier.loop = self.loop
         self.live.bind(self.loop)
         self.chats_.startup()
+        self.ext.startup(self.loop)
         await self.runs_mgr.startup()
         self._watcher = asyncio.create_task(self.shelf_.watch(self.runs_mgr.active_run_id))
         self._scheduler = asyncio.create_task(self.scheduler.loop()) if os.environ.get("L0W_SCHEDULER", "1") != "0" else None
@@ -137,6 +152,7 @@ class SqliteBackend(Backend):
             self._files_task = asyncio.create_task(self._files_server.serve())
 
     async def shutdown(self) -> None:
+        self.ext.shutdown()
         self._watcher.cancel()
         if self._scheduler:
             self._scheduler.cancel()
@@ -155,7 +171,7 @@ class SqliteBackend(Backend):
 
     # ── meta, status, sync, events ─────────────────────────────────────────
     def meta(self) -> s.Meta:
-        return s.Meta(server_version=__version__, api_version=API_VERSION, ui_bundle_version=__version__, capabilities=s.Capabilities(),
+        return s.Meta(server_version=__version__, api_version=API_VERSION, ui_bundle_version=__version__, capabilities=s.Capabilities(extensions=sorted(self.ext.loaded)),
                       setup_complete=self.auth.owner() is not None, instance_name=self.env.instance_name)
 
     def status(self) -> s.Status:
@@ -247,7 +263,8 @@ class SqliteBackend(Backend):
     def inbox(self, view: str, kind: str | None, q: str | None) -> list[s.InboxEntry]:
         waiting = view == "waiting"
         where = "status='open'" if waiting else "status!='open'"
-        alerts = [("security", self._alert(r["id"])) for r in self.db.q(f"SELECT id FROM security_alerts WHERE {where} ORDER BY id DESC LIMIT 200")]
+        alerts: list = [("security", self._alert(r["id"])) for r in self.db.q(f"SELECT id FROM security_alerts WHERE {where} ORDER BY id DESC LIMIT 200")]
+        alerts += [("extension", self._ext_card(r)) for r in self.ext.cards(None, "open" if waiting else "closed") if r["status"] != "withdrawn"]
         entries = self.conv.inbox_entries(waiting, alerts)
         if kind:
             entries = [e for e in entries if e.kind == kind]
@@ -258,6 +275,9 @@ class SqliteBackend(Backend):
 
     def inbox_counts(self) -> s.InboxCounts:
         by = self.conv.counts()
+        n = self.db.q1("SELECT COUNT(*) AS n FROM extension_cards WHERE status='open'")["n"]
+        if n:
+            by["extension"] = n
         return s.InboxCounts(waiting=sum(by.values()), by_kind=by)  # type: ignore[arg-type]
 
     def decide_security(self, aid: int, req: s.SecurityDecision) -> s.SecurityAlert:
@@ -426,6 +446,44 @@ class SqliteBackend(Backend):
                 os.close(d)
         finally:
             os.close(root)
+
+    # ── extensions ─────────────────────────────────────────────────────────
+    def extensions(self) -> list[s.ExtensionInfo]:
+        return [s.ExtensionInfo(**i) for i in self.ext.info()]
+
+    def rescan_extensions(self) -> list[s.ExtensionInfo]:
+        self.ext.scan()
+        for name in list(self.ext.loaded):  # pick up new code and manifests
+            self.ext._load(name)
+        return self.extensions()
+
+    def _ext_info(self, name: str) -> s.ExtensionInfo:
+        for i in self.extensions():
+            if i.name == name:
+                return i
+        raise NotFound(f"extension {name}")
+
+    def set_extension_enabled(self, name: str, enabled: bool) -> s.ExtensionInfo:
+        self.ext.enable(name, enabled)
+        return self._ext_info(name)
+
+    def set_extension_settings(self, name: str, values: dict) -> s.ExtensionInfo:
+        self.ext.set_settings(name, values)
+        return self._ext_info(name)
+
+    def extension_ui_file(self, name: str, path: str) -> str:
+        return str(self.ext.ui_file(name, path))
+
+    def _ext_card(self, r: dict) -> s.ExtensionCard:
+        return s.ExtensionCard(id=r["id"], ext=r["ext"], kind=r["kind"], title=r["title"], data=json.loads(r["data_json"]), thread_id=r["thread_id"],
+                               status=r["status"], resolution=json.loads(r["resolution_json"]) if r["resolution_json"] else None,
+                               created_at=parse(r["created_at"]), resolved_at=parse(r["resolved_at"]) if r["resolved_at"] else None)
+
+    def extension_cards(self, status: str | None) -> list[s.ExtensionCard]:
+        return [self._ext_card(r) for r in self.ext.cards(None, status)]
+
+    def resolve_extension_card(self, card_id: int, req: s.ExtensionCardResolve) -> s.ExtensionCard:
+        return self._ext_card(self.ext.resolve_card(card_id, req.action, req.data))
 
     # ── files ──────────────────────────────────────────────────────────────
     def _run_at(self, t: float) -> int | None:
@@ -1004,10 +1062,30 @@ class SqliteBackend(Backend):
     def set_instructions(self, req: s.StandingInstructions) -> s.StandingInstructions:
         old = self.budgets.instructions().text
         self.budgets.set_instructions(self.vault.redact(req.text) or "")
+        if req.reviewer_text is not None:
+            self.budgets.set_reviewer_instructions(self.vault.redact(req.reviewer_text) or "")
         if old.strip() != req.text.strip():
             self.db.ex("INSERT INTO agent_notifications(run_id, body, created_at) VALUES(NULL, ?, ?)",
                        ("[control] The owner updated your standing instructions; they're in your next brief.", self.db.now()))
         return self.budgets.instructions()
+
+    def advanced_settings(self) -> list[s.AdvancedSetting]:
+        return advanced_view(self.settings.get)
+
+    def set_advanced_settings(self, values: dict) -> list[s.AdvancedSetting]:
+        from ..config import ADVANCED, SPECS, cast, check_range
+
+        for key, raw in values.items():
+            if key not in ADVANCED:
+                raise BadRequest("bad_setting", f"{key} isn't an advanced setting.")
+            try:
+                v = cast(SPECS[key].kind, raw)
+                check_range(key, v)
+            except (TypeError, ValueError) as e:
+                raise BadRequest("bad_setting", str(e) or f"{key}: expected {SPECS[key].kind}") from None
+            self.settings.set(key, v)
+        self.live.emit("status")
+        return self.advanced_settings()
 
     # ── the calendar and wakeups ───────────────────────────────────────────
     def calendar(self, start: str | None, end: str | None) -> s.Calendar:

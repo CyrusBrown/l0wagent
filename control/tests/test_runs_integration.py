@@ -2,6 +2,7 @@
 and the run carries on. Also: the agent computer restarting mid-run, stopping, the gate."""
 
 import signal
+import time
 
 import pytest
 
@@ -162,8 +163,11 @@ def test_run_holds_open_for_a_reply(stack: Stack):
     stack.wait_for(lambda: any(i["text"].startswith("Waiting up to") for i in stack.timeline(run_id)), what="holding open")
     assert stack.run(run_id)["status"] == "running"
     assert stack.client.get(f"/api/threads/{t['id']}/delivery").json()["text"].startswith("Waiting for your reply")
+    deadline = stack.run(run_id)["deadline"]
+    time.sleep(2)  # time spent waiting for the owner doesn't use up the run's wall-clock limit
     stack.client.post(f"/api/threads/{t['id']}/messages", json={"body": "No, go ahead."})
     stack.wait_for(lambda: "Thanks for the reply, that settles it." in bodies(stack, t["id"]), what="the resumed reply")
+    assert stack.run(run_id)["deadline"] > deadline
     done = stack.wait_for(lambda: (r := stack.run(run_id))["status"] != "running" and r, timeout=90, what="run to end")
     assert done["status"] == "done"
     texts = [i["text"] for i in stack.timeline(run_id)]

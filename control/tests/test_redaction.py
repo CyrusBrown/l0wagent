@@ -49,6 +49,7 @@ def test_store_text_takes_a_vault_or_a_backend(be):
 
 # Columns that can't hold owner or agent text. Everything else of type TEXT must be in vault.SCRUB.
 NOT_TEXT = {
+    "extensions": {"name", "version", "sdk", "source", "found_at"}, "extension_kv": {"ext", "key"}, "extension_cards": {"ext", "kind", "status"},
     # ids, tokens, hashes and keys
     "api_tokens": {"id", "token_hash", "scopes_json"}, "auth_sessions": {"id", "kind", "token_hash", "ip", "user_agent"},
     "oauth_codes": {"code_hash", "redirect_uri", "challenge", "resource"}, "oauth_tokens": {"token_hash", "kind"},
@@ -69,7 +70,7 @@ NOT_TEXT = {
     "permissions": {"status", "scope"}, "projects": {"slug", "status", "doc_path", "links_json", "created_by"},
     "promote_requests": {"status"}, "providers": {"id", "kind", "label", "config_json"},
     "questions": {"kind", "status", "scale_labels_json"}, "rate_limit_events": {"limit_type", "status"},
-    "reviewer_messages": {"sender", "kind"}, "routines": {"builtin", "schedule_json", "provider", "tier", "status", "created_by"},
+    "reviewer_messages": {"sender", "kind"}, "routines": {"builtin", "extension", "schedule_json", "provider", "tier", "status", "created_by"},
     "run_sessions": {"runtime", "session_id", "model", "effort", "log_path", "runner_session", "state"},
     "runs": {"kind", "why", "provider", "tier", "status", "end_reason", "workspace_head", "bucket", "reviewer_mode", "switch_tier", "level"},
     "secret_reads": {"how"}, "security_alerts": {"session_id", "status"},
@@ -85,7 +86,7 @@ LABELS = {("passkeys", "label"), ("auth_sessions", "label"), ("api_tokens", "lab
 TIME_COLS = {"at", "created_at", "updated_at", "delivered_at", "answered_at", "decided_at", "resolved_at", "started_at", "ended_at", "applied_at",
              "reverted_at", "revoked_at", "last_used_at", "last_seen_at", "expires_at", "confirmed_at", "password_changed_at", "last_read_at",
              "last_ok_at", "announced_at", "sent_at", "read_at", "synced_at", "archived_at", "last_run_at", "stop_requested_at", "deadline",
-             "waiting_until", "expected_end", "resets_at", "fetched_at", "five_hour_resets_at", "seven_day_resets_at", "removed_at", "used_at", "changed_at"}
+             "waiting_until", "expected_end", "resets_at", "fetched_at", "five_hour_resets_at", "seven_day_resets_at", "removed_at", "used_at", "changed_at", "hold_started_at"}
 
 
 def test_every_text_column_is_scrubbed_or_explicitly_not_text(be):

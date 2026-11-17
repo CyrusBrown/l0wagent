@@ -1,4 +1,7 @@
 import { useRef, useState } from 'react'
+import { ExtSlot } from '../ext/ExtElement'
+import { projectTabKey, slotItems } from '../ext/registry'
+import { useExtensions } from '../ext/useExtensions'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import type { S } from '../api/client'
 import {
@@ -68,7 +71,7 @@ function NewProject({ onDone }: { onDone: () => void }) {
   )
 }
 
-type Tab = 'overview' | 'threads' | 'files' | 'asks' | 'activity'
+type Tab = 'overview' | 'threads' | 'files' | 'asks' | 'activity' | `ext:${string}`
 
 export function Project() {
   const slug = useParams().slug!
@@ -78,6 +81,7 @@ export function Project() {
   const threads = useThreads({ project: slug, archived: true })
   const shelf = useShelf(slug)
   const waiting = useInbox('waiting')
+  const exts = useExtensions()
   const runs = useRuns(undefined, slug)
   const [params, setParams] = useSearchParams()
   const tab = (params.get('tab') ?? 'overview') as Tab
@@ -90,7 +94,9 @@ export function Project() {
   const archived = all.filter((t) => t.status === 'archived')
   const shown = showArchived ? all : all.filter((t) => t.status !== 'archived')
   const lastRun = runs.data?.[0]
-  const tabs: [Tab, string][] = [['overview', 'Overview'], ['threads', 'Threads'], ['files', 'Files'], ['asks', asks.length ? `Asks · ${asks.length}` : 'Asks'], ['activity', 'Activity']]
+  const extTabs = slotItems(exts.data, 'project_tabs').map((x) => ({ ...x, key: projectTabKey(x.ext.name, x.item.id ?? x.item.element) as Tab }))
+  const tabs: [Tab, string][] = [['overview', 'Overview'], ['threads', 'Threads'], ['files', 'Files'], ['asks', asks.length ? `Asks · ${asks.length}` : 'Asks'], ['activity', 'Activity'], ...extTabs.map((x): [Tab, string] => [x.key, x.item.title ?? x.ext.title])]
+  const extTab = extTabs.find((x) => x.key === tab)
   return (
     <div className="page" style={{ maxWidth: 1040, gap: 20 }}>
       <div className="page-head" style={{ flexWrap: 'wrap' }}>
@@ -145,6 +151,7 @@ export function Project() {
           ))}
         </div>
       )}
+      {extTab && <ExtSlot key={extTab.key} ext={extTab.ext} element={extTab.item.element} context={{ project: slug }} />}
       {tab === 'files' && <ShelfView project={slug} />}
       {tab === 'asks' && (asks.length === 0 ? <div className="empty">Nothing waiting on you in this project.</div> : (
         <div className="stack" style={{ maxWidth: 720 }}>

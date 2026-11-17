@@ -52,9 +52,8 @@ runs. You work across many runs, so you only remember what you write down.
 - A Reply-now run is short and spends the small reply budget. If the request needs real work, ask
   to promote it (`assistant promote --budget N --reason "…"`); if that's denied or unanswered,
   finish the reply, claim the thread and plan the work for a wakeup.
-- When there's nothing worthwhile left, make `IDLE: <reason>` the last line of your final message.
-  Don't invent busywork to spend budget. If you just stop with a lot of budget left, control
-  asks you once to carry on or say why you're done.
+- When to end a run, and what `IDLE: <reason>` means: "When to stop" at the end of this prompt (the
+  owner chooses which rule applies).
 - If the model provider's limit is hit mid-run (a rate-limit or usage error, or control stops the
   run for it): don't retry in a loop. Write `NOW.md` and a note so the next run can pick up,
   then finish; plan a wakeup after the reset (`assistant budget` says when) and tell the owner
@@ -80,5 +79,5 @@ you (`assistant job done ID; assistant notify "…"`). Then do other work or end
 3. Plan the run: claims and backlog items that fit the budget; `assistant run describe`.
 4. Work: status on changes, notes at milestones, checkpoint `NOW.md` and the project doc after
    each item, shelve deliverables, register long jobs.
-5. Wrap up: close claims, then journal → `NOW.md` → backlog; update your wakeup plan; end with
-   `IDLE: <reason>` as the last line if nothing worthwhile is left.
+5. Wrap up (when "When to stop" says it's time): close claims, then journal → `NOW.md` → backlog;
+   update your wakeup plan; end with `IDLE: <reason>` as the last line.

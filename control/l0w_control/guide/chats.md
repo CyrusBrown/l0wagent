@@ -10,7 +10,9 @@ threads, projects, runs, files (read-only), budget and plan. Each chat is indepe
   hand-off card (a new thread, a new project, or an existing thread; either the whole transcript
   or a hand-off message it wrote), which you approve.
 - It can **help with settings**: it reads them and proposes changes (budgets, levels, limits,
-  providers' models, roles, the reviewer, standing instructions, notifications) as a card listing
+  providers' models, roles, the reviewer, standing instructions for the assistant and the reviewer,
+  notifications, and everything in Settings → Advanced, such as how long a run waits for your
+  reply) as a card listing
   each change, before and after. Nothing changes until you approve.
 - **Secrets** are always entered on a secure input card; the chat never sees the value.
 - **Pull in a thread** gives the chat a thread as read-only context.

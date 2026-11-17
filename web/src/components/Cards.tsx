@@ -1,10 +1,13 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { S } from '../api/client'
 import {
   problem, useAnswer, useDecidePermission, useSetSecret, useDecidePromote, useDecideSecurity, useDecideSuggestion, useResolveTask,
 } from '../api/queries'
 import { useOnline } from './online'
+import { ExtSlot } from '../ext/ExtElement'
+import { slotItems } from '../ext/registry'
+import { useExtensions, useResolveExtCard } from '../ext/useExtensions'
 import { pts } from './format'
 
 /** Where a card is shown. Home: the label reads "Question · #thread" (the mockup's Waiting on
@@ -286,6 +289,24 @@ export function ClaimCard({ c }: { c: S['Claim'] }) {
   )
 }
 
+/** An extension's own kind of card: its element inside the shared frame. */
+export function ExtensionCardView({ c }: { c: S['ExtensionCard'] }) {
+  const exts = useExtensions()
+  const resolve = useResolveExtCard()
+  const mutate = resolve.mutateAsync
+  const hit = slotItems(exts.data, 'inbox_cards').find((x) => x.ext.name === c.ext && x.item.kind === c.kind)
+  const title = exts.data?.find((x) => x.name === c.ext)?.title ?? c.ext
+  const context = useMemo(() => ({ card: c, resolve: (action: string, data: Record<string, unknown> = {}) => mutate({ id: c.id, action, data }) }), [c, mutate])
+  const decided = c.status !== 'open' && <Decided text={c.status === 'resolved' ? 'Resolved' : 'Withdrawn'} />
+  return (
+    <Card id={`xc${c.id}`} label={title} decided={decided}>
+      <div className="card-q">{c.title}</div>
+      {hit ? <ExtSlot ext={hit.ext} element={hit.item.element} context={context} />
+        : <div className="sub">from {c.ext} (not loaded)</div>}
+    </Card>
+  )
+}
+
 /** Any inbox entry as its card. */
 export function InboxCard({ e }: { e: S['InboxEntry'] }) {
   if (e.question) return <QuestionCard q={e.question} />
@@ -294,5 +315,6 @@ export function InboxCard({ e }: { e: S['InboxEntry'] }) {
   if (e.suggestion) return <SuggestionCard s={e.suggestion} />
   if (e.promote) return <PromoteCard p={e.promote} />
   if (e.security) return <SecurityCard a={e.security} />
+  if (e.extension_card) return <ExtensionCardView c={e.extension_card} />
   return null
 }

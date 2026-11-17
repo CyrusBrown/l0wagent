@@ -1,0 +1,67 @@
+# The example extension: a small plant log. Copy this folder to extensions/plantlog/ to try it.
+name = "plantlog"
+title = "Plant log"
+version = "0.1.0"
+sdk = "1.0"
+description = "Keeps a watering log for house plants: a page, a project tab, an Inbox card when one is due, and `assistant ext plantlog …`."
+entry = "extension.py"
+folders = ["log"]              # /work/_inbox/_ext/plantlog/log/: control writes plants.md there for the agent
+
+[prompts]
+system = "prompts/system.md"
+
+[settings.water_every_days]
+kind = "int"
+label = "Water every (days)"
+help = "A plant is due this many days after its last watering, unless it has its own interval."
+default = 3
+min = 1
+max = 60
+
+[settings.remind]
+kind = "bool"
+label = "Inbox card when a plant is due"
+default = true
+
+[[commands]]
+name = "plants"
+help = "list the plants, when each was last watered and whether it's due"
+
+[[commands]]
+name = "log"
+usage = "plant=NAME [note=TEXT] [watered=true]"
+help = "add a note about a plant (creates it if new); watered=true also records a watering"
+
+[[routines]]
+key = "weekly"
+name = "Plant check"
+prompt = "Look over the plant log (`assistant ext plantlog plants`) and the notes in /work/_inbox/_ext/plantlog/log/plants.md. Mention anything that looks wrong in the General thread. End with IDLE if all is well."
+schedule = { kind = "weekly", day = 6, time = "10:00" }   # day: Monday = 0
+budget = 5
+enabled = false
+
+[ui]
+module = "ui/plantlog.js"
+
+[[ui.pages]]
+path = "plants"
+title = "Plants"
+element = "plantlog-page"
+
+[[ui.sidebar]]
+title = "Plants"
+element = "plantlog-sidebar"
+
+[[ui.project_tabs]]
+id = "log"
+title = "Plant log"
+element = "plantlog-tab"
+
+[[ui.inbox_cards]]
+kind = "water"
+element = "plantlog-water-card"
+
+[[ui.previewers]]
+extensions = [".plant"]
+title = "Plant card"
+element = "plantlog-preview"

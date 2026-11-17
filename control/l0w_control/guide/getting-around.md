@@ -12,8 +12,8 @@ messages, projects, files and runs, and runs actions.
 - **Conversations**: the sidebar lists **General** (threads in no project; the latest three, and
   `···` opens all of them), **Projects** (expand one to see its threads; the `›` opens the
   project page) and your **Chats**.
-- **Inbox**: questions, permissions, tasks, suggestions, promote requests and security alerts,
-  grouped by kind. **History** lists past decisions and is searchable.
+- **Inbox**: questions, permissions, tasks, suggestions, promote requests, security alerts and
+  cards from extensions, grouped by kind. **History** lists past decisions and is searchable.
 - **Runs**: every run with its budget and status; open one for its summary, then **Open full
   timeline** for every step. **Long jobs** lists background work the assistant registered.
 - **Files**: the assistant's storage: `/workspace` (its memory, a git repo) and `/work` (project
@@ -24,8 +24,12 @@ messages, projects, files and runs, and runs actions.
   same rules and request log as the Network page) and **Connected apps** (outside chat apps that
   connect to your assistant, and can be revoked).
 - **Settings**: Appearance (light, dark, system, and 24-hour or 12-hour times; the time choice is kept in this browser), Budgets & levels, Providers, Roles, Reviewer,
-  Standing instructions, Account (password, 2FA with ten one-time recovery codes, sessions),
-  Notifications, System (self-test, storage and free disk space, scheduler problems).
+  Standing instructions (one box for the assistant, one only the reviewer reads), Account (password,
+  2FA with ten one-time recovery codes, sessions), Notifications, Extensions, Advanced (fine-tuning:
+  how long a run waits for your reply, time limits, Reply-now and Wake-now budgets, sign-in and log
+  retention) and System (self-test, storage and free disk space, scheduler problems).
+- **Extensions** add their own pages (in More), sidebar sections, project tabs, Inbox cards and file
+  previews; see "Extensions" in the files and tools page.
 
 The app works offline for reading what you've opened, and thread messages, answers and tasks you
 write offline are sent when the connection returns; the 1:1 chat needs a connection. Anything the

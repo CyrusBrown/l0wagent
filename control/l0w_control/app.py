@@ -48,6 +48,13 @@ def create_app(backend: Backend) -> FastAPI:
         separate_input_output_schemas=False,  # one schema per model, so generated TS types are shared
     )
     app.state.backend = backend
+    ext = getattr(backend, "ext", None)
+    if ext is not None:  # extensions' own routes; the guard and the owner/agent checks still apply
+        from starlette.routing import Mount
+
+        ext.install_error_handlers = install_error_handlers
+        app.router.routes.append(Mount("/api/agent/ext", app=ext.asgi(owner=False)))
+        app.router.routes.append(Mount("/api/ext", app=ext.asgi(owner=True)))
     app.include_router(public)
     app.include_router(api)
     if hasattr(backend, "runs_mgr"):
@@ -69,30 +76,7 @@ def create_app(backend: Backend) -> FastAPI:
         response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'self'")
         return response
 
-    @app.exception_handler(NotImplementedError)
-    async def not_implemented(_: Request, exc: NotImplementedError) -> JSONResponse:
-        return JSONResponse({"error": "not_implemented", "detail": str(exc) or None}, status_code=501)
-
-    @app.exception_handler(NotFound)
-    async def not_found(_: Request, exc: NotFound) -> JSONResponse:
-        return JSONResponse({"error": "not_found", "detail": exc.what}, status_code=404)
-
-    @app.exception_handler(Conflict)
-    async def conflict(_: Request, exc: Conflict) -> JSONResponse:
-        return JSONResponse({"error": exc.error, "detail": exc.detail}, status_code=409)
-
-    @app.exception_handler(BadRequest)
-    async def bad_request(_: Request, exc: BadRequest) -> JSONResponse:
-        return JSONResponse({"error": exc.error, "detail": exc.detail}, status_code=400)
-
-    @app.exception_handler(Unauthorized)
-    async def unauthorized(_: Request, __: Unauthorized) -> JSONResponse:
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
-
-    @app.exception_handler(LoginFailed)
-    async def login_failed(_: Request, exc: LoginFailed) -> JSONResponse:
-        headers = {"Retry-After": str(exc.problem.retry_after_s)} if exc.problem.retry_after_s else None
-        return JSONResponse(exc.problem.model_dump(), status_code=exc.status, headers=headers)
+    install_error_handlers(app)
 
     def openapi() -> dict:
         if app.openapi_schema:
@@ -108,6 +92,35 @@ def create_app(backend: Backend) -> FastAPI:
     app.openapi = openapi  # type: ignore[method-assign]
     _serve_ui(app)
     return app
+
+
+def install_error_handlers(app: FastAPI) -> None:
+    """Control's errors as JSON; extensions' sub-apps get the same ones."""
+
+    @app.exception_handler(NotImplementedError)
+    async def not_implemented(_: Request, exc: NotImplementedError) -> JSONResponse:
+        return JSONResponse({"error": "not_implemented", "detail": str(exc) or None}, status_code=501)
+    
+    @app.exception_handler(NotFound)
+    async def not_found(_: Request, exc: NotFound) -> JSONResponse:
+        return JSONResponse({"error": "not_found", "detail": exc.what}, status_code=404)
+    
+    @app.exception_handler(Conflict)
+    async def conflict(_: Request, exc: Conflict) -> JSONResponse:
+        return JSONResponse({"error": exc.error, "detail": exc.detail}, status_code=409)
+    
+    @app.exception_handler(BadRequest)
+    async def bad_request(_: Request, exc: BadRequest) -> JSONResponse:
+        return JSONResponse({"error": exc.error, "detail": exc.detail}, status_code=400)
+    
+    @app.exception_handler(Unauthorized)
+    async def unauthorized(_: Request, __: Unauthorized) -> JSONResponse:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    
+    @app.exception_handler(LoginFailed)
+    async def login_failed(_: Request, exc: LoginFailed) -> JSONResponse:
+        headers = {"Retry-After": str(exc.problem.retry_after_s)} if exc.problem.retry_after_s else None
+        return JSONResponse(exc.problem.model_dump(), status_code=exc.status, headers=headers)
 
 
 def _serve_ui(app: FastAPI) -> None:

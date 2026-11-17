@@ -31,6 +31,7 @@ Talk to it (log in once; the device token is kept in ~/.config/l0w/config.json, 
   l0w calendar           this week's planned wakeups
   l0w secrets  ·  l0w secret set NAME [VALUE|@file|-] [--desc …]  ·  l0w secret rm NAME   (write-only)
   l0w selftest  ·  l0w update-check
+  l0w extensions list|enable NAME|disable NAME|rescan|sync   (sync: git sources from extensions.toml)
 
 L0W_URL and L0W_TOKEN override the saved login (for scripts and coding agents).
 """
@@ -43,6 +44,7 @@ import ipaddress
 import json
 import os
 import platform
+import re
 import secrets
 import shutil
 import signal
@@ -50,6 +52,7 @@ import socket
 import subprocess
 import sys
 import time
+import tomllib
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -810,6 +813,89 @@ def cmd_update_check(a) -> None:
         print(f"Up to date ({u['current']}, {u['channel']})." + (f" Check failed: {u['error']}" if u.get("error") else ""))
 
 
+# ── commands: extensions ───────────────────────────────────────────────────
+EXT_NAME = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
+GIT_ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+
+
+def print_extensions(rows: list[dict]) -> None:
+    lines = []
+    for e in rows:
+        line = f"{e['name']} {e['version']}  {'on' if e['enabled'] else 'off'}  {e.get('title') or ''}"
+        err = (e.get("last_error") or "").strip().splitlines()
+        if err:
+            line += f" ! {err[0]}"
+        lines.append(line)
+    print("\n".join(lines) or "No extensions found.")
+
+
+def cmd_extensions(a) -> None:
+    if a.action == "sync":
+        return cmd_extensions_sync()
+    if a.action == "list":
+        return print_extensions(call("GET", "/extensions"))
+    if a.action == "rescan":
+        return print_extensions(call("POST", "/extensions/rescan"))
+    if not a.name:
+        die(f"Give an extension name: ./l0w extensions {a.action} NAME")
+    on = a.action == "enable"
+    call("PUT", f"/extensions/{urllib.parse.quote(a.name, safe='')}/enabled", {"enabled": on})
+    print(f"{a.name} {'enabled' if on else 'disabled'}")
+
+
+def cmd_extensions_sync() -> None:
+    """Clone or update each [extension.NAME] in extensions.toml to its pinned commit under extensions/NAME."""
+    root = Path.cwd()
+    toml = root / "extensions.toml"
+    if not toml.is_file():
+        print("No extensions.toml next to compose.yaml.")
+        return
+    try:
+        entries = tomllib.loads(toml.read_text()).get("extension") or {}
+    except tomllib.TOMLDecodeError as e:
+        die(f"extensions.toml isn't valid TOML: {e}")
+    failed = 0
+    for name, spec in entries.items():
+        if not EXT_NAME.match(name):
+            print(f"{name}: the name must be 2–31 lowercase letters, digits or dashes, starting with a letter; skipped.", file=sys.stderr)
+            failed += 1
+            continue
+        url = spec.get("git") if isinstance(spec, dict) else None
+        commit = spec.get("commit") if isinstance(spec, dict) else None
+        if not isinstance(url, str) or not url or url.startswith("-") or not isinstance(commit, str) or not commit or commit.startswith("-"):
+            print(f"{name}: needs git = \"URL\" and commit = \"COMMIT\" in extensions.toml; skipped.", file=sys.stderr)
+            failed += 1
+            continue
+        target = root / "extensions" / name
+        try:
+            if not target.exists():
+                subprocess.run(["git", "clone", "--quiet", "--", url, str(target)], check=True, capture_output=True, text=True, env=GIT_ENV)
+            else:
+                origin = subprocess.run(["git", "-C", str(target), "remote", "get-url", "origin"], capture_output=True, text=True, env=GIT_ENV)
+                if origin.returncode != 0 or origin.stdout.strip() != url:
+                    print(f"{name}: {target} exists with a different origin ({origin.stdout.strip() or 'none'}); left it alone. Move it aside to sync.", file=sys.stderr)
+                    failed += 1
+                    continue
+                subprocess.run(["git", "-C", str(target), "fetch", "--quiet", "origin"], check=True, capture_output=True, text=True, env=GIT_ENV)
+            subprocess.run(["git", "-C", str(target), "checkout", "--quiet", "--detach", commit], check=True, capture_output=True, text=True, env=GIT_ENV)
+        except subprocess.CalledProcessError as e:
+            reason = (e.stderr or "").strip().splitlines()[-1:] or ["git failed"]
+            print(f"{name}: {reason[0]}; skipped.", file=sys.stderr)
+            failed += 1
+            continue
+        except OSError as e:
+            print(f"{name}: couldn't run git ({e}); skipped.", file=sys.stderr)
+            failed += 1
+            continue
+        print(f"{name}: {url} @ {commit[:12]}")
+    try:
+        print_extensions(call("POST", "/extensions/rescan"))
+    except SystemExit:
+        print("Control isn't reachable, so it reads the extensions folder when it starts (or run ./l0w extensions rescan once it is up).")
+    if failed:
+        sys.exit(1)
+
+
 def cmd_version(a) -> None:
     base, token = server()
     print(f"l0w CLI; server {base}")
@@ -907,6 +993,9 @@ def main() -> None:
     sc.add_argument("--desc")
     sub.add_parser("selftest")
     sub.add_parser("update-check")
+    ex = sub.add_parser("extensions", help="the owner's extensions: list, enable, disable, rescan, sync (git sources from extensions.toml)")
+    ex.add_argument("action", choices=["list", "enable", "disable", "rescan", "sync"])
+    ex.add_argument("name", nargs="?")
     a = p.parse_args()
     {
         "install": cmd_install, "update": cmd_update, "drain": cmd_drain,
@@ -916,6 +1005,7 @@ def main() -> None:
         "threads": cmd_threads, "read": cmd_read, "send": cmd_send, "runs": cmd_runs, "run": cmd_run, "wake": cmd_wake, "stop": cmd_stop,
         "jobs": cmd_jobs, "budget": cmd_budget, "level": cmd_level, "boost": cmd_boost, "calendar": cmd_calendar, "secrets": cmd_secrets,
         "secret": cmd_secrets, "selftest": cmd_selftest, "update-check": cmd_update_check,
+        "extensions": cmd_extensions,
     }[a.cmd](a)
 
 

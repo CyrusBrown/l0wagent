@@ -28,7 +28,17 @@ workspace; between runs it remembers nothing else.
 - **The reviewer**: a second model that watches wakeups (Settings → Reviewer). Off, Advisor
   (answers when asked), Monitor (reads its notes and may interject; the default) or Gate (must
   agree before it stops or closes a task). It can move the assistant to another model mid-run.
-- **Standing instructions** (Settings) open every run's brief.
+- **Standing instructions** (Settings) open every run's brief. A second box holds instructions only
+  the reviewer reads.
+- **Use the whole budget** (Settings → Advanced, on by default): use it or lose it. A wakeup keeps
+  working until its budget is spent (the backlog, the free-time queue, new tasks it writes) instead
+  of stopping when the planned work is done; busywork still doesn't count. If it stops early anyway,
+  control tells it to carry on (twice by default; also in Advanced), and in Gate mode the reviewer
+  must agree before it ends. Off: a wakeup's budget is planned and it may stop early with `IDLE:`.
+- **Waiting for your reply**: when the assistant messages you or asks something during a run, the run
+  stays open for your reply (5 minutes by default; Settings → Advanced → "Wait for your reply").
+  Each reply resumes it and the window starts again, up to "Replies one run may wait for" (10). Time
+  spent waiting doesn't count against the run's time limit.
 
 What it can't do: change its own harness (control, the runner, its prompts, the containers),
 approve its own requests, set secrets, or change settings and budgets. Changes to the harness are

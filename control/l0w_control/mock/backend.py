@@ -693,11 +693,35 @@ class MockBackend(Backend):
         return req
 
     def instructions(self) -> s.StandingInstructions:
-        return s.StandingInstructions(text=self.w.instructions, updated_at=self.w.now - timedelta(days=2))
+        return s.StandingInstructions(text=self.w.instructions, reviewer_text=getattr(self.w, "reviewer_instructions", ""), updated_at=self.w.now - timedelta(days=2))
 
     def set_instructions(self, req: s.StandingInstructions) -> s.StandingInstructions:
         self.w.instructions = req.text
-        return s.StandingInstructions(text=req.text, updated_at=_now())
+        if req.reviewer_text is not None:
+            self.w.reviewer_instructions = req.reviewer_text
+        return s.StandingInstructions(text=req.text, reviewer_text=getattr(self.w, "reviewer_instructions", ""), updated_at=_now())
+
+    def advanced_settings(self) -> list[s.AdvancedSetting]:
+        from ..config import SPECS, advanced_view
+
+        vals = getattr(self.w, "advanced", None) or {}
+        return advanced_view(lambda k: vals.get(k, SPECS[k].default))
+
+    def set_advanced_settings(self, values: dict) -> list[s.AdvancedSetting]:
+        from ..config import ADVANCED, SPECS, cast, check_range
+
+        if not hasattr(self.w, "advanced"):
+            self.w.advanced = {}
+        for k, raw in values.items():
+            if k not in ADVANCED:
+                raise BadRequest("bad_setting", f"{k} isn't an advanced setting.")
+            v = cast(SPECS[k].kind, raw)
+            try:
+                check_range(k, v)
+            except ValueError as e:
+                raise BadRequest("bad_setting", str(e)) from None
+            self.w.advanced[k] = v
+        return self.advanced_settings()
 
     # ── the calendar, wakeups, routines ────────────────────────────────────
     def calendar(self, start: str | None, end: str | None) -> s.Calendar:
@@ -863,6 +887,28 @@ class MockBackend(Backend):
 
     def list_integrations(self) -> list[s.Integration]:
         return sorted(self.w.integrations.values(), key=lambda i: i.title)
+
+    # extensions: none in the mock (the real ones need control's process)
+    def extensions(self) -> list[s.ExtensionInfo]:
+        return []
+
+    def rescan_extensions(self) -> list[s.ExtensionInfo]:
+        return []
+
+    def set_extension_enabled(self, name: str, enabled: bool) -> s.ExtensionInfo:
+        raise NotFound(f"extension {name}")
+
+    def set_extension_settings(self, name: str, values: dict) -> s.ExtensionInfo:
+        raise NotFound(f"extension {name}")
+
+    def extension_ui_file(self, name: str, path: str) -> str:
+        raise NotFound(f"extension {name}")
+
+    def extension_cards(self, status: str | None) -> list[s.ExtensionCard]:
+        return []
+
+    def resolve_extension_card(self, card_id: int, req: s.ExtensionCardResolve) -> s.ExtensionCard:
+        raise NotFound(f"extension card {card_id}")
 
     def integration_presets(self) -> list[s.IntegrationPreset]:
         return [s.IntegrationPreset(id=k, **{f: x for f, x in v.items() if f in s.IntegrationPreset.model_fields}) for k, v in PRESETS.items()]

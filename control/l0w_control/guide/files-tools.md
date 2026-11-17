@@ -35,3 +35,15 @@
 - **Self-test** (Settings → System) checks the assistant's isolation.
 
 The 1:1 chat can walk you through connecting an integration such as GitHub. It explains the steps, links the provider's token page with the permissions to choose, and shows a Connect card with a secure input. The token goes straight from your browser to control, is saved for integrations only, and the chat never sees it.
+
+## Extensions
+
+Extensions are add-ons you (or a coding agent) put in the `extensions/` folder next to
+`compose.yaml` on the server, then switch on in **Settings → Extensions** (found ones start off).
+They can add pages (under More), sidebar sections, project tabs, Inbox cards, file previews,
+settings, routines, integration presets, text in the assistant's prompt, and commands for it
+(`assistant ext …`). A broken one is switched off with its error shown; control keeps running.
+Updates don't touch the folder; an extension's data and settings are kept. Extensions from git are
+listed in `extensions.toml` and fetched with `./l0w extensions sync`. The assistant can't install or
+change extensions: if it wants one it files a task with a spec. How to write one: `docs/EXTENDING.md`
+in the repository (and the example, `extensions/examples/plantlog`).

@@ -236,6 +236,8 @@ def ask_for_secret(ctx: Ctx, a: dict) -> str:
 def propose_integration(ctx: Ctx, a: dict) -> str:
     from .integrations import NAME_RE, PRESETS
 
+    integ = getattr(ctx.be, "integrations", None)
+    PRESETS = integ.all_presets() if integ else PRESETS  # noqa: N806  (the built-in ones plus enabled extensions')
     preset = (_str(a, "preset", required=False, max_len=32) or "").strip().lower()
     reason = _str(a, "reason", required=False, max_len=500) or ""
     if preset:
@@ -383,14 +385,17 @@ TOOLS: list[Tool] = [
          "chats, files and tools. No arguments lists the topics; topic=… reads one; query=… searches. Use it before explaining how something works.",
          {"topic": P, "query": P}, (), help_, "read the guide"),
     Tool("read_settings", "read", "The owner's settings: budgets per provider (level, limits, what they customized, period, caps, reply budget), "
-         "level presets, the reserve, providers and their models, roles, the reviewer, standing instructions, notification choices. No secrets or keys.",
+         "level presets, the reserve, providers and their models, roles, the reviewer, standing instructions (the assistant's and the reviewer's), "
+         "the advanced tuning knobs, notification choices. No secrets or keys.",
          {}, (), read_settings, "read the settings"),
     Tool("propose_settings", "card", "Propose settings changes; the owner sees each one (before → after) on a card and approves or declines. "
          "changes: [{setting, value, provider?}] with setting one of: level, allowance, allowed_hours, max_per_day, min_gap_minutes, max_wakeup, "
          "tiers, fallback, sweep (a level's limits; null resets one), reply_pts, fallback_pts, period (week|month), reset_day, caps ({five_hour, week} "
          "shares), models (an opencode provider's enabled model ids, in order), role.<worker|reviewer|replier|chat|utility> ({provider, tier}), "
          "reviewer.<mode|provider|tier|interval_minutes|budget_share|change_tier>, reserve_weekly_pct, reserve_five_hour_pct, instructions "
-         "(full text), notifications.<event> (true/false), notifications.quiet ({start, end} HH:MM or null). provider defaults to the worker's. "
+         "(full text, for the assistant), reviewer_instructions (full text, only the reviewer sees it), advanced.<KEY> (Settings → Advanced: "
+         "e.g. advanced.HOLD_MINUTES, how long a run waits for the owner's reply; read_settings lists every key with its range), "
+         "notifications.<event> (true/false), notifications.quiet ({start, end} HH:MM or null). provider defaults to the worker's. "
          "Read the settings first and explain the trade-off.",
          {"changes": {"type": "array", "items": {"type": "object"}}, "reason": P}, ("changes",), propose_settings, "proposed settings"),
     Tool("propose_handoff", "card", "Propose handing this chat's work to the assistant (the owner approves). target: new_thread (title, optional "

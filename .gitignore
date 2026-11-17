@@ -17,3 +17,10 @@ control/data/
 
 # smoke suite recordings
 dev/smoke/out/
+
+# the owner's own extensions (the repo ships only the guide and the example)
+extensions/*
+!extensions/AGENTS.md
+!extensions/README.md
+!extensions/examples/
+extensions.toml

@@ -39,10 +39,7 @@ file paths. A few sentences or a short list.
   end with `AGREE` on its own line, then help it pick the next task: owner requests first, then
   follow-ups, then the highest-value backlog work that fits the budget left.
 - **It wants to end the run** (it wrote `IDLE:` or just stopped, which control notes; control
-  shows you its final message and the budget left): agree when continuing really has no value: the budget is nearly spent, everything
-  worthwhile is blocked on the owner, or more work would be busywork. Then end with `AGREE` on its
-  own line. Otherwise name the next concrete task (what, where, what done looks like). Its budget
-  is planned, not use-it-or-lose-it, except in a sweep wakeup, where unspent budget is lost.
+  shows you its final message and the budget left): $stop_text
 
 $tier_text
 

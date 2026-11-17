@@ -976,6 +976,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/advanced": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Advanced Settings
+         * @description Tuning knobs without a screen of their own (Settings → Advanced).
+         */
+        get: operations["get_advanced_settings_api_settings_advanced_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set Advanced Settings */
+        patch: operations["set_advanced_settings_api_settings_advanced_patch"];
+        trace?: never;
+    };
     "/api/calendar": {
         parameters: {
             query?: never;
@@ -1978,10 +1999,154 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/extensions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Extensions
+         * @description Everything found under extensions/, on or off, with errors. An extension's own routes are at /api/ext/<name>/.
+         */
+        get: operations["list_extensions_api_extensions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/rescan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rescan Extensions
+         * @description Read the extensions folder again (after adding one or pulling a new version). Enabled ones reload.
+         */
+        post: operations["rescan_extensions_api_extensions_rescan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/{name}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Extension Enabled */
+        put: operations["set_extension_enabled_api_extensions__name__enabled_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/{name}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Extension Settings */
+        put: operations["set_extension_settings_api_extensions__name__settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extension-cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Extension Cards */
+        get: operations["extension_cards_api_extension_cards_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extension-cards/{card_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resolve Extension Card */
+        post: operations["resolve_extension_card_api_extension_cards__card_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AdvancedSetting
+         * @description A tuning knob without a screen of its own (Settings → Advanced).
+         */
+        AdvancedSetting: {
+            /** Key */
+            key: string;
+            /** Group */
+            group: string;
+            /** Label */
+            label: string;
+            /** Help */
+            help: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "int" | "float" | "bool" | "str";
+            /** Value */
+            value: unknown;
+            /** Default */
+            default: unknown;
+            /** Min */
+            min?: number | null;
+            /** Max */
+            max?: number | null;
+            /** Unit */
+            unit?: string | null;
+        };
+        /** AdvancedSettingsUpdate */
+        AdvancedSettingsUpdate: {
+            /** Values */
+            values: {
+                [key: string]: unknown;
+            };
+        };
         /** AllowedWindow */
         AllowedWindow: {
             /**
@@ -2768,6 +2933,222 @@ export interface components {
             /** Idempotency Key */
             idempotency_key?: string | null;
         };
+        /**
+         * ExtensionCard
+         * @description An Inbox card of an extension's own kind; the extension's UI element renders it.
+         */
+        ExtensionCard: {
+            /** Id */
+            id: number;
+            /** Ext */
+            ext: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Data */
+            data: {
+                [key: string]: unknown;
+            };
+            /** Thread Id */
+            thread_id: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "resolved" | "withdrawn";
+            /** Resolution */
+            resolution: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Resolved At */
+            resolved_at: string | null;
+        };
+        /** ExtensionCardResolve */
+        ExtensionCardResolve: {
+            /**
+             * Action
+             * @description What the owner chose, e.g. 'approve'; the extension decides what it means.
+             */
+            action: string;
+            /**
+             * Data
+             * @default {}
+             */
+            data?: {
+                [key: string]: unknown;
+            };
+        };
+        /** ExtensionCommand */
+        ExtensionCommand: {
+            /** Name */
+            name: string;
+            /**
+             * Help
+             * @default
+             */
+            help?: string;
+            /**
+             * Usage
+             * @default
+             */
+            usage?: string;
+        };
+        /** ExtensionEnable */
+        ExtensionEnable: {
+            /** Enabled */
+            enabled: boolean;
+        };
+        /** ExtensionInfo */
+        ExtensionInfo: {
+            /** Name */
+            name: string;
+            /** Title */
+            title: string;
+            /** Version */
+            version: string;
+            /** Sdk */
+            sdk: string;
+            /**
+             * Source
+             * @description 'local', or the git URL and commit from extensions.toml.
+             */
+            source: string;
+            /** Description */
+            description: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Loaded */
+            loaded: boolean;
+            /**
+             * Present
+             * @description False when the folder is gone; the row stays so its data and settings survive.
+             */
+            present: boolean;
+            /** Compatible */
+            compatible: boolean;
+            /** Last Error */
+            last_error: string | null;
+            /** Settings */
+            settings: components["schemas"]["ExtensionSetting"][];
+            /** Commands */
+            commands: components["schemas"]["ExtensionCommand"][];
+            /** Folders */
+            folders: string[];
+            /** Prompt Slots */
+            prompt_slots: string[];
+            /** @description Set while the extension is loaded. */
+            ui: components["schemas"]["ExtensionUi"] | null;
+            /** Routines */
+            routines: number[];
+        };
+        /** ExtensionSetting */
+        ExtensionSetting: {
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "int" | "float" | "bool" | "str" | "choice";
+            /** Label */
+            label?: string | null;
+            /** Help */
+            help?: string | null;
+            /** Default */
+            default: unknown;
+            /** Value */
+            value: unknown;
+            /** Min */
+            min?: number | null;
+            /** Max */
+            max?: number | null;
+            /** Choices */
+            choices?: unknown[] | null;
+        };
+        /** ExtensionSettingsUpdate */
+        ExtensionSettingsUpdate: {
+            /** Values */
+            values: {
+                [key: string]: unknown;
+            };
+        };
+        /** ExtensionUi */
+        ExtensionUi: {
+            /**
+             * Module
+             * @description URL of the ES module that defines the extension's custom elements.
+             */
+            module: string | null;
+            /**
+             * Pages
+             * @default []
+             */
+            pages?: components["schemas"]["ExtensionUiPage"][];
+            /**
+             * Sidebar
+             * @default []
+             */
+            sidebar?: components["schemas"]["ExtensionUiItem"][];
+            /**
+             * Project Tabs
+             * @default []
+             */
+            project_tabs?: components["schemas"]["ExtensionUiItem"][];
+            /**
+             * Run Widgets
+             * @default []
+             */
+            run_widgets?: components["schemas"]["ExtensionUiItem"][];
+            /**
+             * Inbox Cards
+             * @default []
+             */
+            inbox_cards?: components["schemas"]["ExtensionUiItem"][];
+            /**
+             * Previewers
+             * @default []
+             */
+            previewers?: components["schemas"]["ExtensionUiItem"][];
+            /**
+             * Thread Types
+             * @default []
+             */
+            thread_types?: components["schemas"]["ExtensionUiItem"][];
+            settings_panel?: components["schemas"]["ExtensionUiItem"] | null;
+        };
+        /**
+         * ExtensionUiItem
+         * @description One UI contribution: a custom element in a slot. Which fields are set depends on the slot.
+         */
+        ExtensionUiItem: {
+            /** Element */
+            element: string;
+            /** Title */
+            title?: string | null;
+            /** Id */
+            id?: string | null;
+            /** Kind */
+            kind?: string | null;
+            /** Type */
+            type?: string | null;
+            /** Extensions */
+            extensions?: string[] | null;
+        };
+        /** ExtensionUiPage */
+        ExtensionUiPage: {
+            /** Path */
+            path: string;
+            /** Title */
+            title: string;
+            /** Element */
+            element: string;
+        };
         /** FileChange */
         FileChange: {
             /** Path */
@@ -2887,7 +3268,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "question" | "permission" | "task" | "suggestion" | "promote" | "security";
+            kind: "question" | "permission" | "task" | "suggestion" | "promote" | "security" | "extension";
             /** Id */
             id: number;
             /**
@@ -2907,6 +3288,7 @@ export interface components {
             suggestion?: components["schemas"]["Suggestion"] | null;
             promote?: components["schemas"]["PromoteRequest"] | null;
             security?: components["schemas"]["SecurityAlert"] | null;
+            extension_card?: components["schemas"]["ExtensionCard"] | null;
         };
         /** Integration */
         Integration: {
@@ -4506,8 +4888,16 @@ export interface components {
         };
         /** StandingInstructions */
         StandingInstructions: {
-            /** Text */
+            /**
+             * Text
+             * @description For the assistant: in every brief.
+             */
             text: string;
+            /**
+             * Reviewer Text
+             * @description For the reviewer only: in its system prompt. Omit to leave it unchanged.
+             */
+            reviewer_text?: string | null;
             /** Updated At */
             updated_at?: string | null;
         };
@@ -5143,7 +5533,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "hello" | "heartbeat" | "status" | "message" | "thread" | "project" | "card" | "claim" | "timeline" | "run" | "inbox_counts" | "unread" | "job" | "shelf" | "upload" | "question" | "permission" | "task" | "suggestion" | "promote" | "security" | "budget" | "calendar" | "chat" | "chat_delta";
+            type: "hello" | "heartbeat" | "status" | "message" | "thread" | "project" | "card" | "claim" | "timeline" | "run" | "inbox_counts" | "unread" | "job" | "shelf" | "upload" | "question" | "permission" | "task" | "suggestion" | "promote" | "security" | "budget" | "calendar" | "chat" | "chat_delta" | "extension";
             /**
              * Cursor
              * @description Sync cursor after this event, when it changed cached data.
@@ -6130,7 +6520,7 @@ export interface operations {
         parameters: {
             query?: {
                 view?: "waiting" | "history";
-                kind?: ("question" | "permission" | "task" | "suggestion" | "promote" | "security") | null;
+                kind?: ("question" | "permission" | "task" | "suggestion" | "promote" | "security" | "extension") | null;
                 q?: string | null;
             };
             header?: never;
@@ -7208,6 +7598,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StandingInstructions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_advanced_settings_api_settings_advanced_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdvancedSetting"][];
+                };
+            };
+        };
+    };
+    set_advanced_settings_api_settings_advanced_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdvancedSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdvancedSetting"][];
                 };
             };
             /** @description Validation Error */
@@ -9191,6 +9634,182 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Upload"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_extensions_api_extensions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionInfo"][];
+                };
+            };
+        };
+    };
+    rescan_extensions_api_extensions_rescan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionInfo"][];
+                };
+            };
+        };
+    };
+    set_extension_enabled_api_extensions__name__enabled_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtensionEnable"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_extension_settings_api_extensions__name__settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtensionSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    extension_cards_api_extension_cards_get: {
+        parameters: {
+            query?: {
+                status?: ("open" | "closed") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionCard"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_extension_card_api_extension_cards__card_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                card_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtensionCardResolve"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionCard"];
                 };
             };
             /** @description Validation Error */

@@ -29,8 +29,9 @@ Status (2026-11-16): **M6 is current; M1–M5 are built and waiting on the owner
 | M5 | Installable and shareable: images, installer, wizard, updates, `l0w` CLI, web app + push, offline |
 | M6 | Chat, tools and the connector: 1:1 chat, Tools & Secrets, MCP connector; the opencode adapter for opencode Go |
 | M7 | Migrate your instance (when you choose) |
-| M8 | Extension SDK v1 (with UI) and more opencode providers |
-| M9 | Desktop app (Tauri) |
+| M8 | Extension SDK v1 (with UI) |
+| M9 | More opencode providers and the model registry |
+| Later | Desktop app (Tauri), set aside 2026-11-18 |
 | Later | Hub, more providers, catalog, backups and other extras, only when you say |
 
 ## Principles

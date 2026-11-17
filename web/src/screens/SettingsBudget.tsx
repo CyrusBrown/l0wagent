@@ -530,16 +530,27 @@ export function Instructions() {
   const ins = useInstructions()
   const set = useSetInstructions()
   const [t, setT] = useState<string | null>(null)
+  const [r, setR] = useState('')
   const [savedAt, setSavedAt] = useState(0)
-  useEffect(() => { if (ins.data && t === null) setT(ins.data.text) }, [ins.data, t])
+  useEffect(() => { if (ins.data && t === null) { setT(ins.data.text); setR(ins.data.reviewer_text ?? '') } }, [ins.data, t])
   if (t === null) return null
-  const commit = () => { if (t !== ins.data?.text) set.mutate(t, { onSuccess: () => setSavedAt(Date.now()) }) }
+  // Either box saves both, so neither is wiped by a stale copy.
+  const commit = (text: string, reviewer: string) => {
+    if (text !== ins.data?.text || reviewer !== (ins.data?.reviewer_text ?? '')) set.mutate({ text, reviewer_text: reviewer }, { onSuccess: () => setSavedAt(Date.now()) })
+  }
   return (
-    <section className="set-section">
-      <div className="set-head"><div className="set-title">Standing instructions</div><Saved token={savedAt} error={set.error ? problem(set.error) : null} /></div>
-      <div className="sub" style={{ fontSize: 13 }}>What the assistant should always keep in mind. They open every brief; it hears when you change them. Saved when you leave the box.</div>
-      <textarea className="textarea" rows={10} value={t} onChange={(e) => setT(e.target.value)} onBlur={commit} aria-label="Standing instructions" maxLength={8000} />
-      <span className="sub" style={{ fontSize: 12 }}>{ins.data?.updated_at ? `Last changed ${stamp(ins.data.updated_at)}` : 'Not set yet'}</span>
-    </section>
+    <>
+      <section className="set-section">
+        <div className="set-head"><div className="set-title">Standing instructions</div><Saved token={savedAt} error={set.error ? problem(set.error) : null} /></div>
+        <div className="sub" style={{ fontSize: 13 }}>What the assistant should always keep in mind. They open every brief; it hears when you change them. Saved when you leave the box.</div>
+        <textarea className="textarea" rows={10} value={t} onChange={(e) => setT(e.target.value)} onBlur={() => commit(t, r)} aria-label="Standing instructions" maxLength={8000} />
+        <span className="sub" style={{ fontSize: 12 }}>{ins.data?.updated_at ? `Last changed ${stamp(ins.data.updated_at)}` : 'Not set yet'}</span>
+      </section>
+      <section className="set-section">
+        <div className="set-title">For the reviewer only</div>
+        <div className="sub" style={{ fontSize: 13 }}>The reviewer reads these; the assistant doesn't.</div>
+        <textarea className="textarea" rows={6} value={r} onChange={(e) => setR(e.target.value)} onBlur={() => commit(t, r)} aria-label="Instructions for the reviewer only" maxLength={8000} />
+      </section>
+    </>
   )
 }

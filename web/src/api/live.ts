@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import { publishExtensionEvent } from '../ext/bus'
 import type { S } from './client'
 
 /** Read the NDJSON live stream with fetch (not EventSource, so apps can send a token header). */
@@ -71,6 +72,12 @@ export function invalidateFor(qc: QueryClient, e: S['LiveEvent']) {
       return inv(['shelf'], ['files'])
     case 'chat':
       return inv(['chats'], ['chat'])
+    case 'extension': {
+      const d = (e.data ?? {}) as { ext?: string; type?: string; data?: unknown }
+      if (d.type === 'changed') return inv(['extensions'], ['meta'])
+      if (d.ext && d.type) publishExtensionEvent(d.ext, d.type, d.data)
+      return
+    }
     case 'chat_delta': {
       const d = e.data ?? {}
       const id = Number(d.chat_id)

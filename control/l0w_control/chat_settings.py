@@ -10,7 +10,10 @@ A change is {"setting": name, "value": ..., "provider"?: id}. Settings:
 - role.<worker|reviewer|replier|chat|utility>: {"provider", "tier"}
 - reviewer.<mode|provider|tier|interval_minutes|budget_share|change_tier>
 - reserve_weekly_pct, reserve_five_hour_pct (the Claude subscription's reserve)
-- instructions (the standing instructions' full text)
+- instructions (the standing instructions' full text, for the assistant)
+- reviewer_instructions (standing instructions only the reviewer sees)
+- advanced.<KEY>: the tuning knobs in Settings → Advanced (how long a run waits for the owner's reply,
+  time limits, Reply-now and Wake-now budgets, …); `read_settings` lists them with ranges
 - notifications.<event> (true/false), notifications.quiet ({"start", "end"} or null)
 Secrets, provider keys, accounts and sessions are never settings here.
 """
@@ -59,6 +62,9 @@ def snapshot(be) -> dict:
         "roles": [r.model_dump() for r in be.roles().roles],
         "reviewer": be.reviewer_config().model_dump(),
         "instructions": be.instructions().text,
+        "reviewer_instructions": be.instructions().reviewer_text or "",
+        "advanced": {a.key: {"value": a.value, "label": a.label, "group": a.group, "help": a.help, "min": a.min, "max": a.max, "unit": a.unit}
+                     for a in be.advanced_settings()},
         "notifications": be.notification_settings().model_dump(exclude={"ntfy_url", "ntfy_token"}),
     }
 
@@ -114,6 +120,18 @@ def describe(be, changes: list[dict]) -> list[dict]:
             if not isinstance(value, str) or len(value) > 8000:
                 raise BadRequest("bad_setting", "instructions is the full text (at most 8,000 characters).")
             before, label = snap["instructions"], "standing instructions"
+        elif name == "reviewer_instructions":
+            if not isinstance(value, str) or len(value) > 8000:
+                raise BadRequest("bad_setting", "reviewer_instructions is the full text (at most 8,000 characters).")
+            before, label = snap["reviewer_instructions"], "reviewer's standing instructions"
+        elif name.startswith("advanced."):
+            key = name[9:]
+            a = snap["advanced"].get(key)
+            if not a:
+                raise BadRequest("bad_setting", f"advanced.<{'|'.join(snap['advanced'])}>.")
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and (a["min"] is not None and value < a["min"] or a["max"] is not None and value > a["max"]):
+                raise BadRequest("bad_setting", f"{key} must be between {a['min']:g} and {a['max']:g}.")
+            before, label = a["value"], a["label"].lower()
         elif name.startswith("notifications."):
             key = name[14:]
             events = snap["notifications"]["events"]
@@ -153,6 +171,10 @@ def apply(be, changes: list[dict]) -> list[str]:
             be.patch_reserve(s.ReserveSettings(**{name: value}))
         elif name == "instructions":
             be.set_instructions(s.StandingInstructions(text=value))
+        elif name == "reviewer_instructions":
+            be.set_instructions(s.StandingInstructions(text=be.instructions().text, reviewer_text=value))
+        elif name.startswith("advanced."):
+            be.set_advanced_settings({name[9:]: value})
         elif name.startswith("notifications."):
             cur = be.notification_settings()
             key = name[14:]

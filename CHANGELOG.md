@@ -3,6 +3,24 @@
 Each release's section becomes its GitHub release notes, which the app shows in the
 "Update available" banner. Versions follow the milestones until 1.0.
 
+## Unreleased
+
+- Extensions (SDK v1): put an extension in `extensions/<name>/` next to `compose.yaml` and switch it on in
+  Settings → Extensions (or `./l0w extensions …`). They can add pages, sidebar sections, project tabs,
+  Inbox cards, file previews, settings, routines, integration presets, prompt text and `assistant ext`
+  commands. A broken one is switched off with its error shown. Guide: `docs/EXTENDING.md`; example:
+  `extensions/examples/plantlog`.
+- "Use the whole budget" (Settings → Advanced, on by default): a wakeup keeps working on the backlog
+  instead of stopping when its planned work is done, and is told to carry on (twice by default) if it
+  stops early; in Gate mode the reviewer's default answer to ending early is no.
+- Waiting for your reply: each reply restarts the wait, the wait no longer counts against the run's
+  time limit, and a run may wait for up to 10 replies (was 3).
+- Settings → Advanced: the wait length, time limits, Reply-now and Wake-now budgets and other tuning
+  knobs; the 1:1 chat can change them too.
+- Standing instructions have a second box only the reviewer reads.
+- Enter sends in every message box, phones included; Shift+Enter is a new line.
+- Long jobs past their estimate say so, instead of "expected in 1 minute".
+
 ## 0.6.0
 
 - `./l0w update` no longer stops when the registry lacks one of the images (issue #2): it keeps a copy

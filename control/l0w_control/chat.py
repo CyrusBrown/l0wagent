@@ -410,6 +410,7 @@ class Chats:
         self.db, self.be, self.live, self.budgets, self.vault = db, be, live, budgets, vault
         self.tasks: dict[int, asyncio.Task] = {}
         self.fake = os.environ.get("L0W_CHAT_FAKE") == "1"
+        self.ext_prompt = lambda slot: ""  # extensions' prompt fragments, by slot
         self.turn_tokens: dict[str, tuple[int, float]] = {}  # sidecar MCP token → (chat id, expiry)
 
     def startup(self) -> None:
@@ -696,7 +697,7 @@ class Chats:
         ctx = json.loads(row["context_thread_ids"] or "[]")
         if ctx:
             text += "\n\nThe owner pulled these threads into this chat as context (read them with read_thread): " + ", ".join(f"#{t}" for t in ctx) + "."
-        return text
+        return text + self.ext_prompt("chat")
 
     def _over_cap(self, provider: str) -> str | None:
         cap = (self.budgets.config(provider) or {}).get("chat_cap")

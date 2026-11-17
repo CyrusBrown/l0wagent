@@ -66,6 +66,7 @@ The reviewer (if your brief says it's on):
 
 Other:
   assistant secret list | get NAME | env  secrets the owner gave you (also in your environment)
+  assistant ext [NAME [CMD [key=value … | -]]]  commands from the owner's extensions (no args: list them)
   assistant search "query" [--kind thread|message|project|run]
   assistant link thread N | project SLUG | run N | file VOLUME/PATH     a typed link for messages
 """
@@ -186,6 +187,22 @@ def duration_minutes(spec: str | None) -> float | None:
         return float(spec.rstrip("m"))
     except ValueError:
         sys.exit(f"not a duration: {spec!r} (like 2h, 30m or 90)")
+
+
+def print_ext(e: dict) -> None:
+    print(f"{e['name']}: {e['title']} — {e['description']}")
+    for c in e.get("commands") or []:
+        usage = f" {c['usage']}" if c.get("usage") else ""
+        print(f"  assistant ext {e['name']} {c['name']}{usage}   {c['help']}")
+
+
+def ext_value(raw: str):
+    if raw in ("true", "false"):
+        return raw == "true"
+    try:
+        return int(raw)
+    except ValueError:
+        return raw
 
 
 def read_arg_file(path: str) -> str:
@@ -378,6 +395,10 @@ def main() -> None:
     lk = sub.add_parser("link", help="print a typed link")
     lk.add_argument("kind", choices=["thread", "project", "run", "file"])
     lk.add_argument("target")
+    ex = sub.add_parser("ext", help="commands from the owner's extensions")
+    ex.add_argument("name", nargs="?")
+    ex.add_argument("command", nargs="?")
+    ex.add_argument("args", nargs=argparse.REMAINDER)
     a = p.parse_args()
 
     if a.cmd == "status":
@@ -608,6 +629,32 @@ def main() -> None:
     elif a.cmd == "reviewer":
         r = call("POST", "/reviewer", {"kind": a.kind, "body": text(a.text), "run_id": run_id()}, timeout=600)
         print(r["reply"])
+    elif a.cmd == "ext":
+        exts = call("GET", "/ext")
+        if not a.command:
+            if a.name:
+                exts = [e for e in exts if e["name"] == a.name]
+                if not exts:
+                    sys.exit(f"no enabled extension {a.name}")
+            if not exts:
+                print("No extensions are enabled.")
+            for e in exts:
+                print_ext(e)
+        else:
+            body = {}
+            for arg in a.args:
+                if arg == "-":
+                    body.update(json.load(sys.stdin))
+                elif "=" in arg:
+                    key, _, value = arg.partition("=")
+                    body[key] = ext_value(value)
+                else:
+                    sys.exit("arguments are key=value (or - for JSON on stdin)")
+            resp = call("POST", f"/ext/{a.name}/{a.command}", body, timeout=60)
+            if isinstance(resp, dict) and "text" in resp:
+                print(resp["text"])
+            else:
+                print(json.dumps(resp, indent=2))
 
 
 if __name__ == "__main__":

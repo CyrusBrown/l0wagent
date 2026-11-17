@@ -279,7 +279,18 @@ export const useSetRoles = () => useInvalidating((b: S['Roles']) => ok(api.PUT('
 export const useReviewer = () => useQuery({ queryKey: ['budget', 'reviewer'], queryFn: () => ok(api.GET('/api/reviewer')) })
 export const useSetReviewer = () => useInvalidating((b: S['ReviewerConfig']) => ok(api.PUT('/api/reviewer', { body: b })), [['budget']])
 export const useInstructions = () => useQuery({ queryKey: ['budget', 'instructions'], queryFn: () => ok(api.GET('/api/instructions')) })
-export const useSetInstructions = () => useInvalidating((text: string) => ok(api.PUT('/api/instructions', { body: { text } })), [['budget']])
+export const useSetInstructions = () =>
+  useInvalidating((b: { text: string; reviewer_text?: string | null }) => ok(api.PUT('/api/instructions', { body: b })), [['budget']])
+
+// Online only: no outbox for settings.
+export const useAdvancedSettings = () => useQuery({ queryKey: ['settings', 'advanced'], queryFn: () => ok(api.GET('/api/settings/advanced')) })
+export const useSetAdvancedSettings = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (values: Record<string, unknown>) => ok(api.PATCH('/api/settings/advanced', { body: { values } })),
+    onSuccess: (list) => qc.setQueryData(['settings', 'advanced'], list),
+  })
+}
 
 export const useCalendar = (start?: string, end?: string) =>
   useQuery({ queryKey: ['calendar', start ?? '', end ?? ''], queryFn: () => ok(api.GET('/api/calendar', { params: { query: { start, end } } })) })

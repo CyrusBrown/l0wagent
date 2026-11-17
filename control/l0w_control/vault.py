@@ -41,7 +41,9 @@ SCRUB = [("messages", "body"), ("run_events", "raw_json"), ("timeline_items", "t
          ("questions", "answer_json"), ("questions", "options_json"), ("questions", "default_json"), ("suggestions", "payload_json"),
          ("permission_actions", "payload_json"), ("permission_actions", "error"), ("security_alerts", "text"), ("routines", "name"),
          ("routines", "prompt"), ("runs", "why_detail"), ("runs", "stop_reason"), ("wakeups", "status_reason"), ("wakeups", "note"), ("shelf_items", "label"),
-         ("integrations", "last_error"), ("secrets", "description"), ("promote_requests", "reason"), ("promote_requests", "note")]
+         ("integrations", "last_error"), ("secrets", "description"), ("promote_requests", "reason"), ("promote_requests", "note"),
+         ("extensions", "last_error"), ("extension_kv", "value_json"), ("extension_cards", "title"), ("extension_cards", "data_json"),
+         ("extension_cards", "resolution_json")]
 
 
 def forms(value: str) -> list[str]:

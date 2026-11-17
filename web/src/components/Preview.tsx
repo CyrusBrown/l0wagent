@@ -1,7 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import { lazy, Suspense, useMemo } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { api, ok, type S } from '../api/client'
 import { bytes } from './format'
+import { ExtSlot } from '../ext/ExtElement'
+import { previewerFor } from '../ext/registry'
+import { useExtensions } from '../ext/useExtensions'
 import { Markdown } from './Markdown'
 
 const Model3D = lazy(() => import('./Model3D'))
@@ -61,7 +64,23 @@ function useText(src: Source, enabled: boolean, version?: string | number) {
 
 /** A file's preview. `size` (if known) keeps big text files from being fetched; `stamp`
  * (e.g. the modified time) refetches when the file changes. */
-export function Preview({ src, size, stamp, compact, as }: { src: Source; size?: number | null; stamp?: string | number; compact?: boolean; as?: PreviewKind }) {
+export function Preview(props: { src: Source; size?: number | null; stamp?: string | number; compact?: boolean; as?: PreviewKind }) {
+  const exts = useExtensions()
+  const [builtin, setBuiltin] = useState(false)
+  const hit = props.as ? undefined : previewerFor(exts.data, props.src.path)
+  if (!hit) return <BuiltinPreview {...props} />
+  const hasBuiltin = kindOf(props.src.path) !== 'binary'
+  const title = hit.item.title ?? hit.ext.title
+  const context = { volume: props.src.kind === 'file' ? props.src.volume : null, path: props.src.path, url: rawUrl(props.src) }
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      {hasBuiltin && <div><div className="seg"><button className={!builtin ? 'on' : ''} onClick={() => setBuiltin(false)}>{title}</button><button className={builtin ? 'on' : ''} onClick={() => setBuiltin(true)}>Built-in view</button></div></div>}
+      {builtin && hasBuiltin ? <BuiltinPreview {...props} /> : <ExtSlot ext={hit.ext} element={hit.item.element} context={context} />}
+    </div>
+  )
+}
+
+function BuiltinPreview({ src, size, stamp, compact, as }: { src: Source; size?: number | null; stamp?: string | number; compact?: boolean; as?: PreviewKind }) {
   const kind = as ?? kindOf(src.path)
   const textual = ['markdown', 'code', 'csv', 'json', 'notebook'].includes(kind)
   const tooBig = textual && size != null && size > TEXT_MAX
