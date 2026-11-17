@@ -22,6 +22,7 @@ notices it.
 ```sh
 git clone https://github.com/CyrusBrown/l0wagent.git
 cd l0wagent
+git checkout "$(git tag --list 'v*' --sort=-v:refname | head -1)"   # the latest release
 ```
 
 (You only need `compose.yaml`, `compose.override.example.yaml`, `l0w` and `cli/`; the

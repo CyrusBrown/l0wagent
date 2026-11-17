@@ -144,6 +144,69 @@ def compose(*args: str, check: bool = True, capture: bool = False) -> subprocess
     return subprocess.run(cmd, check=check, text=True, capture_output=capture)
 
 
+def service_images() -> dict[str, str]:
+    """Each compose service's image (compose.yaml plus the override), from `docker compose config`."""
+    r = compose("config", "--format", "json", capture=True, check=False)
+    if r.returncode != 0:
+        die(f"`docker compose config` failed: {r.stderr.strip()}")
+    return {name: s["image"] for name, s in json.loads(r.stdout).get("services", {}).items() if s.get("image")}
+
+
+def have_image(image: str) -> bool:
+    return subprocess.run(["docker", "image", "inspect", image], capture_output=True).returncode == 0
+
+
+def pull_images() -> None:
+    """Pull each service's image. One the registry doesn't have is fine if it's already on this
+    machine (a release that's missing an image shouldn't block the update); only a service with
+    neither stops here, before anything is touched."""
+    missing: list[str] = []
+    for name, image in service_images().items():
+        r = compose("pull", "--quiet", name, capture=True, check=False)
+        if r.returncode == 0:
+            print(f"  {name}: pulled")
+            continue
+        reason = (r.stderr.strip().splitlines() or ["pull failed"])[-1]
+        if have_image(image):
+            print(f"  {name}: couldn't pull {image} ({reason}); keeping the copy already on this machine")
+        else:
+            print(f"  {name}: couldn't pull {image} ({reason})")
+            missing.append(image)
+    if missing:
+        die("These images aren't on the registry or on this machine:\n  " + "\n  ".join(missing)
+            + "\nNothing was changed. If your checkout is newer than the release (see above), check out the release tag; "
+            "or pin a version with `./l0w update --version X.Y.Z`.")
+
+
+def git(*args: str) -> str | None:
+    if not Path(".git").exists() or not shutil.which("git"):
+        return None
+    r = subprocess.run(["git", *args], capture_output=True, text=True, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def check_checkout(version: str) -> None:
+    """Warn when this checkout's compose.yaml and l0w aren't from the release the images come from.
+    A checkout of main ahead of the last tag can name images (or settings) that release doesn't have."""
+    if version == "edge" or git("rev-parse", "HEAD") is None:
+        return
+    git("fetch", "--quiet", "--tags", "origin")
+    if version == "stable":
+        tags = (git("tag", "--list", "v*", "--sort=-v:refname") or "").split()
+        if not tags:
+            return
+        want = tags[0]
+    else:
+        want = "v" + version
+        if git("rev-parse", "--verify", "--quiet", want + "^{commit}") is None:
+            return
+    if git("rev-parse", "HEAD") == git("rev-parse", want + "^{commit}"):
+        return
+    here = git("describe", "--tags", "--always") or "this checkout"
+    print(f"Note: this folder is at {here}, but the {version} images are {want}. Its compose.yaml and ./l0w may expect "
+          f"images or settings {want} doesn't have. To match the release: git checkout {want}  (then run ./l0w update again).")
+
+
 def need_docker() -> None:
     if not shutil.which("docker"):
         die("Docker isn't installed. See docs/install.md.")
@@ -276,8 +339,9 @@ def cmd_install(a) -> None:
         Path("compose.override.yaml").write_text("\n".join(out) + "\n")
         print("Wrote compose.override.yaml" + (" (with the GPU)." if use_gpu else "."))
 
+    check_checkout(env["L0W_VERSION"])
     print("Pulling the images…")
-    compose("pull")
+    pull_images()
     compose("up", "-d")
     port = env["L0W_PORT"]
     if not wait_healthy(port):
@@ -311,8 +375,9 @@ def cmd_update(a) -> None:
         before = compose("exec", "-T", "control", "python", "-m", "l0w_control.hostctl", "version", capture=True, check=False).stdout.strip()
     except OSError:
         before = "?"
+    check_checkout(env.get("L0W_VERSION", "stable"))
     print("Pulling the new images (the assistant keeps working meanwhile)…")
-    compose("pull")
+    pull_images()
     print("Waiting until the assistant is idle (no new runs start meanwhile)…")
     try:
         hostctl("drain", "on", str(a.timeout + 30))

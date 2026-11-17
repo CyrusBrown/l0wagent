@@ -3,8 +3,13 @@
 Each release's section becomes its GitHub release notes, which the app shows in the
 "Update available" banner. Versions follow the milestones until 1.0.
 
-## Unreleased
+## 0.6.0
 
+- `./l0w update` no longer stops when the registry lacks one of the images (issue #2): it keeps a copy
+  already on the machine and only stops, before changing anything, if an image is nowhere. It also
+  says when the folder's checkout isn't the release the images come from, and how to match it.
+- This release publishes the chat-runtime image as `:stable` (0.5.0 predates it).
+- `./l0w migrate --from OLD_DIR` moves the old assistant into this instance.
 - Runs no longer report "Lost touch with the agent computer" while a session is just quiet, and a
   quiet run can't be given up on after 10 minutes (issue #1): the runner sends a heartbeat on a quiet
   log, and an idle reconnect isn't counted as lost contact.

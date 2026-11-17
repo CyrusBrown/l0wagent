@@ -17,6 +17,11 @@ new release is out, and "Updating…" while an update waits.
 - `--force`: don't wait. A run in progress is resumed after the restart.
 - `--version 0.5.1`: pin a version (recorded in `.env`); `--version stable` goes back to releases.
 
+`./l0w` and `compose.yaml` come from this folder, so update them too when a release changes them:
+`git fetch --tags && git checkout vX.Y.Z` (the release you're on; `./l0w update` tells you when the
+folder doesn't match the images). A checkout of `main` can be ahead of the last release and name
+images it doesn't have yet.
+
 Your data is in Docker volumes and survives updates; `compose.override.yaml` and `.env` are
 yours and are never overwritten.
 
