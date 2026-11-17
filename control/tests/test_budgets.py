@@ -326,7 +326,7 @@ def test_reviewer_gate_tier_changes_and_budget_share(be):
     run = be.db.q1("SELECT used, reviewer_used FROM runs WHERE id=?", (rid,))
     assert run["reviewer_used"] == pytest.approx(4.0) and run["used"] == pytest.approx(4.0)  # 4 turns × $0.50 × 2 pts/$
     # At its share (25% of 20 pts = 5) it goes quiet rather than spending more.
-    be.db.ex("UPDATE usage_ledger SET pts=5 WHERE who='reviewer'")
+    be.db.ex("UPDATE usage_ledger SET pts=5, cost_usd=2.5 WHERE who='reviewer'")
     assert asyncio.run(be.reviewer.approve(rid, "The assistant wants to end the wakeup.", "IDLE")) == (True, "")
 
 

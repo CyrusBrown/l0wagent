@@ -94,7 +94,7 @@ This replaces today's nightly, review, turbo and chat modes.
 | **Sweep** | On/off, with its own ceiling and window (below). |
 | **Reviewer** | **On by default, in Monitor mode** (below). |
 | **Planner** | Script only (default) / planner model (below). |
-| **Peer wake** (later, with the hub) | Per friend: never (default) / ask me / allow. See [hub.md](hub.md#friends-groups-and-presence-done-by-instances). |
+| **Peer wake** (later, with the hub) | Per friend: never (default) / ask me / allow. See [hub.md](hub.md#friends-and-presence-done-by-instances). |
 
 **Level presets** fill these in from one choice, scaled to the plan size:
 
@@ -155,6 +155,55 @@ This replaces today's nightly, review, turbo and chat modes.
 | Watch interval | e.g. every 10 minutes of notes. |
 | Budget share cap | e.g. at most 25% of a wakeup's budget. |
 | Continuity | One conversation per day, or per wakeup. |
+
+## Several providers (planned)
+
+Decided 2026-11-16; not built. Today everything above runs against one provider, the worker role's. The design and its reasoning are in the [wakeups review](../review/2026-11-16-wakeups-and-providers.md); the order of work is in [development.md](development.md#providers-track).
+
+### The schedule and the pools
+- **The schedule is per instance**: allowed hours, wakeups per day, the minimum gap, the longest a wakeup may run, the fallback. It protects the owner's day and the machine, whoever is billed.
+- **A pool is one provider's allowance** for its period, with its reply budget, its reserve or caps, the models it offers, and whether unused allowance is lost at the reset.
+- **The level is one choice for the instance.** It sets the schedule and each pool's share. The owner can override any of them; Boost raises the instance's level.
+
+### Units
+- A point keeps its per-provider meaning and stays the unit people see.
+- **All arithmetic that crosses providers is in list-price dollars**: a run's budget and what it used, the reviewer's share, a delegate's budget, moving a budget between pools.
+- `assistant budget` says roughly how much work each pool has left ("about 5 hours of standard at your recent rate").
+- The subscription's calibration is kept per model family, as a median of recent runs, seeded from the plan size the owner names in the wizard.
+
+### Groups and routing
+- Three **groups**, `light`, `standard` and `strong`, each naming a model and effort per provider, editable by the owner. Named models still work. This is the first piece of M8's model registry.
+- A wakeup says what it needs: `assistant wake at TIME --needs standard --budget 20 --reason "…"`, optionally `--on <pool>`.
+- **Control picks the pool when the wakeup starts**, among pools that offer the group, have room and an open gate:
+  1. the wakeup's pin
+  2. the pool whose unused allowance expires soonest (the sweep's idea, all period long)
+  3. flat-rate before pay-per-use
+  4. the owner's order, which also overrides the above
+- A closed gate reroutes the wakeup, with its budget converted through dollars, instead of skipping it. Reply now routes the same way.
+- **A pay-per-use pool takes over a wakeup from another pool only if the owner turned that on** for it. Off by default: it's real money.
+- A wakeup that comes due while a run is going is handed to that run through the hook, not marked missed.
+
+### Continuations
+- A run can continue in a new session on another provider and agent CLI: the files, `NOW.md`, the run's notes and claims carry it across.
+- When a provider hits its limit mid-run: pause and resume the same conversation if the limit lifts within about 20 minutes and the deadline; otherwise continue on the next pool. The pool is marked exhausted until its reset.
+- The agent can ask: `assistant continue --needs strong --reason "…"`.
+
+### Delegates
+- `assistant delegate "task" --needs light --budget 3 [--dir /work/x] [--read-only]` starts a child session on whichever pool routing picks, with the task and one folder: no agent token, no secrets, no brief.
+- It's charged to its own pool and counted against the parent run's budget. Up to three at once.
+- On at every level above Dormant; the owner can turn it off.
+- The strong model plans and checks; the cheap one reads, loops and writes boilerplate.
+
+### Fewer wasted wakeups
+- **Wake on an event**: a job ending (`--wake-when-done`), the owner's answer (`--wake-on-answer`), a file arriving in `_inbox/`. Within the schedule and the daily limit, capped per day.
+- **Check before waking**: `assistant wake at … --if tools/check.sh` runs the agent's script with no model; the wakeup starts only if it passes.
+- **Warnings** through the hook at 75% and 90% of the budget and ten minutes before the deadline. The hard stop stays.
+- **A run that ends cleanly with over a quarter of its budget left and no `IDLE:`** is resumed once and asked to carry on or say why it's stopping.
+
+### The model proxy
+- Model calls go through a proxy inside the stack that holds the provider credentials, so none are in the sandbox.
+- It meters every request exactly, for every provider, delegates and the reviewer included; it enforces a budget by refusing the next request; and it sees rate limits directly.
+- **First, a Phase-0 test with real accounts**: that each agent CLI works against it (a subscription included) and that the providers' terms allow a local pass-through. If the subscription can't use it, key providers do, and the subscription keeps the egress lease.
 
 ## Prompts
 

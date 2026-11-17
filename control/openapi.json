@@ -204,7 +204,7 @@
           "auth"
         ],
         "summary": "Setup Owner",
-        "description": "First-run wizard step 1. Refused once an owner exists.",
+        "description": "First-run wizard step 1. Refused once an owner exists. Needs the setup code ./l0w install\nprinted; with none configured (dev stacks), only a local or private-network caller may.",
         "operationId": "setup_owner_api_setup_owner_post",
         "requestBody": {
           "content": {
@@ -468,6 +468,7 @@
           "auth"
         ],
         "summary": "Totp Enable",
+        "description": "Verifies against the secret from /totp/setup and returns one-time recovery codes (shown once).",
         "operationId": "totp_enable_api_account_totp_enable_post",
         "requestBody": {
           "content": {
@@ -485,7 +486,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Owner"
+                  "$ref": "#/components/schemas/TotpEnabled"
                 }
               }
             }
@@ -5870,6 +5871,36 @@
         ]
       }
     },
+    "/api/system/update/cancel": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Cancel Update",
+        "description": "Clear a pending update's drain, so runs can start again (a stuck ./l0w update).",
+        "operationId": "cancel_update_api_system_update_cancel_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateInfo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
     "/api/files/list": {
       "get": {
         "tags": [
@@ -9125,6 +9156,12 @@
             "title": "Secret Saved",
             "description": "The named secret has a value."
           },
+          "allow_private": {
+            "type": "boolean",
+            "title": "Allow Private",
+            "description": "You said this server is on your own network (http and private addresses allowed).",
+            "default": false
+          },
           "enabled": {
             "type": "boolean",
             "title": "Enabled"
@@ -9342,6 +9379,12 @@
             ],
             "title": "Auth Secret"
           },
+          "allow_private": {
+            "type": "boolean",
+            "title": "Allow Private",
+            "description": "This server is on my own network.",
+            "default": false
+          },
           "idempotency_key": {
             "anyOf": [
               {
@@ -9408,6 +9451,17 @@
               }
             ],
             "title": "Enabled"
+          },
+          "allow_private": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allow Private"
           }
         },
         "additionalProperties": false,
@@ -9513,6 +9567,12 @@
             "type": "boolean",
             "title": "Present",
             "description": "False when the server no longer lists the tool."
+          },
+          "changed_since_allowed": {
+            "type": "boolean",
+            "title": "Changed Since Allowed",
+            "description": "The server changed this tool's description or schema after you set its policy; it went back to ask.",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -10073,6 +10133,31 @@
             "title": "Ntfy Url",
             "description": "Optional: an ntfy topic URL, for installs without HTTPS."
           },
+          "ntfy_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ntfy Token",
+            "description": "Write-only: an ntfy access token, sent as a bearer token. Omit to keep it, empty to remove it. Never returned."
+          },
+          "ntfy_token_saved": {
+            "type": "boolean",
+            "title": "Ntfy Token Saved",
+            "description": "An ntfy access token is saved (read-only).",
+            "default": false
+          },
+          "ntfy_previews": {
+            "type": "boolean",
+            "title": "Ntfy Previews",
+            "description": "Send message previews to ntfy; off sends only the title.",
+            "default": false
+          },
           "quiet_start": {
             "anyOf": [
               {
@@ -10204,7 +10289,8 @@
               "too_short",
               "breached",
               "already_set_up",
-              "wrong_password"
+              "wrong_password",
+              "setup_code"
             ],
             "title": "Error"
           },
@@ -12417,6 +12503,38 @@
         ],
         "title": "RunnerHealth"
       },
+      "SchedulerProblem": {
+        "properties": {
+          "step": {
+            "type": "string",
+            "title": "Step",
+            "description": "Which part of the scheduler keeps failing (routines, fallback, sweep, start_due, housekeeping)."
+          },
+          "error": {
+            "type": "string",
+            "title": "Error"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "How many ticks in a row it has failed."
+          },
+          "last_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "step",
+          "error",
+          "count",
+          "last_at"
+        ],
+        "title": "SchedulerProblem"
+      },
       "SearchHit": {
         "properties": {
           "kind": {
@@ -12757,6 +12875,18 @@
           "timezone": {
             "type": "string",
             "title": "Timezone"
+          },
+          "setup_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Setup Code",
+            "description": "The one-time code ./l0w install prints; required when the server has one."
           }
         },
         "additionalProperties": false,
@@ -13129,6 +13259,69 @@
         ],
         "title": "Status"
       },
+      "StorageStatus": {
+        "properties": {
+          "disk_free_bytes": {
+            "type": "integer",
+            "title": "Disk Free Bytes"
+          },
+          "disk_total_bytes": {
+            "type": "integer",
+            "title": "Disk Total Bytes"
+          },
+          "warn_free_gb": {
+            "type": "number",
+            "title": "Warn Free Gb",
+            "description": "The DISK_WARN_FREE_GB setting."
+          },
+          "low": {
+            "type": "boolean",
+            "title": "Low",
+            "description": "Free space is below the warning threshold."
+          },
+          "db_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Db Bytes",
+            "description": "The SQLite file plus its write-ahead log."
+          },
+          "volumes": {
+            "items": {
+              "$ref": "#/components/schemas/VolumeUsage"
+            },
+            "type": "array",
+            "title": "Volumes"
+          },
+          "measured_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measured At",
+            "description": "When the volume sizes were last measured (they're refreshed every 10 minutes)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "disk_free_bytes",
+          "disk_total_bytes",
+          "warn_free_gb",
+          "low"
+        ],
+        "title": "StorageStatus"
+      },
       "Suggestion": {
         "properties": {
           "id": {
@@ -13344,6 +13537,16 @@
             "type": "string",
             "title": "Server Version"
           },
+          "storage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StorageStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "runner": {
             "$ref": "#/components/schemas/RunnerHealth"
           },
@@ -13362,6 +13565,14 @@
           },
           "gate": {
             "$ref": "#/components/schemas/GateState"
+          },
+          "scheduler_problems": {
+            "items": {
+              "$ref": "#/components/schemas/SchedulerProblem"
+            },
+            "type": "array",
+            "title": "Scheduler Problems",
+            "description": "Scheduler steps failing right now; wakeups may be late or missing."
           }
         },
         "additionalProperties": false,
@@ -13934,8 +14145,16 @@
       "TotpEnable": {
         "properties": {
           "secret": {
-            "type": "string",
-            "title": "Secret"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret",
+            "description": "Ignored: control verifies against the secret it issued in setup."
           },
           "code": {
             "type": "string",
@@ -13947,10 +14166,59 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "secret",
           "code"
         ],
         "title": "TotpEnable"
+      },
+      "TotpEnabled": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          },
+          "totp_enabled": {
+            "type": "boolean",
+            "title": "Totp Enabled"
+          },
+          "passkeys": {
+            "type": "integer",
+            "title": "Passkeys"
+          },
+          "recovery_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recovery Codes",
+            "description": "One-time codes for signing in without the authenticator. Shown once."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "username",
+          "display_name",
+          "timezone",
+          "totp_enabled",
+          "passkeys",
+          "recovery_codes"
+        ],
+        "title": "TotpEnabled"
       },
       "TotpRequest": {
         "properties": {
@@ -13960,9 +14228,10 @@
           },
           "code": {
             "type": "string",
-            "maxLength": 8,
+            "maxLength": 16,
             "minLength": 6,
-            "title": "Code"
+            "title": "Code",
+            "description": "The 6-digit code, or a one-time recovery code."
           }
         },
         "additionalProperties": false,
@@ -14310,6 +14579,43 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VolumeUsage": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bytes",
+            "description": "Size in bytes; null when control can't see this volume."
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "VolumeUsage"
       },
       "Wakeup": {
         "properties": {

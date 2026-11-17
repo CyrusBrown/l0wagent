@@ -7,17 +7,20 @@
   only control's brokered tools use it). The reviewer, the 1:1 chat and the connector never
   get values. A session's environment holds the secrets in its scope; `assistant secret get
   NAME` reads one (scope-checked) and is logged.
-- `redact()` replaces any secret value (8+ characters) with `[secret:NAME]`. Control applies
+- `redact()` replaces any secret value (8+ characters), and its base64, URL-encoded and JSON-escaped forms, with `[secret:NAME]`. Control applies
   it to everything it stores or shows from the agent or the owner, and setting a secret
   scrubs it from what's already stored.
 """
 
 from __future__ import annotations
 
+import base64
+import json
 import os
 import re
 import threading
 from pathlib import Path
+from urllib.parse import quote
 
 from cryptography.fernet import Fernet
 
@@ -30,7 +33,32 @@ MIN_REDACT_LEN = 8
 SCRUB = [("messages", "body"), ("run_events", "raw_json"), ("timeline_items", "text"), ("timeline_items", "data_json"),
          ("questions", "text"), ("questions", "note"), ("permissions", "text"), ("permissions", "reason"), ("permissions", "note"),
          ("tasks", "text"), ("tasks", "detail"), ("tasks", "note"), ("claims", "plan"), ("claims", "result"), ("suggestions", "text"),
-         ("agent_notifications", "body"), ("run_notes", "text"), ("runs", "now_sentence"), ("runs", "description"), ("runs", "result")]
+         ("agent_notifications", "body"), ("run_notes", "text"), ("runs", "now_sentence"), ("runs", "description"), ("runs", "result"),
+         ("chat_messages", "body"), ("chat_messages", "data_json"), ("chat_messages", "raw_json"), ("chats", "title"),
+         ("reviewer_messages", "body"), ("integration_calls", "args_json"), ("integration_calls", "detail"), ("wakeups", "reason"),
+         ("jobs", "label"), ("jobs", "progress"), ("jobs", "note"), ("projects", "name"), ("projects", "summary"),
+         ("threads", "title"), ("notifications", "title"), ("notifications", "body"),
+         ("questions", "answer_json"), ("questions", "options_json"), ("questions", "default_json"), ("suggestions", "payload_json"),
+         ("permission_actions", "payload_json"), ("permission_actions", "error"), ("security_alerts", "text"), ("routines", "name"),
+         ("routines", "prompt"), ("runs", "why_detail"), ("runs", "stop_reason"), ("wakeups", "status_reason"), ("shelf_items", "label"),
+         ("integrations", "last_error"), ("secrets", "description"), ("promote_requests", "reason"), ("promote_requests", "note")]
+
+
+def forms(value: str) -> list[str]:
+    """A value and the encodings it usually shows up in (base64, URL-encoded, JSON-escaped), longest first."""
+    out = {value}
+    raw = value.encode()
+    for enc in (base64.b64encode, base64.urlsafe_b64encode):
+        b = enc(raw).decode()
+        out.update((b, b.rstrip("=")))
+    out.add(quote(value, safe=""))
+    out.add(json.dumps(value)[1:-1])
+    return sorted((f for f in out if len(f) >= MIN_REDACT_LEN), key=lambda f: -len(f))
+
+
+def store_text(owner, text: str | None) -> str | None:
+    """The one way to prepare agent or owner text for storage: redact it. `owner` is a Vault or anything with `.vault`."""
+    return getattr(owner, "vault", owner).redact(text)
 
 
 def validate_name(name: str) -> str:
@@ -54,6 +82,7 @@ class Vault:
         self.key = key
         self.fernet = Fernet(key)
         self._lock = threading.Lock()
+        self._forms: list[tuple[str, str]] = []
         self._values: list[tuple[str, str]] | None = None  # (value, name), longest first
 
     # ── values (never returned to people) ──────────────────────────────────
@@ -62,15 +91,17 @@ class Vault:
             if self._values is None:
                 rows = self.db.q("SELECT name, value_enc FROM secrets")
                 vals = [(self.fernet.decrypt(r["value_enc"]).decode(), r["name"]) for r in rows]
+                self._forms = sorted(((f, n) for v, n in vals if len(v) >= MIN_REDACT_LEN for f in forms(v)), key=lambda t: -len(t[0]))
                 self._values = sorted(vals, key=lambda t: -len(t[0]))
             return self._values
 
     def redact(self, text: str | None) -> str | None:
         if not text:
             return text
-        for value, name in self._all():
-            if len(value) >= MIN_REDACT_LEN and value in text:
-                text = text.replace(value, f"[secret:{name}]")
+        self._all()
+        for form, name in self._forms:
+            if form in text:
+                text = text.replace(form, f"[secret:{name}]")
         return text
 
     # ── scopes ─────────────────────────────────────────────────────────────

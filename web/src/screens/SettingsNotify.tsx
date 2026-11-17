@@ -88,8 +88,15 @@ export function Notifications() {
 
       <section className="set-section">
         <div className="set-title">ntfy (optional)</div>
-        <div className="sub" style={{ fontSize: 13 }}>For installs without HTTPS: notifications also go to this ntfy topic URL (e.g. https://ntfy.sh/a-long-random-topic). Anyone who knows the topic can read it, so make it hard to guess.</div>
+        <div className="sub" style={{ fontSize: 13 }}>For installs without HTTPS: notifications also go to this ntfy topic URL (e.g. https://ntfy.sh/a-long-random-topic). A public topic is readable by anyone who knows or guesses its name, so make it hard to guess or add an access token.</div>
         <NtfyEdit value={c.ntfy_url ?? ''} onSave={(v) => put({ ntfy_url: v || null })} />
+        <div className="set-row">
+          <span>Include message previews<span className="sub" style={{ display: 'block', fontSize: 13 }}>Off sends only the title to ntfy.</span></span>
+          <button className="toggle" role="switch" aria-checked={!!c.ntfy_previews} aria-label="ntfy message previews" onClick={() => put({ ntfy_previews: !c.ntfy_previews })}>
+            <span className={`switch ${c.ntfy_previews ? 'on' : ''}`}><span /></span>
+          </button>
+        </div>
+        <NtfyToken saved={!!c.ntfy_token_saved} onSave={(v) => put({ ntfy_token: v })} />
       </section>
       {save.error && <div className="error" role="alert">{problem(save.error)}</div>}
     </div>
@@ -102,6 +109,20 @@ function NtfyEdit({ value, onSave }: { value: string; onSave: (v: string) => voi
     <form className="set-form" onSubmit={(e) => { e.preventDefault(); onSave(v.trim()) }}>
       <input className="input" value={v} onChange={(e) => setV(e.target.value)} placeholder="https://ntfy.sh/…" aria-label="ntfy topic URL" />
       <div><button className="btn" disabled={v.trim() === value}>Save</button></div>
+    </form>
+  )
+}
+
+function NtfyToken({ saved, onSave }: { saved: boolean; onSave: (v: string) => void }) {
+  const [v, setV] = useState('')
+  return (
+    <form className="set-form" onSubmit={(e) => { e.preventDefault(); onSave(v.trim()); setV('') }}>
+      <input className="input mono" type="password" autoComplete="off" value={v} onChange={(e) => setV(e.target.value)}
+        placeholder={saved ? 'Access token saved. Paste a new one to replace it' : 'Access token (optional)'} aria-label="ntfy access token" />
+      <div>
+        <button className="btn" disabled={!v.trim()}>Save token</button>
+        {saved && <button type="button" className="link-btn" style={{ marginLeft: 8 }} onClick={() => onSave('')}>Remove token</button>}
+      </div>
     </form>
   )
 }

@@ -22,7 +22,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime, time, timedelta
+from datetime import UTC, datetime, time, timedelta
 from typing import TYPE_CHECKING
 
 from .api import schemas as s
@@ -51,14 +51,14 @@ def wakeup_model(db: Database, r: dict) -> s.Wakeup:
                     created_by=r["created_by"], routine_id=r["routine_id"], status=r["status"], status_reason=r["status_reason"], run_id=r["run_id"], used=used)
 
 
-def schedule_text(sch: dict) -> str:
+def schedule_text(sch: dict, unit: str = "week") -> str:
     k = sch.get("kind")
     if k == "weekly":
         return f"{DAYS[int(sch.get('day', 0)) % 7]}s at {sch.get('time', '09:00')}"
     if k == "daily":
         return f"Daily at {sch.get('time', '09:00')}"
     if k == "before_reset":
-        return f"{sch.get('hours', 6):g} h before the weekly reset"
+        return f"{sch.get('hours', 6):g} h before the {unit}ly reset"
     return "Unscheduled"
 
 
@@ -81,15 +81,58 @@ class Scheduler:
 
     async def tick(self, now: datetime | None = None) -> None:
         now = now or self.budgets.now()
-        self.routines_to_plan(now)
-        self.fallback(now)
-        self.sweep(now)
-        await self.start_due(now)
+        # Each step on its own, so one bad routine can't stop wakeups from starting.
+        for name, step in (("routines", self.routines_to_plan), ("fallback", self.fallback), ("sweep", self.sweep)):
+            self._step(name, step, now)
+        await self._step_async("start_due", self.start_due, now)
         for job in self.housekeeping:
-            try:
-                await job(now)
-            except Exception:  # noqa: BLE001
-                log.exception("housekeeping failed")
+            await self._step_async(getattr(job, "__name__", "housekeeping"), job, now)
+
+    def _step(self, name: str, fn, now: datetime) -> None:
+        try:
+            fn(now)
+        except Exception as e:  # noqa: BLE001
+            self._failed(name, e)
+        else:
+            self._healed(name)
+
+    async def _step_async(self, name: str, fn, now: datetime) -> None:
+        try:
+            await fn(now)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            self._failed(name, e)
+        else:
+            self._healed(name)
+
+    def _failed(self, name: str, e: Exception) -> None:
+        log.exception("scheduler step %s failed", name)
+        try:
+            h = self.problems_raw()
+            prev = h.get(name) or {}
+            h[name] = {"step": name, "error": f"{type(e).__name__}: {e}"[:500], "count": int(prev.get("count", 0)) + 1, "last_at": self.db.now()}
+            self._store_problems(h)
+        except Exception:  # noqa: BLE001
+            log.exception("couldn't record the failure of %s", name)
+
+    def _healed(self, name: str) -> None:
+        h = self.problems_raw()
+        if name in h:
+            del h[name]
+            self._store_problems(h)
+
+    def problems_raw(self) -> dict:
+        row = self.db.q1("SELECT value FROM kv WHERE key='scheduler_problems'")
+        try:
+            return json.loads(row["value"]) if row else {}
+        except ValueError:
+            return {}
+
+    def _store_problems(self, h: dict) -> None:
+        self.db.ex("INSERT INTO kv(key, value, updated_at) VALUES('scheduler_problems', ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+                   (json.dumps(h), self.db.now()))
+        self.live.emit("status")
 
     def _changed(self, wid: int | None = None) -> None:
         self.live.emit("calendar", {"id": wid} if wid else {})
@@ -120,7 +163,7 @@ class Scheduler:
             h, m = (int(x) for x in str(sch.get("time", "09:00")).split(":"))
             for d in range(0, 8):
                 day = (loc + timedelta(days=d)).date()
-                cand = datetime.combine(day, time(h % 24, m), tz)
+                cand = datetime.combine(day, time(h % 24, m), tz).astimezone(UTC).astimezone(tz)   # a skipped hour lands after the gap
                 if cand <= after:
                     continue
                 if kind == "weekly" and cand.weekday() != int(sch.get("day", 0)) % 7:
@@ -130,21 +173,61 @@ class Scheduler:
         if kind == "before_reset":
             start, end = self.budgets.week(provider, after)
             cand = end - timedelta(hours=float(sch.get("hours", 6)))
-            return cand if cand > after else cand + timedelta(days=7)
+            if cand > after:
+                return cand
+            _, end = self.budgets.week(provider, end + timedelta(seconds=1))   # the next period (a month isn't 7 days)
+            return end - timedelta(hours=float(sch.get("hours", 6)))
         return None
 
     def routines_to_plan(self, now: datetime) -> None:
         enabled = set(self.budgets.provider_ids())
         horizon = now + timedelta(days=PLAN_HORIZON_DAYS)
         for r in self.db.q("SELECT * FROM routines WHERE status='active' AND enabled=1"):
+            if r["builtin"]:
+                r = self._follow_worker(r)
             if r["provider"] not in enabled:
                 continue
             if self.db.q1("SELECT 1 FROM wakeups WHERE routine_id=? AND status IN ('planned','running') LIMIT 1", (r["id"],)):
                 continue
             last = parse(r["last_run_at"]) or now - timedelta(hours=1)
             at = self.next_occurrence(json.loads(r["schedule_json"]), r["provider"], max(now, last + timedelta(hours=1)))  # type: ignore[operator]
+            reason = f"Routine: {r['name']}"
+            if at:
+                moved = self._clear_of_others(r["provider"], at, r["id"])
+                if moved and moved != at:
+                    reason += f" (moved from {self.budgets.local(at):%a %H:%M}: another wakeup is within {self._gap_minutes(r['provider'], now):g} min)"
+                    self._note(f"Routine \"{r['name']}\" was moved from {self.budgets.local(at):%a %H:%M} to {self.budgets.local(moved):%a %H:%M} "
+                               "because another wakeup was too close.")
+                at = moved
             if at and at <= horizon:
-                self._insert(r["provider"], at, r["budget"], r["tier"], f"Routine: {r['name']}", "routine", "control", r["id"])
+                self._insert(r["provider"], at, r["budget"], r["tier"], reason, "routine", "control", r["id"])
+
+    def _gap_minutes(self, pid: str, now: datetime) -> float:
+        return self.budgets.effective(pid, now).limits.min_gap_minutes
+
+    def _clear_of_others(self, pid: str, at: datetime, routine_id: int) -> datetime:
+        """`at`, or the first time after it that keeps the level's minimum gap from every other wakeup."""
+        gap = timedelta(minutes=self._gap_minutes(pid, at))
+        if gap <= timedelta(0):
+            return at
+        for _ in range(20):
+            near = self.db.q1("SELECT at FROM wakeups WHERE provider=? AND status IN ('planned','running') AND kind != 'sweep' "
+                              "AND routine_id IS NOT ? AND at>? AND at<? ORDER BY at DESC LIMIT 1", (pid, routine_id, iso(at - gap), iso(at + gap)))
+            if not near:
+                return at
+            at = parse(near["at"]) + gap  # type: ignore[operator]
+        return at
+
+    def _follow_worker(self, r: dict) -> dict:
+        """The built-in review runs where the worker does (its period decides when it fires)."""
+        worker = self.budgets.role("worker")
+        if r["provider"] == worker.provider:
+            return r
+        tier = "opus/medium" if worker.provider == SUBSCRIPTION else worker.tier
+        self.db.ex("UPDATE wakeups SET status='cancelled', status_reason='the review follows the worker provider', updated_at=? WHERE routine_id=? AND status='planned'",
+                   (self.db.now(), r["id"]))
+        self.db.ex("UPDATE routines SET provider=?, tier=?, updated_at=? WHERE id=?", (worker.provider, tier, self.db.now(), r["id"]))
+        return {**r, "provider": worker.provider, "tier": tier}
 
     def replan_routine(self, routine_id: int) -> None:
         self.db.ex("UPDATE wakeups SET status='cancelled', status_reason='the routine changed', updated_at=? WHERE routine_id=? AND status='planned'",
@@ -170,8 +253,11 @@ class Scheduler:
                 continue
             self._insert(pid, at, budget, self._worker_tier(pid, eff, 0),
                          "Fallback: nothing was planned for the next two nights", "fallback", "control")
-            self._note(f"Nothing was planned for the next two nights, so control planned a fallback wakeup at {self.budgets.local(at):%a %H:%M}. "
-                       "Plan your own wakeups with `assistant wake at …` (see `assistant budget`).")
+            key = f"fallback_noted:{pid}:{iso(self.budgets.week(pid, now)[1])}"
+            if not self.db.q1("SELECT 1 FROM kv WHERE key=?", (key,)):   # once per period, however often it's replanned
+                self.db.ex("INSERT INTO kv(key, value, updated_at) VALUES(?, '1', ?)", (key, self.db.now()))
+                self._note(f"Nothing was planned for the next two nights, so control planned a fallback wakeup at {self.budgets.local(at):%a %H:%M}. "
+                           "Plan your own wakeups with `assistant wake at …` (see `assistant budget`).")
 
     def _night_slot(self, windows: list[dict], now: datetime) -> datetime | None:
         tz = self.budgets.tz()
@@ -259,14 +345,15 @@ class Scheduler:
             return
         if kind == "sweep":
             bucket, budget = "sweep", w["budget"]
-        elif kind == "owner":
-            bucket, budget = "allowance", w["budget"]
+        elif kind == "owner" and eff.limits.allowance <= 0:
+            bucket, budget = "allowance", w["budget"]   # Dormant: the owner's own wakeup keeps the budget the owner gave
         else:
             bucket, budget = "allowance", min(w["budget"], self.budgets.left(pid, now))
             if budget < 0.5:
-                self._set(w["id"], "skipped", "This week's allowance is used up")
+                unit = self.budgets.period_unit(pid)
+                self._set(w["id"], "skipped", f"This {unit}'s allowance is used up")
                 if w["created_by"] == "assistant":
-                    self._note(f"Your wakeup #{w['id']} ({w['reason']}) was skipped: this week's allowance is used up.")
+                    self._note(f"Your wakeup #{w['id']} ({w['reason']}) was skipped: this {unit}'s allowance is used up.")
                 return
         routine = self.db.q1("SELECT * FROM routines WHERE id=?", (w["routine_id"],)) if w["routine_id"] else None
         label = {"planned": "Planned wakeup", "fallback": "Fallback wakeup", "sweep": "Sweep wakeup", "routine": "Routine", "owner": "Your wakeup"}[kind]
@@ -294,8 +381,11 @@ class Scheduler:
         self._changed()
 
     # ── planning API (agent and owner) ─────────────────────────────────────
-    def _drop_fallbacks(self, pid: str) -> list[int]:
-        """The agent planning its own wakeups replaces control's fallback (restored if the plan is rejected)."""
+    def _drop_fallbacks(self, pid: str, times: list[datetime]) -> list[int]:
+        """The agent planning its own wakeups within the next 48 h replaces control's fallback
+        (restored if the plan is rejected). A plan that leaves those two nights empty keeps it."""
+        if not any(at < self.budgets.now() + timedelta(hours=48) for at in times):
+            return []
         rows = [r["id"] for r in self.db.q("SELECT id FROM wakeups WHERE provider=? AND kind='fallback' AND status='planned'", (pid,))]
         for wid in rows:
             self.db.ex("UPDATE wakeups SET status='cancelled', status_reason='replaced by the assistant''s own plan', updated_at=? WHERE id=?", (self.db.now(), wid))
@@ -308,7 +398,7 @@ class Scheduler:
     def plan(self, pid: str, at: datetime, budget: float, tier: str | None, reason: str, by: str) -> s.Wakeup:
         from .backends.base import BadRequest
         tier = tier or self.budgets.role("worker").tier
-        dropped = self._drop_fallbacks(pid) if by == "assistant" else []
+        dropped = self._drop_fallbacks(pid, [at]) if by == "assistant" else []
         problem = self.budgets.validate(pid, at, budget, tier, by=by)
         if problem:
             self._restore(dropped)
@@ -321,7 +411,7 @@ class Scheduler:
         All are validated first; nothing changes if one is rejected."""
         from .backends.base import BadRequest
         old = self.db.q("SELECT id FROM wakeups WHERE provider=? AND status='planned' AND created_by='assistant'", (pid,))
-        old_ids = [r["id"] for r in old] + self._drop_fallbacks(pid)
+        old_ids = [r["id"] for r in old] + self._drop_fallbacks(pid, [i[0] for i in items])
         with self.db.tx() as db:
             for wid in old_ids:
                 db.ex("UPDATE wakeups SET status='cancelled', status_reason='replaced by a new plan', updated_at=? WHERE id=?", (db.now(), wid))

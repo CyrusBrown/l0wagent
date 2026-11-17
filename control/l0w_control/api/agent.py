@@ -17,6 +17,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ..runs.runtime import Item
+from ..urls import clean_links
+from ..vault import store_text
 
 if TYPE_CHECKING:
     from ..backends.sqlite import SqliteBackend
@@ -61,7 +63,7 @@ def ping() -> dict:
 def note(body: Text, request: Request) -> dict:
     be = _be(request)
     run_id = _run(be, body.run_id)
-    text = _one_line(body.text, NOTE_MAX)
+    text = _one_line(store_text(be, body.text) or "", NOTE_MAX)
     be.db.ex("INSERT INTO run_notes(run_id, at, text) VALUES(?,?,?)", (run_id, be.db.now(), text))
     be.runs_mgr.timeline(run_id, Item("note", text, True))
     return {"run_id": run_id}
@@ -71,7 +73,7 @@ def note(body: Text, request: Request) -> dict:
 def set_status(body: Text, request: Request) -> dict:
     be = _be(request)
     run_id = _run(be, body.run_id)
-    text = _one_line(body.text, NOTE_MAX)
+    text = _one_line(store_text(be, body.text) or "", NOTE_MAX)
     be.db.ex("UPDATE runs SET now_sentence=? WHERE id=?", (text, run_id))
     be.runs_mgr.timeline(run_id, Item("status", text, False))
     be.runs_mgr._run_changed(run_id)
@@ -82,7 +84,7 @@ def set_status(body: Text, request: Request) -> dict:
 def describe(body: Text, request: Request) -> dict:
     be = _be(request)
     run_id = _run(be, body.run_id)
-    text = " ".join(body.text.split())[:DESCRIBE_MAX]
+    text = " ".join((store_text(be, body.text) or "").split())[:DESCRIBE_MAX]
     be.db.ex("UPDATE runs SET description=? WHERE id=?", (text, run_id))
     be.runs_mgr._run_changed(run_id)
     return {"run_id": run_id}
@@ -175,7 +177,7 @@ class ProjectIn(BaseModel):
 
 @router.post("/projects")
 def create_project(body: ProjectIn, request: Request) -> dict:
-    links = [{"label": str(x.get("label", ""))[:80], "url": str(x.get("url", ""))[:500]} for x in body.links]
+    links = clean_links(body.links)
     return _be(request).conv.create_project(body.name, body.slug, body.summary, "assistant", body.doc_path, links).model_dump(mode="json")
 
 
@@ -191,6 +193,8 @@ class ProjectPatchIn(BaseModel):
 @router.patch("/projects/{slug}")
 def patch_project(slug: str, body: ProjectPatchIn, request: Request) -> dict:
     fields = body.model_dump(exclude_none=True)
+    if "links" in fields:
+        fields["links"] = clean_links(fields["links"])
     return _be(request).conv.patch_project(slug, fields).model_dump(mode="json")
 
 
@@ -595,3 +599,37 @@ def mcp_stream(name: str) -> Response:
 @router.delete("/mcp/{name}")
 def mcp_end(name: str) -> Response:
     return Response(status_code=204)
+
+
+# ── the run record (read-only) ─────────────────────────────────────────────
+def _run_when(be: SqliteBackend, run: dict) -> str:
+    from ..auth import parse
+
+    at = parse(run["ended_at"] or run["started_at"])
+    return f"{be.budgets.local(at):%a %b %d %H:%M}" if at else ""
+
+
+def _run_line(be: SqliteBackend, r: dict) -> dict:
+    return {"id": r["id"], "kind": r["kind"], "why": r["why"], "when": _run_when(be, r), "status": r["status"], "end_reason": r["end_reason"],
+            "used": round(r["used"] or 0, 2), "budget": r["budget"], "tier": r["tier"],
+            "about": be.vault.redact(r["description"] or r["now_sentence"] or "")}
+
+
+@router.get("/runs")
+def runs(request: Request, limit: int = 20) -> list[dict]:
+    be = _be(request)
+    rows = be.db.q("SELECT * FROM runs WHERE kind!='reviewer' ORDER BY id DESC LIMIT ?", (max(1, min(limit, 100)),))
+    return [_run_line(be, r) for r in rows]
+
+
+@router.get("/runs/{run_id}")
+def run_show(run_id: int, request: Request) -> dict:
+    be = _be(request)
+    r = be.db.q1("SELECT * FROM runs WHERE id=?", (run_id,))
+    if r is None:
+        raise HTTPException(404, f"no run #{run_id}")
+    red = be.vault.redact
+    notes = [f"{n['at']} {red(n['text'])}" for n in be.db.q("SELECT at, text FROM run_notes WHERE run_id=? ORDER BY id", (run_id,))]
+    claims = [{"thread_id": c.thread_id, "title": c.thread_title, "plan": red(c.plan), "status": c.status, "result": red(c.result)}
+              for c in be.conv.claims(active=False, run_id=run_id)]
+    return _run_line(be, r) | {"now": red(r["now_sentence"] or ""), "stop_reason": r["stop_reason"], "result": red((r["result"] or "")[:2000]), "notes": notes, "claims": claims}

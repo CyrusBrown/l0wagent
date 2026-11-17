@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useState } from 'react'
 import type { RouteObject } from 'react-router'
 import { ApiError } from '../api/client'
-import { clearOffline } from '../api/offline'
+import { clearReadCache } from '../api/offline'
 import { useMe, useMeta } from '../api/queries'
 import { Calendar } from '../screens/Calendar'
 import { Files } from '../screens/Files'
@@ -34,7 +34,7 @@ function Gate({ children }: { children: ReactNode }) {
   if (meta.isPending || me.isPending) return null
   if (meta.data?.setup_complete === false) return null
   if (me.error instanceof ApiError && me.error.status === 401) {
-    void clearOffline()  // signed out: drop this device's offline copy and outbox
+    void clearReadCache()  // signed out: drop the offline copy; the outbox waits for the next sign-in
     return <Login />
   }
   return <TimeFormatProvider>{children}</TimeFormatProvider>

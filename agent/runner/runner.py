@@ -34,12 +34,15 @@ is untrusted: control enforces limits itself and treats what it reads here as da
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import os
+import pwd
 import re
 import secrets
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -48,8 +51,8 @@ from pathlib import Path
 
 import anyio
 import uvicorn
-from fastapi import FastAPI, Header, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 TOKEN = os.environ.get("RUNNER_TOKEN", "")
@@ -74,6 +77,50 @@ KEEP_LOGS_DAYS = 30
 app = FastAPI(docs_url=None, redoc_url=None)
 _lock = asyncio.Lock()
 _current: dict | None = None  # {"id", "proc", "task"}
+
+
+# S23: only control's address may call the runner. Entries are IPs, CIDRs or host names (compose
+# uses `control`, whose address Docker assigns); unset means anyone (dev_stack on localhost).
+ALLOWED_FROM = [x.strip() for x in os.environ.get("RUNNER_ALLOWED_FROM", "").split(",") if x.strip()]
+_resolved: dict[str, tuple[float, set]] = {}
+
+
+def _allowed_nets() -> list:
+    nets = []
+    for entry in ALLOWED_FROM:
+        try:
+            nets.append(ipaddress.ip_network(entry, strict=False))
+            continue
+        except ValueError:
+            pass
+        at, found = _resolved.get(entry, (0.0, set()))
+        if time.monotonic() - at > 30:
+            try:
+                found = {ipaddress.ip_address(i[4][0]) for i in socket.getaddrinfo(entry, None)}
+            except OSError:
+                pass  # keep the last answer
+            _resolved[entry] = (time.monotonic(), found)
+        nets.extend(ipaddress.ip_network(a) for a in found)
+    return nets
+
+
+def source_allowed(host: str | None) -> bool:
+    if not ALLOWED_FROM:
+        return True
+    try:
+        addr = ipaddress.ip_address((host or "").split("%")[0])
+    except ValueError:
+        return False
+    if getattr(addr, "ipv4_mapped", None):
+        addr = addr.ipv4_mapped
+    return any(addr.version == n.version and addr in n for n in _allowed_nets())
+
+
+@app.middleware("http")
+async def only_from_control(request: Request, call_next):
+    if not source_allowed(request.client.host if request.client else None):
+        return JSONResponse({"detail": "not control's address"}, status_code=403)
+    return await call_next(request)
 
 
 def _auth(token: str | None) -> None:
@@ -204,6 +251,8 @@ def claude_argv(req: SessionRequest, system_file: Path) -> list[str]:
 def opencode_config(system_file: Path, reviewer: bool = False, mcp: dict[str, dict] | None = None) -> dict:
     """opencode's config for one session: our system prompt as the `l0w` agent, the delivery
     plugin (not for the reviewer), no prompts for permissions, no sharing or self-updates."""
+    # No AGENTS.md is seeded: opencode 1.18 falls back to CLAUDE.md when there's none (an AGENTS.md
+    # would replace it) and finds skills in .claude/skills/**/SKILL.md, so the seed works as is.
     permission = {"*": "allow", "external_directory": "allow"}
     if reviewer:
         permission.update(edit="deny")
@@ -297,6 +346,79 @@ async def _pre_run(env: dict) -> tuple[str, int | None]:
     return text.replace("~~~", "~ ~ ~"), proc.returncode
 
 
+
+# ── S23: model CLIs the session didn't start through control ───────────
+CLI_NAMES = {"claude", "opencode"}
+LAUNCHERS = {"node", "bun", "npm", "npx"}
+WATCH_EVERY_S = 15.0
+_own_procs: set[int] = set()   # reviewer / login processes the runner started itself
+
+
+def _proc_table() -> dict[int, tuple[int, list[str]]]:
+    """pid -> (ppid, argv) for every process we can see (Linux /proc; empty elsewhere)."""
+    table = {}
+    try:
+        pids = [int(n) for n in os.listdir("/proc") if n.isdigit()]
+    except OSError:
+        return table
+    for pid in pids:
+        try:
+            raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+            stat = Path(f"/proc/{pid}/stat").read_text()
+            ppid = int(stat[stat.rindex(")") + 2:].split()[1])
+        except (OSError, ValueError):
+            continue
+        table[pid] = (ppid, [a.decode(errors="replace") for a in raw.split(b"\0") if a])
+    return table
+
+
+def _is_cli(argv: list[str]) -> bool:
+    if not argv or any(a in ("--version", "-v") for a in argv[1:3]):
+        return False
+    first = os.path.basename(argv[0])
+    if first in CLI_NAMES:
+        return True
+    # node/bun running the CLI's script
+    return first in LAUNCHERS and len(argv) > 1 and (os.path.basename(argv[1]) in CLI_NAMES or "claude-code" in argv[1] or "opencode-ai" in argv[1])
+
+
+def foreign_cli(root_pids: set[int]) -> list[dict]:
+    """Model-CLI processes that aren't the session's own: a CLI whose chain of parents up to a
+    root pid (the session, the reviewer, a login) passes through anything but a CLI or its
+    launcher, e.g. `claude -p` run from a tool call's shell, or one started by cron or tmux."""
+    table = _proc_table()
+    found = []
+    for pid, (_, argv) in table.items():
+        if pid in root_pids or pid == os.getpid() or not _is_cli(argv):
+            continue
+        cur, own = pid, False
+        for _ in range(64):
+            ppid = table.get(cur, (0, []))[0]
+            if ppid in root_pids:
+                own = True
+                break
+            if ppid not in table or not (_is_cli(table[ppid][1]) or os.path.basename((table[ppid][1] or [""])[0]) in LAUNCHERS):
+                break
+            cur = ppid
+        if not own:
+            found.append({"pid": pid, "cmd": " ".join(argv)[:200]})
+    return found
+
+
+async def _watch_cli(sid: str, f, proc_getter) -> None:
+    """While the session runs, note once on its log if another model CLI is running."""
+    while True:
+        await asyncio.sleep(WATCH_EVERY_S)
+        proc = proc_getter()
+        if proc is None or proc.returncode is not None:
+            continue
+        roots = {proc.pid} | _own_procs
+        found = await asyncio.to_thread(foreign_cli, roots)
+        if found:
+            _append(f, {"type": "runner", "event": "foreign_cli", "processes": found[:5]})
+            return
+
+
 async def _run_session(sid: str, req: SessionRequest) -> None:
     global _current
     tmp = tempfile.TemporaryDirectory(prefix="session-")
@@ -305,6 +427,7 @@ async def _run_session(sid: str, req: SessionRequest) -> None:
     env = {**os.environ, **req.env, "ASSISTANT_RUN_ID": str(req.run_id), "ASSISTANT_SESSION": sid}
     env.pop("RUNNER_TOKEN", None)
     proc = None
+    watch_task = None
     with open(_log(sid), "ab") as f:
         try:
             prompt = req.prompt
@@ -339,6 +462,7 @@ async def _run_session(sid: str, req: SessionRequest) -> None:
                     del stderr_tail[:-60]
 
             err_task = asyncio.create_task(read_stderr())
+            watch_task = asyncio.create_task(_watch_cli(sid, f, lambda: proc))
             assert proc.stdin and proc.stdout
             proc.stdin.write(prompt.encode())
             await proc.stdin.drain()
@@ -356,6 +480,7 @@ async def _run_session(sid: str, req: SessionRequest) -> None:
                 except json.JSONDecodeError:
                     _append(f, {"type": "raw", "text": line.decode(errors="replace")[:4000]})
             rc = await proc.wait()
+            watch_task.cancel()
             if oc is not None:
                 _append(f, oc.line(rc))
             try:
@@ -368,6 +493,8 @@ async def _run_session(sid: str, req: SessionRequest) -> None:
             _append(f, {"type": "runner", "event": "exited", "returncode": None, "error": f"{type(e).__name__}: {e}"})
             _save_meta(sid, state="exited", returncode=None, ended_at=time.time())
         finally:
+            if watch_task is not None:
+                watch_task.cancel()
             with anyio.CancelScope(shield=True):
                 if proc is not None:
                     await _terminate(proc, grace=2)
@@ -585,6 +712,84 @@ async def selftest(req: SelfTestRequest, x_runner_token: str | None = Header(Non
 
 
 # ── the reviewer: one turn of a second, read-only session ───────────────
+# S24: consults run as a second unix user (`reviewer`) with its own home and a scrubbed environment.
+# The agent's home is 0700, so the reviewer can't read the agent's files or its processes' environment;
+# /workspace and /work are read as "other" (the entrypoint keeps their top directories 0755).
+REVIEWER_USER = os.environ.get("RUNNER_REVIEWER_USER", "reviewer")
+# Environment the reviewer's CLI needs; nothing else is passed (no agent token, runner token, secrets).
+REVIEWER_ENV_KEEP = ("PATH", "LANG", "TZ", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
+                     "NODE_USE_ENV_PROXY", "ENABLE_CLAUDEAI_MCP_SERVERS", "DISABLE_AUTOUPDATER", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+                     "CLAUDE_CODE_OAUTH_TOKEN")
+_reviewer_logged = False
+
+
+def reviewer_account() -> pwd.struct_passwd | None:
+    """The reviewer's account if consults can run as it from here, else None (logged once)."""
+    global _reviewer_logged
+    why = None
+    pw = None
+    if not REVIEWER_USER:
+        why = "disabled"
+    else:
+        try:
+            pw = pwd.getpwnam(REVIEWER_USER)
+        except KeyError:
+            why = f"no unix user {REVIEWER_USER!r}"
+        if pw and os.geteuid() != 0 and not shutil.which("sudo"):
+            why, pw = "not root and no sudo", None
+    if why and not _reviewer_logged:
+        print(f"[runner] reviewer consults run as the agent's own user ({why})", file=sys.stderr, flush=True)
+    _reviewer_logged = True
+    return pw
+
+
+def _as_reviewer(pw: pwd.struct_passwd, argv: list[str], env_keys: list[str] | None = None) -> list[str]:
+    """argv wrapped to run as the reviewer: setpriv when we're root, sudo otherwise."""
+    if os.geteuid() == 0:
+        return ["setpriv", f"--reuid={pw.pw_uid}", f"--regid={pw.pw_gid}", "--clear-groups", *argv]
+    keep = f"--preserve-env={','.join(env_keys)}" if env_keys else "--preserve-env"
+    return ["sudo", "-n", "-u", pw.pw_name, "-H", keep, "--", *argv]
+
+
+def _reviewer_env(pw: pwd.struct_passwd, extra: dict[str, str]) -> dict[str, str]:
+    env = {k: os.environ[k] for k in REVIEWER_ENV_KEEP if k in os.environ}
+    env.update(HOME=pw.pw_dir, USER=pw.pw_name, LOGNAME=pw.pw_name)
+    env.update({k: v for k, v in extra.items() if k in ("OPENCODE_API_KEY", "ANTHROPIC_API_KEY", "ASSISTANT_RUN_ID", "ASSISTANT_RUN_MODE")})
+    return env
+
+
+def _reviewer_creds_in(pw: pwd.struct_passwd) -> bytes | None:
+    """Copy just the login file into the reviewer's home (0600, owned by it). The agent's home
+    stays closed to the reviewer, so the credential has to be handed over, not shared."""
+    src = Path.home() / ".claude" / ".credentials.json"
+    try:
+        data = src.read_bytes()
+    except OSError:
+        return None
+    script = 'umask 077; mkdir -p "$HOME/.claude" && cat > "$HOME/.claude/.credentials.json"'
+    subprocess.run(_as_reviewer(pw, ["sh", "-c", script]), input=data, check=False, timeout=30, capture_output=True)
+    return data
+
+
+def _reviewer_creds_back(pw: pwd.struct_passwd, before: bytes | None) -> None:
+    """The CLI may refresh its login during a consult; hand the newer file back so the agent's
+    copy isn't left holding a rotated-out refresh token."""
+    if before is None:
+        return
+    r = subprocess.run(_as_reviewer(pw, ["cat", f"{pw.pw_dir}/.claude/.credentials.json"]), capture_output=True, timeout=30)
+    after = r.stdout
+    if r.returncode != 0 or not after or after == before:
+        return
+    try:
+        json.loads(after)
+    except ValueError:
+        return
+    dst = Path.home() / ".claude" / ".credentials.json"
+    tmp = dst.with_suffix(".tmp")
+    write_private(tmp, after.decode())
+    tmp.replace(dst)
+
+
 REVIEWER_HOME = Path(os.environ.get("REVIEWER_HOME", str(STATE_DIR / "reviewer")))
 REVIEWER_DENY = "Write Edit MultiEdit NotebookEdit"
 CONSULT_TIMEOUT = 540
@@ -611,17 +816,25 @@ async def consult(req: ConsultRequest, x_runner_token: str | None = Header(None)
     if _consult_lock.locked():
         raise HTTPException(409, "a reviewer turn is already in progress")
     async with _consult_lock:
-        REVIEWER_HOME.mkdir(parents=True, exist_ok=True)
+        pw = reviewer_account()
+        home = Path(pw.pw_dir) if pw else REVIEWER_HOME
+        home.mkdir(parents=True, exist_ok=True)
         tmp = tempfile.TemporaryDirectory(prefix="consult-")
         sys_file = Path(tmp.name) / "system.md"
         sys_file.write_text(req.system_append)
-        env = {k: v for k, v in os.environ.items() if k not in ("RUNNER_TOKEN", "AGENT_API_TOKEN", "CONTROL_URL")}
-        env.update({k: v for k, v in req.env.items() if k in ("OPENCODE_API_KEY", "ANTHROPIC_API_KEY")})
-        env.update(ASSISTANT_RUN_ID=str(req.run_id), ASSISTANT_RUN_MODE="reviewer")
+        if pw:
+            os.chmod(tmp.name, 0o755)  # the reviewer reads its prompt and config from here
+            os.chmod(sys_file, 0o644)
+            env = _reviewer_env(pw, {**req.env, "ASSISTANT_RUN_ID": str(req.run_id), "ASSISTANT_RUN_MODE": "reviewer"})
+        else:
+            env = {k: v for k, v in os.environ.items() if k not in ("RUNNER_TOKEN", "AGENT_API_TOKEN", "CONTROL_URL")}
+            env.update({k: v for k, v in req.env.items() if k in ("OPENCODE_API_KEY", "ANTHROPIC_API_KEY")})
+            env.update(ASSISTANT_RUN_ID=str(req.run_id), ASSISTANT_RUN_MODE="reviewer")
         oc = OpencodeResult(req.resume_session) if req.runtime == "opencode" else None
         if oc is not None:
             cfg_file = Path(tmp.name) / "opencode.json"
             cfg_file.write_text(json.dumps(opencode_config(sys_file, reviewer=True)))
+            os.chmod(cfg_file, 0o644)
             env["OPENCODE_CONFIG"] = str(cfg_file)
             argv = opencode_argv(req.model, req.effort, req.resume_session)
         else:
@@ -631,8 +844,12 @@ async def consult(req: ConsultRequest, x_runner_token: str | None = Header(None)
                 argv += ["--effort", req.effort]
             if req.resume_session:
                 argv += ["--resume", req.resume_session]
-        proc = await asyncio.create_subprocess_exec(*argv, cwd=REVIEWER_HOME, env=env, start_new_session=True, limit=32 * 1024 * 1024,
+        creds = await asyncio.to_thread(_reviewer_creds_in, pw) if pw and req.runtime != "opencode" else None
+        if pw:
+            argv = _as_reviewer(pw, argv, list(env))
+        proc = await asyncio.create_subprocess_exec(*argv, cwd=home, env=env, start_new_session=True, limit=32 * 1024 * 1024,
                                                     stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        _own_procs.add(proc.pid)
         out = {"ok": False, "text": "", "session_id": req.resume_session, "cost_usd": None, "usage": None, "model": None, "messages": []}
         try:
             assert proc.stdin and proc.stdout
@@ -675,6 +892,10 @@ async def consult(req: ConsultRequest, x_runner_token: str | None = Header(None)
         finally:
             with anyio.CancelScope(shield=True):
                 await _terminate(proc, grace=2)
+                if pw:  # a SIGKILL to sudo isn't relayed; make sure nothing of the reviewer's is left
+                    await asyncio.to_thread(subprocess.run, _as_reviewer(pw, ["pkill", "-KILL", "-u", pw.pw_name]), capture_output=True, timeout=10, check=False)
+                    await asyncio.to_thread(_reviewer_creds_back, pw, creds)
+                _own_procs.discard(proc.pid)
                 tmp.cleanup()
         return out
 

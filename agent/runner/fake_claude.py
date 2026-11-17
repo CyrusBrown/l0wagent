@@ -22,6 +22,8 @@ Scenarios (with FAKE_CALL_ASSISTANT=1), picked from the prompt:
                       then do the work (approved) or claim the thread and plan a wakeup (denied)
   wakeup "fake:m4"    (e.g. in the owner's standing instructions) check the budget, ask the reviewer,
                       register a long job, plan the next wakeup, end IDLE
+  wakeup "fake:wrapup" / "fake:noidle"   end with a wrap-up line then IDLE:, or without IDLE at all
+                      (control nudges that once; the resumed session then ends IDLE)
   wakeup with mail    reply to the owner's queued messages (so control holds the run open)
   resumed for reply   control resumed the session with the owner's reply: answer it
   otherwise           the M1 session: tidy the journal
@@ -306,9 +308,30 @@ def resumed_scenario(sess: Session, prompt: str) -> int:
     return sess.finish("IDLE: answered the reply.")
 
 
+def wrapup_scenario(sess: Session) -> int:
+    """Ends with a short wrap-up and THEN the IDLE line (control must still see it as idle)."""
+    sess.run("run", "describe", "Tidy up and say so, then end idle.")
+    sess.run("status", "Wrapping up")
+    return sess.finish("Journal tidied and the tests pass.\nIDLE: nothing else worth doing.")
+
+
+def noidle_scenario(sess: Session) -> int:
+    """Just stops, without IDLE, with budget left (control nudges it once)."""
+    sess.run("run", "describe", "Do one small thing and stop without saying IDLE.")
+    sess.run("status", "Doing one small thing")
+    return sess.finish("Done for now.")
+
+
+def nudged_scenario(sess: Session, prompt: str) -> int:
+    sess.run("status", "Nudged to carry on")
+    return sess.finish("Picked up the next thing.\nIDLE: nothing more worth doing.")
+
+
 def scenario(sess: Session, prompt: str, resume: str | None) -> int | None:
     if not CALL_ASSISTANT:
         return None
+    if prompt.startswith("[control] You have ") and "left of this run's budget" in prompt:
+        return nudged_scenario(sess, prompt)
     if prompt.startswith("[control] The owner responded"):
         return resumed_scenario(sess, prompt)
     if resume:
@@ -324,6 +347,10 @@ def scenario(sess: Session, prompt: str, resume: str | None) -> int | None:
         return reply_scenario(sess, int(reply.group(1)))
     if "fake:m4" in prompt:
         return m4_scenario(sess, prompt)
+    if "fake:wrapup" in prompt:
+        return wrapup_scenario(sess)
+    if "fake:noidle" in prompt:
+        return noidle_scenario(sess)
     if "- Owner (message #" in prompt:
         return mail_scenario(sess, prompt)
     return None

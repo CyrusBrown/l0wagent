@@ -71,3 +71,82 @@ def test_checkout_at_the_release_or_on_edge_is_quiet(l0w, tmp_path, monkeypatch,
     l0w.check_checkout("0.5.0")
     l0w.check_checkout("9.9.9")  # no such tag: nothing to compare with
     assert capsys.readouterr().out == ""
+
+
+def drain_calls(l0w, monkeypatch, idle):
+    calls = []
+
+    def hostctl(*args):
+        calls.append(args)
+        if args[0] == "idle":
+            return idle()
+        return {}
+
+    monkeypatch.setattr(l0w, "hostctl", hostctl)
+    return calls
+
+
+def update_args(l0w, **kw):
+    import argparse
+    return argparse.Namespace(timeout=1, force=False, version=None, cancel=False, **kw)
+
+
+def setup_update(l0w, monkeypatch, calls):
+    monkeypatch.setattr(l0w, "need_docker", lambda: None)
+    monkeypatch.setattr(l0w, "env_file", lambda: {"L0W_PORT": "8000"})
+    monkeypatch.setattr(l0w, "add_chat_settings", lambda env: False)
+    monkeypatch.setattr(l0w, "check_checkout", lambda v: None)
+    monkeypatch.setattr(l0w, "pull_images", lambda: None)
+    monkeypatch.setattr(l0w, "wait_healthy", lambda port: True)
+    monkeypatch.setattr(l0w.time, "sleep", lambda s: None)
+    monkeypatch.setattr(l0w.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, "", ""))
+    monkeypatch.setattr(l0w, "compose", lambda *a, **k: subprocess.CompletedProcess(a, 0, "1.0.0", ""))
+
+
+def test_update_clears_the_drain_when_it_dies(l0w, monkeypatch):
+    calls = drain_calls(l0w, monkeypatch, lambda: {"idle": True, "waiting_for": []})
+    setup_update(l0w, monkeypatch, calls)
+
+    def boom(*a, **k):
+        raise RuntimeError("compose exploded")
+
+    monkeypatch.setattr(l0w, "compose", lambda *a, **k: boom() if a[0] == "up" else subprocess.CompletedProcess(a, 0, "1.0.0", ""))
+    with pytest.raises(RuntimeError):
+        l0w.cmd_update(update_args(l0w))
+    assert calls[0][:2] == ("drain", "on") and calls[-1] == ("drain", "off")
+
+
+def test_update_clears_the_drain_on_sigterm(l0w, monkeypatch):
+    import os
+    import signal
+
+    def idle():
+        os.kill(os.getpid(), signal.SIGTERM)
+        return {"idle": False, "waiting_for": ["run #1 (chat) is in progress"]}
+
+    calls = drain_calls(l0w, monkeypatch, idle)
+    setup_update(l0w, monkeypatch, calls)
+    before = signal.getsignal(signal.SIGTERM)
+    with pytest.raises(KeyboardInterrupt):
+        l0w.cmd_update(update_args(l0w))
+    assert calls[-1] == ("drain", "off")
+    assert signal.getsignal(signal.SIGTERM) is before
+
+
+def test_update_survives_control_being_down_when_clearing(l0w, monkeypatch, capsys):
+    def hostctl(*args):
+        if args[:2] == ("drain", "off"):
+            raise RuntimeError("control is down")
+        return {"idle": True, "waiting_for": []}
+
+    monkeypatch.setattr(l0w, "hostctl", hostctl)
+    setup_update(l0w, monkeypatch, [])
+    l0w.cmd_update(update_args(l0w))
+    assert "./l0w drain off" in capsys.readouterr().err
+
+
+def test_drain_off_command(l0w, monkeypatch):
+    calls = drain_calls(l0w, monkeypatch, lambda: {})
+    monkeypatch.setattr(l0w, "need_docker", lambda: None)
+    l0w.cmd_drain(None)
+    assert calls == [("drain", "off")]

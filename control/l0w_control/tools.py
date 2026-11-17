@@ -20,6 +20,8 @@ from typing import Any
 
 from .api import schemas as s
 from .backends.base import BadRequest, Conflict, NotFound
+from .urls import safe_url
+from .vault import store_text
 
 MAX_RESULT = 12_000
 FILE_MAX = 60_000
@@ -214,11 +216,21 @@ def _card(ctx: Ctx, kind: str, **fields) -> str:
     return f"Proposed: a {kind} card is shown {where}. Only the owner can act on it; you'll see the outcome in the conversation."
 
 
+def _safe_link(a: dict, key: str) -> str | None:
+    raw = _str(a, key, required=False, max_len=500)
+    if not raw:
+        return None
+    url = safe_url(raw)
+    if url is None:
+        raise BadRequest("bad_input", f"{key} must be an http:// or https:// address")
+    return url
+
+
 def ask_for_secret(ctx: Ctx, a: dict) -> str:
     name = (_str(a, "name", max_len=64) or "").strip().upper()
     if not name.replace("_", "").isalnum():
         raise BadRequest("bad_input", "Secret names are letters, digits and underscores, e.g. GITHUB_TOKEN")
-    return _card(ctx, "secret", name=name, description=_str(a, "description", required=False, max_len=500) or "", link=_str(a, "help_url", required=False, max_len=500))
+    return _card(ctx, "secret", name=name, description=_str(a, "description", required=False, max_len=500) or "", link=_safe_link(a, "help_url"))
 
 
 def propose_integration(ctx: Ctx, a: dict) -> str:
@@ -242,7 +254,7 @@ def propose_integration(ctx: Ctx, a: dict) -> str:
     if not secret.replace("_", "").isalnum():
         raise BadRequest("bad_input", "secret_name is letters, digits and underscores, e.g. HA_TOKEN")
     return _card(ctx, "integration", preset=None, name=name, title=(_str(a, "title", required=False, max_len=80) or name).strip(), url=url,
-                 secret_name=secret, guidance=_str(a, "guidance", required=False, max_len=1000) or "", token_url=_str(a, "token_url", required=False, max_len=500) or None,
+                 secret_name=secret, guidance=_str(a, "guidance", required=False, max_len=1000) or "", token_url=_safe_link(a, "token_url"),
                  reason=reason)
 
 
@@ -405,13 +417,15 @@ def run(ctx: Ctx, name: str, args: dict) -> tuple[str, bool]:
     if unknown:
         return f"Unknown arguments: {', '.join(sorted(unknown))}.", True
     try:
-        return tool.fn(ctx, args), False
+        text, err = tool.fn(ctx, args), False
     except (BadRequest, Conflict) as e:
-        return f"{getattr(e, 'detail', None) or e}", True
+        text, err = f"{getattr(e, 'detail', None) or e}", True
     except NotFound as e:
-        return f"Not found: {e}", True
+        text, err = f"Not found: {e}", True
     except Exception as e:  # noqa: BLE001 - the model reads the failure; the chat goes on
-        return f"The tool failed: {type(e).__name__}: {str(e)[:300]}", True
+        text, err = f"The tool failed: {type(e).__name__}: {str(e)[:300]}", True
+    # Every caller (the chat loop, the sidecar, the connector) gets the redacted text.
+    return (store_text(ctx.be, text) if ctx.be is not None else text), err
 
 
 def summary(names: list[str]) -> str:

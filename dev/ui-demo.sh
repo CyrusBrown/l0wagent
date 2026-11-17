@@ -7,7 +7,7 @@
 set -e
 cd "$(dirname "$0")/.."
 PORT=${API_PORT:-8000}
-(cd control && L0W_BACKEND=mock exec uv run uvicorn l0w_control.app:app --port "$PORT" --log-level warning) &
+(cd control && L0W_BACKEND=mock L0W_CORS_ORIGINS="http://localhost:${WEB_PORT:-5173}" exec uv run uvicorn l0w_control.app:app --port "$PORT" --log-level warning) &
 API=$!
 trap 'kill $API 2>/dev/null' EXIT INT TERM
 cd web && L0W_API="http://127.0.0.1:$PORT" pnpm exec vite --port "${WEB_PORT:-5173}" --open

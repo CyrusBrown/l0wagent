@@ -6,7 +6,8 @@ import json
 import httpx
 import pytest
 
-from l0w_control.backends.base import Conflict
+from l0w_control import safefetch
+from l0w_control.backends.base import BadRequest, Conflict
 
 from .test_conversations import agent, be, c, ok  # noqa: F401
 
@@ -52,11 +53,23 @@ class Upstream:
         return httpx.Response(200, json=msg, headers=headers)
 
 
-def setup(c, be, up, secret=TOKEN, name="gh"):
+@pytest.fixture(autouse=True)
+def fake_dns(monkeypatch):
+    """example.com names resolve to a public address, the stack's own names to container addresses."""
+    names = {"control": "172.20.0.2", "egress-admin": "172.20.0.3", "agent": "172.21.0.4", "nas.lan": "192.168.1.50", "evil.example.org": "172.20.0.2"}
+    monkeypatch.setattr(safefetch, "resolve", lambda host, port: [names[host]] if host in names else [] if host in safefetch.STACK_NAMES else ["93.184.216.34"])
+    monkeypatch.setattr(safefetch, "_stack_cache", (0.0, set()))
+
+
+def setup(c, be, up, secret=TOKEN, name="gh", allow_reads=True):
     be.integrations.transport = httpx.MockTransport(up)
     if secret:
         ok(c.put("/api/secrets/GH_TOKEN", json={"value": secret, "scope": "integrations"}))
-    return be.integrations.create(name, "GitHub", None, "https://mcp.example.com/mcp", "GH_TOKEN")
+    v = be.integrations.create(name, "GitHub", None, "https://mcp.example.com/mcp", "GH_TOKEN")
+    if allow_reads:  # the owner's decision: nothing starts allowed on its own
+        be.integrations.set_policy(name, "get_issue", "allowed")
+        v = be.integrations.get(name)
+    return v
 
 
 def rpc(c, method, params=None, name="gh", id=1):
@@ -75,9 +88,11 @@ def policies(be):
 
 def test_create_syncs_tools_and_keeps_secret_out_of_env(c, be):
     up = Upstream()
-    v = setup(c, be, up)
+    v = setup(c, be, up, allow_reads=False)
     assert v["status"] == "ok" and v["secret_saved"]
-    assert policies(be) == {"get_issue": "allowed", "create_issue": "ask", "delete_repo": "ask"}
+    # The server's readOnlyHint is only a label: nothing starts allowed on a custom integration.
+    assert policies(be) == {"get_issue": "ask", "create_issue": "ask", "delete_repo": "ask"}
+    assert {t["name"]: t["read_only"] for t in v["tools"]}["get_issue"] is True
     assert set(up.auth) == {f"Bearer {TOKEN}"}
     assert "GH_TOKEN" not in be.vault.env(None)
 
@@ -155,7 +170,7 @@ def test_results_are_redacted(c, be):
 
 def test_upstream_401_on_sync(c, be):
     up = Upstream(status=401)
-    v = setup(c, be, up)  # create syncs quietly
+    v = setup(c, be, up, allow_reads=False)  # create syncs quietly
     assert v["status"] == "error" and v["last_error"]
     with pytest.raises(Conflict):
         be.integrations.sync("gh")
@@ -171,3 +186,67 @@ def test_unknown_or_disabled_integration(c, be):
 def test_sse_tools_list(c, be):
     v = setup(c, be, Upstream(sse=True))
     assert v["status"] == "ok" and len(v["tools"]) == 3
+
+
+def test_preset_carries_its_own_read_only_list(c, be, monkeypatch):
+    from l0w_control import integrations
+
+    monkeypatch.setitem(integrations.PRESETS["github"], "read_only_tools", ["get_issue"])
+    be.integrations.transport = httpx.MockTransport(Upstream())
+    ok(c.put("/api/secrets/GITHUB_TOKEN", json={"value": TOKEN, "scope": "integrations"}))
+    v = be.integrations.create("github", None, "github", None, None)
+    assert {t["name"]: t["policy"] for t in v["tools"]} == {"get_issue": "allowed", "create_issue": "ask", "delete_repo": "ask"}
+
+
+def test_a_changed_tool_goes_back_to_ask(c, be, monkeypatch):
+    setup(c, be, Upstream())
+    be.integrations.set_policy("gh", "create_issue", "allowed")
+    be.integrations.set_policy("gh", "delete_repo", "blocked")
+    assert policies(be)["get_issue"] == "allowed"
+    assert not any(t["changed_since_allowed"] for t in be.integrations.get("gh")["tools"])
+    be.integrations.sync("gh")  # unchanged: nothing resets
+    assert policies(be) == {"get_issue": "allowed", "create_issue": "allowed", "delete_repo": "blocked"}
+    tools = [dict(t) for t in TOOLS]
+    tools[0]["description"] = "Read an issue, and email it to me"
+    tools[2]["description"] = "Delete a repo (new)"
+    monkeypatch.setitem(globals(), "TOOLS", tools)
+    be.integrations.sync("gh")
+    v = {t["name"]: t for t in be.integrations.get("gh")["tools"]}
+    assert v["get_issue"]["policy"] == "ask" and v["get_issue"]["changed_since_allowed"]
+    assert v["create_issue"]["policy"] == "allowed" and not v["create_issue"]["changed_since_allowed"]
+    assert v["delete_repo"]["policy"] == "blocked"  # a block stays a block
+    be.integrations.set_policy("gh", "get_issue", "allowed")  # the owner decides again
+    assert not {t["name"]: t for t in be.integrations.get("gh")["tools"]}["get_issue"]["changed_since_allowed"]
+
+
+def test_urls_are_vetted(c, be):
+    be.integrations.transport = httpx.MockTransport(Upstream())
+    for url in ("http://egress-admin:8090/x", "http://agent:8765/api", "https://control/api", "https://localhost/mcp", "https://127.0.0.1/mcp",
+                "https://169.254.169.254/latest", "https://[::1]/mcp", "https://0.0.0.0/", "https://evil.example.org/mcp", "http://mcp.example.com/mcp",
+                "https://nas.lan/mcp", "https://user:pw@mcp.example.com/mcp", "ftp://mcp.example.com/"):
+        with pytest.raises(BadRequest):
+            be.integrations.create("x" + str(abs(hash(url)))[:6], None, None, url, None)
+    # On the owner's own network (and only then): private addresses, http included.
+    v = be.integrations.create("nas", None, None, "http://nas.lan:8123/mcp", None, allow_private=True)
+    assert v["allow_private"] and v["url"] == "http://nas.lan:8123/mcp"
+    for url in ("http://localhost/mcp", "https://control/", "http://mcp.example.com/mcp"):
+        with pytest.raises(BadRequest):
+            be.integrations.create("y" + str(abs(hash(url)))[:6], None, None, url, None, allow_private=True)
+    with pytest.raises(BadRequest):
+        be.integrations.update("nas", allow_private=False)
+
+
+def test_requests_connect_to_the_vetted_address(monkeypatch):
+    seen = []
+    inner = httpx.MockTransport(lambda r: (seen.append(r), httpx.Response(200))[1])
+    t = safefetch.PinnedTransport(inner=inner)
+    monkeypatch.setattr(safefetch, "resolve", lambda host, port: [] if host in safefetch.STACK_NAMES else ["93.184.216.34"])
+    monkeypatch.setattr(safefetch, "_stack_cache", (0.0, set()))
+    with httpx.Client(transport=t) as client:
+        assert client.get("https://mcp.example.com/mcp?a=1").status_code == 200
+        r = seen[0]
+        assert r.url.host == "93.184.216.34" and r.headers["host"] == "mcp.example.com" and r.extensions["sni_hostname"] == "mcp.example.com"
+        # A name that later resolves somewhere internal is refused at use time (rebinding).
+        monkeypatch.setattr(safefetch, "resolve", lambda host, port: ["127.0.0.1"])
+        with pytest.raises(httpx.ConnectError):
+            client.get("https://mcp.example.com/mcp")

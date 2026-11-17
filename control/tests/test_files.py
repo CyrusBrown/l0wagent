@@ -151,3 +151,58 @@ def test_shelf_live_snapshot_and_versions(c, tree):
     ok(c.delete(f"/api/agent/shelf/{agent['id']}", headers=AGENT))
     url = ok(c.get(f"/api/shelf/{snap['id']}/preview-url"))["url"]
     assert TestClient(c.be.files_app).get(url.split(":8001", 1)[1]).text == "first\n"
+
+
+def _link(path, copy):
+    """Replace a file with a symlink to a copy of it elsewhere."""
+    target = path.parent.parent.parent / (path.name + ".real")
+    if path.exists():
+        path.rename(target)
+    else:
+        target.write_text("x")
+    os.symlink(target, path)
+
+
+def _commondir(g):
+    (g / "commondir").write_text("../other\n")
+
+
+def _alternates(g):
+    (g / "objects" / "info").mkdir(exist_ok=True)
+    (g / "objects" / "info" / "alternates").write_text("/elsewhere/objects\n")
+
+
+@pytest.mark.parametrize("name,spoil", [
+    ("head", lambda g: _link(g / "HEAD", True)),
+    ("config", lambda g: _link(g / "config", True)),
+    ("packed-refs", lambda g: _link(g / "packed-refs", True)),
+    ("ref", lambda g: _link(g / "refs" / "heads" / "main", True)),
+    ("deep-ref", lambda g: (g / "refs" / "heads" / "a").mkdir() or _link(g / "refs" / "heads" / "a" / "b", True)),
+    ("commondir", _commondir),
+    ("alternates", _alternates),
+])
+def test_a_repo_with_links_or_redirects_isnt_opened(c, tree, name, spoil):
+    assert ok(c.get("/api/files/list", params={"volume": "workspace"}))["git"] is True
+    spoil(tree / "workspace" / ".git")
+    assert ok(c.get("/api/files/list", params={"volume": "workspace"}))["git"] is False, name
+    assert ok(c.get("/api/files/history", params={"volume": "workspace", "path": "NOW.md"})) == []
+
+
+def test_zip_and_raw_stream_in_chunks(c, tree, monkeypatch):
+    from l0w_control import files
+
+    monkeypatch.setattr(files, "CHUNK", 1000)
+    data = os.urandom(5321) + b"tail"
+    (tree / "work" / "garden" / "big.bin").write_bytes(data)
+    monkeypatch.setattr(files.Storage if hasattr(files, "Storage") else type(c.be.storage), "read",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("whole file read")))
+    z = c.get("/api/files/zip", params={"volume": "work", "path": "garden"})
+    assert z.status_code == 200
+    import io
+    import zipfile
+
+    arc = zipfile.ZipFile(io.BytesIO(z.content))
+    assert arc.read("big.bin") == data and arc.read("style.css") == b"h1{color:red}"
+    assert arc.testzip() is None
+    r = c.get("/api/files/raw", params={"volume": "work", "path": "garden/big.bin", "download": True})
+    assert r.content == data and r.headers["content-length"] == str(len(data))

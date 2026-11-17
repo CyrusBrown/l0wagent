@@ -6,22 +6,31 @@ Agent routes (/api/agent/*), the MCP connector (/mcp) and the reserved
 
 from __future__ import annotations
 
+import hmac
 import json
 import os
 from typing import Annotated, Literal
 from urllib.parse import quote, urlsplit
 
-from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from fastapi.security import APIKeyCookie, HTTPAuthorizationCredentials, HTTPBearer
 from starlette.background import BackgroundTask
 
+from ..auth import SECURE_SESSION_COOKIE, SESSION_COOKIE, SESSION_DAYS_DEFAULT  # noqa: F401
 from ..backends.base import Backend
+from ..netaddr import client_ip, is_local_or_private, request_scheme
 from . import schemas as s
 
-SESSION_COOKIE = "l0w_session"
 
-cookie_scheme = APIKeyCookie(name=SESSION_COOKIE, auto_error=False, scheme_name="session", description="Browser session cookie.")
+class _SessionCookie(APIKeyCookie):
+    """The session cookie under either name (the Secure one is __Host- prefixed)."""
+
+    async def __call__(self, request: Request) -> str | None:
+        return request.cookies.get(SECURE_SESSION_COOKIE) or request.cookies.get(SESSION_COOKIE)
+
+
+cookie_scheme = _SessionCookie(name=SESSION_COOKIE, auto_error=False, scheme_name="session", description="Browser session cookie.")
 bearer_scheme = HTTPBearer(auto_error=False, scheme_name="device", description="Device token (desktop app, l0w CLI).")
 
 
@@ -44,13 +53,22 @@ public = APIRouter(prefix="/api")
 api = APIRouter(prefix="/api", dependencies=[Depends(owner)])
 
 
-def _set_session(response: Response, token: str | None) -> None:
+def _secure(request: Request, be: Backend) -> bool:
+    mode = (getattr(getattr(be, "env", None), "cookie_secure", "auto") or "auto").lower()
+    return mode == "always" or (mode != "never" and request_scheme(request) == "https")
+
+
+def _set_session(request: Request, response: Response, be: Backend, token: str | None) -> None:
     if token:
-        response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax", secure=False, path="/")
+        secure = _secure(request, be)
+        days = be.settings.get("SESSION_DAYS") if hasattr(be, "settings") else SESSION_DAYS_DEFAULT
+        response.set_cookie(SECURE_SESSION_COOKIE if secure else SESSION_COOKIE, token, max_age=days * 86400, httponly=True, samesite="lax", secure=secure, path="/")
+        if secure:
+            response.delete_cookie(SESSION_COOKIE, path="/")  # a leftover plain cookie from before HTTPS
 
 
 def _client(request: Request) -> tuple[str, str]:
-    return (request.client.host if request.client else "unknown", request.headers.get("user-agent", ""))
+    return (client_ip(request), request.headers.get("user-agent", ""))
 
 
 # ── Public: meta, login, setup ─────────────────────────────────────────────
@@ -65,14 +83,14 @@ LOGIN_ERRORS = {401: {"model": s.LoginError}, 429: {"model": s.LoginError}, 423:
 @public.post("/auth/login", tags=["auth"], responses=LOGIN_ERRORS)
 def login(req: s.LoginRequest, request: Request, response: Response, be: Be) -> s.LoginResult:
     result, cookie = be.login(req, *_client(request))
-    _set_session(response, cookie)
+    _set_session(request, response, be, cookie)
     return result
 
 
 @public.post("/auth/totp", tags=["auth"], responses=LOGIN_ERRORS)
 def login_totp(req: s.TotpRequest, request: Request, response: Response, be: Be) -> s.LoginResult:
     result, cookie = be.login_totp(req, *_client(request))
-    _set_session(response, cookie)
+    _set_session(request, response, be, cookie)
     return result
 
 
@@ -84,13 +102,21 @@ def logout(
     bearer: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
 ) -> s.Ok:
     be.logout(cookie, bearer.credentials if bearer else None)
-    response.delete_cookie(SESSION_COOKIE, path="/")
+    for name in (SESSION_COOKIE, SECURE_SESSION_COOKIE):
+        response.delete_cookie(name, path="/", secure=name == SECURE_SESSION_COOKIE, httponly=True, samesite="lax")
     return s.Ok()
 
 
 @public.post("/setup/owner", tags=["auth"], responses={400: {"model": s.PasswordProblem}, 409: {"model": s.PasswordProblem}})
-def setup_owner(req: s.SetupOwnerRequest, be: Be) -> s.Owner:
-    """First-run wizard step 1. Refused once an owner exists."""
+def setup_owner(req: s.SetupOwnerRequest, request: Request, be: Be) -> s.Owner:
+    """First-run wizard step 1. Refused once an owner exists. Needs the setup code ./l0w install
+    printed; with none configured (dev stacks), only a local or private-network caller may."""
+    code = getattr(getattr(be, "env", None), "setup_code", "")
+    if code:
+        if not hmac.compare_digest((req.setup_code or "").encode(), code.encode()):
+            raise HTTPException(403, "That setup code is wrong. ./l0w install printed it (it's L0W_SETUP_CODE in .env).")
+    elif not is_local_or_private(client_ip(request)):
+        raise HTTPException(403, "Set L0W_SETUP_CODE (./l0w install does) to set up from outside your network.")
     return be.setup_owner(req)
 
 
@@ -134,7 +160,8 @@ def totp_setup(be: Be) -> s.TotpSetup:
 
 
 @api.post("/account/totp/enable", tags=["auth"], responses={400: {"model": s.LoginError}})
-def totp_enable(req: s.TotpEnable, be: Be) -> s.Owner:
+def totp_enable(req: s.TotpEnable, be: Be) -> s.TotpEnabled:
+    """Verifies against the secret from /totp/setup and returns one-time recovery codes (shown once)."""
     return be.totp_enable(req)
 
 
@@ -746,6 +773,12 @@ def check_update(be: Be) -> s.UpdateInfo:
     return be.check_update()
 
 
+@api.post("/system/update/cancel", tags=["system"])
+def cancel_update(be: Be) -> s.UpdateInfo:
+    """Clear a pending update's drain, so runs can start again (a stuck ./l0w update)."""
+    return be.cancel_update()
+
+
 # ── Files and shelf ────────────────────────────────────────────────────────
 @api.get("/files/list", tags=["files"])
 def list_dir(be: Be, volume: s.Volume, path: str = "") -> s.Listing:
@@ -755,7 +788,7 @@ def list_dir(be: Be, volume: s.Volume, path: str = "") -> s.Listing:
 PAGE_TYPES = ("text/html", "image/svg+xml", "application/xhtml+xml", "text/xml", "application/xml")
 
 
-def _raw(data: bytes, mime: str, name: str, download: bool) -> Response:
+def _raw(data, mime: str, name: str, download: bool, size: int | None = None) -> Response:
     """Bytes from the agent's storage on the main origin, never rendered as a page here:
     HTML, SVG and XML go out as text/plain (sandboxed and nosniff besides). They're shown
     only from the files origin (preview-url) in a sandboxed frame."""
@@ -765,7 +798,9 @@ def _raw(data: bytes, mime: str, name: str, download: bool) -> Response:
         mime = "application/octet-stream"
     elif mime in PAGE_TYPES:
         mime = "text/plain; charset=utf-8"
-    return Response(data, media_type=mime, headers=headers)
+    if size is None:
+        return Response(data, media_type=mime, headers=headers)
+    return StreamingResponse(data, media_type=mime, headers={**headers, "Content-Length": str(size)})
 
 
 def _origin(request: Request, env_name: str, port_env: str, default_port: int) -> str:
@@ -776,7 +811,7 @@ def _origin(request: Request, env_name: str, port_env: str, default_port: int) -
     host = urlsplit("//" + (request.headers.get("host") or "localhost")).hostname or "localhost"
     if ":" in host:
         host = f"[{host}]"
-    scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+    scheme = request_scheme(request)
     port = os.environ.get(port_env) or (os.environ.get("L0W_FILES_PORT") if port_env == "L0W_FILES_PUBLIC_PORT" else None) or str(default_port)
     return f"{scheme}://{host}:{port}"
 
@@ -784,8 +819,8 @@ def _origin(request: Request, env_name: str, port_env: str, default_port: int) -
 @api.get("/files/raw", tags=["files"], response_class=Response, responses={200: {"content": {"application/octet-stream": {}}}})
 def read_file(be: Be, volume: s.Volume, path: str, download: bool = False) -> Response:
     """File bytes, for downloads and client-side previewers (text, CSV, notebooks, 3D)."""
-    data, mime = be.read_file(volume, path)
-    return _raw(data, mime, path.rsplit("/", 1)[-1], download)
+    body, size, mime = be.stream_file(volume, path)
+    return _raw(body, mime, path.rsplit("/", 1)[-1], download, size)
 
 
 @api.get("/files/zip", tags=["files"], response_class=Response, responses={200: {"content": {"application/zip": {}}}})

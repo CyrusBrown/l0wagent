@@ -11,7 +11,9 @@
   with a secure input card.
 - **Integrations** (Tools & Secrets): connect a remote MCP server such as GitHub. Control holds
   the token and makes the calls, so the assistant gets the tools without the token. Each tool is
-  **Allowed**, **Ask** or **Blocked**; read-only tools start Allowed, the rest start on Ask. An Ask
+  **Allowed**, **Ask** or **Blocked**. Every tool starts on Ask, except a preset's vetted read-only
+  tools (a server's own "read-only" label isn't trusted). If a tool's description or inputs change
+  after you allowed it, it goes back to Ask and says "Changed since you allowed it". An Ask
   tool creates a permission each time: **Allow once** lets that exact call through once, and
   **Allow always** makes the tool Allowed.
 - **Connected apps** (Tools & Secrets): outside chat apps, such as Claude or ChatGPT, connect
@@ -23,8 +25,13 @@
   block hosts (or allow read-only), and the request log lists what it asked for.
 - **Notifications** (Settings → Notifications): web push on this device (needs HTTPS, e.g.
   Tailscale HTTPS) or an ntfy topic; approvals and new sign-ins notify by default; quiet hours.
+  ntfy sends titles only unless you turn previews on, and takes an optional access token: on the
+  public ntfy server anyone who knows a topic's name can read it.
 - **Updates**: a banner shows a new release; apply it on the server with `./l0w update`, which waits
-  until the assistant is idle. `./l0w` also has status, logs, inbox, secrets and more for the host.
+  until the assistant is idle. While it waits, the banner says what it's waiting for and has
+  **Cancel update**; a stuck update clears itself after ten minutes (or `./l0w drain off`). `./l0w`
+  also has status, logs, inbox, secrets, `2fa-reset` (lost your phone and recovery codes) and more
+  for the host.
 - **Self-test** (Settings → System) checks the assistant's isolation.
 
 The 1:1 chat can walk you through connecting an integration such as GitHub. It explains the steps, links the provider's token page with the permissions to choose, and shows a Connect card with a secure input. The token goes straight from your browser to control, is saved for integrations only, and the chat never sees it.

@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import json
 import os
+import pwd
+import shutil
 import socket
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -99,7 +102,36 @@ def run(t: dict) -> list[dict]:
 
     sock = next((p for p in ("/var/run/docker.sock", "/run/docker.sock") if os.path.exists(p)), None)
     add("no_docker_socket", "No Docker socket", "fail" if sock else "ok", sock or "")
+
+    add(*_reviewer_check())
     return checks
+
+
+def _reviewer_check() -> tuple[str, str, str, str]:
+    """The reviewer's unix user can't read the agent's home and has no sudo (needs root or sudo to test)."""
+    id_, label = "reviewer_isolated", "The reviewer's account can't read the agent's home or use sudo"
+    try:
+        pwd.getpwnam("reviewer")
+    except KeyError:
+        return id_, label, "skip", "no reviewer user here (consults run as the agent's user)"
+    home = os.path.expanduser("~")
+    mode = os.stat(home).st_mode & 0o077
+    if mode:
+        return id_, label, "fail", f"{home} is readable by others (mode {oct(os.stat(home).st_mode & 0o777)})"
+    prefix = [] if os.geteuid() == 0 else ["sudo", "-n"]
+    if os.geteuid() == 0 and shutil.which("runuser"):
+        prefix = ["runuser", "-u", "reviewer", "--"]
+    elif prefix:
+        prefix += ["-u", "reviewer", "--"]
+    else:
+        return id_, label, "warn", "home is 0700; can't switch user to test further"
+    try:
+        listed = subprocess.run([*prefix, "ls", home], capture_output=True, timeout=10).returncode == 0
+        sudo_ok = subprocess.run([*prefix, "sudo", "-n", "true"], capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return id_, label, "warn", str(e)
+    bad = [x for x, v in (("lists the agent's home", listed), ("has sudo", sudo_ok)) if v]
+    return id_, label, "fail" if bad else "ok", ", ".join(bad)
 
 
 if __name__ == "__main__":

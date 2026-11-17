@@ -35,6 +35,23 @@ yours and are never overwritten.
 ./l0w up
 ```
 
+## Lost your phone and your recovery codes
+
+```sh
+./l0w 2fa-reset           # turns off two-factor sign-in and deletes the recovery codes
+```
+
+Then sign in with your password and set 2FA up again in Settings → Account. Anyone who can run
+`docker compose exec` on the server can do this, which is why it needs no code.
+
+## Disk space
+
+Settings → System shows the free disk space, the database size (with its write-ahead log) and the
+size of the `/workspace` and `/work` volumes (refreshed every 10 minutes; `/cache` belongs to the
+agent computer and isn't shown). When free space drops below `DISK_WARN_FREE_GB` (default 5, in
+Settings or the environment) the page shows a warning and you get one "Low disk space"
+notification a day.
+
 ## Logging the assistant in again
 
 If Claude asks the assistant to sign in again (the Inbox or System page will say usage can't

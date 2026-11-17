@@ -4,7 +4,7 @@ Packaging, install, updates, login, extensions and the security invariants. Part
 
 ## Packaging
 
-- **Prebuilt multi-arch images on GHCR**, built by GitHub Actions on each tag: control, agent, egress, agent-web, chat-runtime, plus the `cloudflared` config used once a hub is joined. Channels: `stable` and `edge`.
+- **Prebuilt multi-arch images on GHCR**, built by GitHub Actions on each tag: control, agent, egress, agent-web, chat-runtime. With the hub, two more: **tunnel** (always in the stack; it waits for a token from control and then runs `cloudflared`, so joining a hub needs no host step) and **gateway** (holds the instance's keys; see [hub.md](hub.md#the-gateway)). Channels: `stable` and `edge`.
 - `compose.yaml` references the images. `compose.dev.yaml` builds from source, for development and forks.
 - **Host resources are per user**: GPU, memory, CPU and host folders go in `compose.override.yaml`.
   - The installer asks the basics and detects `nvidia-container-toolkit`.
@@ -47,11 +47,12 @@ Packaging, install, updates, login, extensions and the security invariants. Part
 - **Browser**: a session cookie. **Apps** (the Tauri app, the `l0w` CLI): a long-lived, revocable **device token**, kept in the OS keychain and sent as a header. Device pairing (approve a code from an existing session) is an alternative way to sign in an app.
 - **Hardening**, since the login page may face the internet once a hub is joined:
   - argon2id hashing, a minimum length (12), and a check against known-breached passwords (k-anonymity range API: the password never leaves the server). **The breached-password check is deferred** (owner, 2026-11-14); see the Later list in [development.md](development.md).
-  - per-IP and per-account rate limits with backoff, and temporary lockout
+  - per-address rate limits, plus a global slow-down for unknown addresses under attack (no account lockout: a stranger could use it to keep the owner out)
   - a push notification and an Inbox card for every new device or session, with one-click revoke
   - a session and device list in Settings
   - a small pre-login surface: the login page, the static bundle, and the machine routes (which authenticate themselves)
-  - the wizard encourages 2FA when you join a hub
+  - 2FA (TOTP or a passkey) is required to join a hub
+  - device tokens can be scoped (read only; or everything except approvals, secrets and settings), for coding agents using the `l0w` CLI
 - **Other callers** authenticate differently (detailed in [chat-and-tools.md](chat-and-tools.md) and [hub.md](hub.md)):
   - outside chat services use OAuth tokens
   - peers and hub services use signed requests
@@ -111,6 +112,9 @@ Carried over from today, and still binding:
 - Calls to model providers from the sandbox are gated by the egress lease. Anything new that makes such calls must hold a lease.
 - Prompts are control-owned. Old text is archived before edits, and harness news announces agent-facing changes.
 - The usage gate fails closed.
+- **The runner answers only control.** `RUNNER_ALLOWED_FROM` (compose sets it to `control`) limits the runner's port to control's address; this stops other containers on the sandbox network, not a process inside the agent container, which can read `RUNNER_TOKEN` and call from localhost.
+- **The agent can start its own model session, and control can't prevent it.** The provider login and the open lease are local to the agent container. The runner watches for a model CLI that isn't the session's own and control puts a warning on the run's timeline; `core.md` says not to. The real fix is a model proxy in control.
+- **The reviewer** runs as a separate unix user (`reviewer`: no sudo, own home, a scrubbed environment with no agent token, runner token or secrets). It reads `/workspace` and `/work` as "other" and cannot read the agent's home (mode 0700) or its processes' environment. It still has a shell and its model login is a copy of the agent's login file, so "no writes" for the reviewer means: it can't write the agent's files, but it can write its own home and `/tmp`, and it can reach the network through egress. Where the account is missing (development without Docker) it falls back to the agent's own user and is only asked not to write.
 
 New with the overhaul:
 - **The agent can't change its harness**: no extension writes, no settings, no secrets, no budget changes. Promoting a reply to a full run, publishing to the public internet, and anything costing extra budget need the owner.
@@ -119,3 +123,9 @@ New with the overhaul:
 - **Files are served safely**: control resolves agent paths with symlink-safe containment, and agent-made HTML/SVG renders only in a sandboxed iframe on a separate origin. Agent markdown is sanitized.
 - **Outside callers authenticate per kind**: the owner (password + session or device token), outside chat services (OAuth scopes, never secrets or approvals), peers and hub services (signatures, later).
 - **Approvals stay online**: offline-queued actions never include approvals, secrets, settings or budget changes.
+
+With the hub (planned, 2026-11-16):
+- **Nothing agent-made is served from the instance's own hostname.** Files, the agent's page and published services each have a hostname on the content domain.
+- **Callers are classed by where they arrive from**: the sandbox, the chat runtime, the tunnel, the local network. Each class has a list of paths it may reach, default deny. `/api/agent/*` is reachable from the sandbox only.
+- **The instance's keys live in the gateway**, not in control and never in the agent.
+- **Control and the gateway vet every address they call** (integrations, peers, hub services) the way egress does: no private or internal addresses, https, no redirects.

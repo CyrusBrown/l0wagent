@@ -1,8 +1,11 @@
 """The owner's account: password login, optional TOTP, sessions and device tokens.
 
 - Passwords: argon2id, at least 12 characters. (The breached-password check is deferred.)
-- Rate limits: too many failures from one address → 429; too many consecutive failures
-  for the account → a temporary lockout (423). Both answer with Retry-After.
+- Rate limits: too many failures from one address → 429 with Retry-After. There is no account
+  lockout (a stranger could keep the owner out with it). Instead, once failures pile up
+  across all addresses, an address that has never signed in successfully gets one password
+  check every couple of seconds (429 otherwise).
+- TOTP secrets are encrypted with the vault key; enabling 2FA issues one-time recovery codes.
 - Browser sessions are cookies that expire after SESSION_DAYS without use; device tokens
   (desktop app, `l0w` CLI) last until revoked. Only hashes of either are stored.
 - Every new session or device raises a security alert (an Inbox card) through `on_new_session`.
@@ -23,6 +26,7 @@ from urllib.parse import quote
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
+from cryptography.fernet import Fernet, InvalidToken
 
 from .api import schemas as s
 from .backends.base import BadRequest, Conflict, LoginFailed, NotFound, Unauthorized
@@ -34,6 +38,15 @@ CHALLENGE_TTL = 300
 CHALLENGE_TRIES = 5
 _hasher = PasswordHasher()  # argon2id with the library's current recommended parameters
 _DUMMY_HASH = _hasher.hash("timing-equaliser-not-a-password")
+SESSION_COOKIE = "l0w_session"
+SECURE_SESSION_COOKIE = "__Host-l0w_session"  # used when the cookie is Secure
+SESSION_COOKIES = (SECURE_SESSION_COOKIE, SESSION_COOKIE)
+SESSION_DAYS_DEFAULT = 30
+SLOWDOWN_AFTER = 20  # failed logins from anywhere within the window before the global slow-down starts
+SLOWDOWN_GAP = 2.0  # seconds between password checks during the slow-down
+PENDING_TOTP_TTL = 600
+RECOVERY_CODES = 10
+_ENC = "fernet:"
 
 
 def iso(dt: datetime) -> str:
@@ -100,11 +113,12 @@ class _Challenge:
 
 class Auth:
     def __init__(self, db: Database, settings: Settings, on_new_session: Callable[[str, str, str | None], None] | None = None,
-                 on_lockout: Callable[[str, int], None] | None = None):
+                 fernet: Fernet | None = None):
         self.db = db
         self.settings = settings
         self.on_new_session = on_new_session or (lambda *_: None)
-        self.on_lockout = on_lockout or (lambda *_: None)
+        self.fernet = fernet  # the vault's cipher, for TOTP secrets
+        self._last_check = 0.0
         self._challenges: dict[str, _Challenge] = {}
 
     # ── owner ──────────────────────────────────────────────────────────────
@@ -144,36 +158,25 @@ class Auth:
         self.db.ex("INSERT INTO login_attempts(ip, username, ok, at) VALUES(?,?,?,?)", (ip, username, int(ok), self.db.now()))
 
     def _throttle(self, ip: str) -> None:
-        """Refuse before checking anything if this address or the account is over its limit."""
+        """Refuse before checking anything if this address is over its limit, or the whole
+        server is under a guessing attack and this address is a stranger."""
         window = timedelta(minutes=15)
         since = iso(utcnow() - window)
         fails = self.db.q("SELECT at FROM login_attempts WHERE ip=? AND ok=0 AND at>=? ORDER BY at", (ip, since))
         if len(fails) >= self.settings.get("LOGIN_MAX_FAILURES_PER_IP"):
-            retry = int((parse(fails[0]["at"]) + window - utcnow()).total_seconds()) + 1  # type: ignore[operator]
+            # Limited for the full window after its newest failure.
+            retry = int((parse(fails[-1]["at"]) + window - utcnow()).total_seconds()) + 1  # type: ignore[operator]
             raise LoginFailed(s.LoginError(error="rate_limited", retry_after_s=max(retry, 1)), 429)
-        locked = self._locked_for()
-        if locked:
-            raise LoginFailed(s.LoginError(error="locked", retry_after_s=locked), 423)
-
-    def _locked_for(self) -> int:
-        """Seconds left on the account lockout, or 0."""
-        u = self._user()
-        if not u:
-            return 0
-        limit = self.settings.get("LOGIN_LOCKOUT_FAILURES")
-        last_ok = self.db.q1("SELECT MAX(id) AS id FROM login_attempts WHERE username=? AND ok=1", (u["username"],))["id"] or 0
-        fails = self.db.q("SELECT at FROM login_attempts WHERE username=? AND ok=0 AND id>? ORDER BY id DESC LIMIT ?", (u["username"], last_ok, limit))
-        if len(fails) < limit:
-            return 0
-        until = parse(fails[0]["at"]) + timedelta(minutes=self.settings.get("LOGIN_LOCKOUT_MINUTES"))  # type: ignore[operator]
-        return max(0, int((until - utcnow()).total_seconds()))
+        if self.db.q1("SELECT COUNT(*) AS n FROM login_attempts WHERE ok=0 AND at>=?", (since,))["n"] >= SLOWDOWN_AFTER:
+            if not self.db.q1("SELECT 1 FROM login_attempts WHERE ip=? AND ok=1 LIMIT 1", (ip,)):
+                now = time.monotonic()
+                wait = self._last_check + SLOWDOWN_GAP - now
+                if wait > 0:
+                    raise LoginFailed(s.LoginError(error="rate_limited", retry_after_s=int(wait) + 1), 429)
+                self._last_check = now
 
     def _fail(self, ip: str, username: str | None, error: str = "invalid_credentials") -> LoginFailed:
         self._record(ip, username, False)
-        locked = self._locked_for()
-        if locked:
-            self.on_lockout(ip, locked)
-            return LoginFailed(s.LoginError(error="locked", retry_after_s=locked), 423)
         return LoginFailed(s.LoginError(error=error))  # type: ignore[arg-type]
 
     def login(self, req: s.LoginRequest, ip: str, user_agent: str) -> tuple[s.LoginResult, str | None]:
@@ -206,15 +209,21 @@ class Auth:
         if not u or not u["totp_secret"] or not c or c.expires < time.time():
             self._challenges.pop(req.challenge, None)
             raise LoginFailed(s.LoginError(error="invalid_code"))
-        step = totp_match(u["totp_secret"], req.code)
+        secret = self._open_secret(u["totp_secret"])
+        if not u["totp_secret"].startswith(_ENC):  # an older plaintext secret: encrypt it now
+            self.db.ex("UPDATE users SET totp_secret=? WHERE id=1", (self._seal_secret(secret),))
+        step = totp_match(secret, req.code)
         last = self.db.q1("SELECT value FROM kv WHERE key='totp_last_step'")
-        if step is None or (last and step <= int(last["value"])):
-            c.tries += 1
-            if c.tries >= CHALLENGE_TRIES:
-                self._challenges.pop(req.challenge, None)
-            raise self._fail(ip, u["username"], "invalid_code")
+        replayed = step is not None and last is not None and step <= int(last["value"])
+        if step is None or replayed:
+            if not (step is None and self._burn_recovery_code(req.code)):
+                c.tries += 1
+                if c.tries >= CHALLENGE_TRIES:
+                    self._challenges.pop(req.challenge, None)
+                raise self._fail(ip, u["username"], "invalid_code")
+        else:
+            self._kv("totp_last_step", str(step))
         self._challenges.pop(req.challenge, None)
-        self._kv("totp_last_step", str(step))
         self._record(ip, u["username"], True)
         return self._issue(c.want, c.label, ip, user_agent)
 
@@ -300,25 +309,69 @@ class Auth:
             db.ex("UPDATE users SET password_hash=?, password_changed_at=? WHERE id=1", (_hasher.hash(req.new_password), now))
             db.ex("UPDATE auth_sessions SET revoked_at=? WHERE revoked_at IS NULL AND id IS NOT ?", (now, keep))
 
+    # ── TOTP secrets and recovery codes ────────────────────────────────────
+    def _seal_secret(self, secret: str) -> str:
+        if self.fernet is None:
+            raise RuntimeError("Auth has no cipher for the TOTP secret")
+        return _ENC + self.fernet.encrypt(secret.encode()).decode()
+
+    def _open_secret(self, stored: str) -> str:
+        if not stored.startswith(_ENC):
+            return stored  # written before secrets were encrypted
+        try:
+            return self.fernet.decrypt(stored[len(_ENC):].encode()).decode()  # type: ignore[union-attr]
+        except (InvalidToken, AttributeError) as e:
+            raise RuntimeError("The TOTP secret can't be decrypted (was the secret key changed?). Reset 2FA with ./l0w.") from e
+
+    @staticmethod
+    def _recovery_hash(code: str) -> str:
+        return sha256("recovery:" + "".join(ch for ch in code.lower() if ch.isalnum()))
+
+    def _burn_recovery_code(self, code: str) -> bool:
+        if not any(ch.isalpha() for ch in code):
+            return False  # a digit-only code is a TOTP attempt
+        return bool(self.db.ex("UPDATE recovery_codes SET used_at=? WHERE code_hash=? AND used_at IS NULL", (self.db.now(), self._recovery_hash(code))))
+
+    def _new_recovery_codes(self) -> list[str]:
+        codes = []
+        for _ in range(RECOVERY_CODES):
+            raw = base64.b32encode(secrets.token_bytes(7)).decode().rstrip("=").lower()[:10]
+            codes.append(f"{raw[:5]}-{raw[5:]}")
+        with self.db.tx() as db:
+            db.ex("DELETE FROM recovery_codes")
+            for c in codes:
+                db.ex("INSERT INTO recovery_codes(code_hash) VALUES(?)", (self._recovery_hash(c),))
+        return codes
+
     def totp_setup(self) -> s.TotpSetup:
         import segno
 
         u = self._user()
         secret = totp_secret()
+        self._kv("totp_pending", f"{int(time.time()) + PENDING_TOTP_TTL}|{self._seal_secret(secret)}")
         label = quote(f"l0wagent:{u['username']}")  # type: ignore[index]
         uri = f"otpauth://totp/{label}?secret={secret}&issuer=l0wagent"
         svg = segno.make(uri, error="m").svg_inline(scale=4, dark="#1f1e1d", light="#ffffff")
         return s.TotpSetup(secret=secret, otpauth_uri=uri, qr_svg=svg)
 
-    def totp_enable(self, req: s.TotpEnable) -> s.Owner:
-        step = totp_match(req.secret, req.code)
+    def totp_enable(self, req: s.TotpEnable) -> s.TotpEnabled:
+        """Verifies against the secret control issued in `totp_setup`, never one the client sends."""
+        row = self.db.q1("SELECT value FROM kv WHERE key='totp_pending'")
+        expires, _, sealed = (row["value"] if row else "").partition("|")
+        if not sealed or int(expires) < time.time():
+            raise BadRequest("invalid_code", "That setup expired. Start again to get a new QR code.")
+        secret = self._open_secret(sealed)
+        step = totp_match(secret, req.code)
         if step is None:
             raise BadRequest("invalid_code", "That code didn't match. Check your device's clock and try the next code.")
-        self.db.ex("UPDATE users SET totp_secret=? WHERE id=1", (req.secret,))
+        self.db.ex("UPDATE users SET totp_secret=? WHERE id=1", (self._seal_secret(secret),))
+        self.db.ex("DELETE FROM kv WHERE key='totp_pending'")
         self._kv("totp_last_step", str(step))
-        return self.owner()  # type: ignore[return-value]
+        return s.TotpEnabled(**self.owner().model_dump(), recovery_codes=self._new_recovery_codes())  # type: ignore[union-attr]
 
     def totp_disable(self, req: s.TotpDisable) -> s.Owner:
         self._verify_password(req.password)
         self.db.ex("UPDATE users SET totp_secret=NULL WHERE id=1")
+        self.db.ex("DELETE FROM recovery_codes")
+        self.db.ex("DELETE FROM kv WHERE key='totp_pending'")
         return self.owner()  # type: ignore[return-value]

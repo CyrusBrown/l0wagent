@@ -23,8 +23,9 @@ from .backends.base import Backend, BadRequest, Conflict, LoginFailed, NotFound,
 
 API_VERSION = "0"
 
-# The desktop app's local origin (Tauri) plus the Vite dev server.
-DEFAULT_ORIGINS = ["tauri://localhost", "http://tauri.localhost", "http://localhost:5173"]
+# The desktop app's local origins (Tauri). A Vite dev server sets L0W_CORS_ORIGINS itself: a page on a
+# localhost port is the same site as control there and must not get the owner's cookie by default.
+DEFAULT_ORIGINS = ["tauri://localhost", "http://tauri.localhost"]
 
 
 def create_app(backend: Backend) -> FastAPI:

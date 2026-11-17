@@ -86,7 +86,8 @@ export async function enqueue(item: OutboxItem): Promise<void> {
   try {
     item.id = Number(await tx('outbox', 'readwrite', (s) => s.add(item)))
   } catch {
-    item.id = Date.now()
+    // no IndexedDB (private mode, tests): an id unique within this page, never two items with one id
+    item.id = Math.max(Date.now(), ...items.map((i) => (i.id ?? 0) + 1))
   }
   items = [...items, item]
   changed()
@@ -115,25 +116,90 @@ function target(i: OutboxItem): string {
 }
 
 let flushing = false
+let retryTimer: ReturnType<typeof setTimeout> | null = null
+const RETRY_DEFAULT_MS = 30_000
 
-/** Send queued items in order. Stops at the first network failure (still offline); an item
- * the server refuses (say, a question someone already answered) is dropped with its error. */
+/** Retry-After as milliseconds (seconds or an HTTP date); a default when absent or odd. */
+function retryDelay(res: Response): number {
+  const h = res.headers.get('Retry-After')
+  if (!h) return RETRY_DEFAULT_MS
+  const secs = Number(h)
+  const ms = Number.isFinite(secs) ? secs * 1000 : Date.parse(h) - Date.now()
+  return Number.isFinite(ms) ? Math.min(Math.max(ms, 1000), 3600_000) : RETRY_DEFAULT_MS
+}
+
+async function errorText(res: Response): Promise<string> {
+  try {
+    const b = await res.json()
+    const d = b?.detail ?? b?.error
+    if (typeof d === 'string' && d) return d.replace(/_/g, ' ')
+    if (Array.isArray(d) && d[0]?.msg) return String(d[0].msg)
+  } catch { /* not JSON */ }
+  return `The server refused this (${res.status}).`
+}
+
+async function markFailed(id: number, error: string) {
+  const next = items.map((i) => (i.id === id ? { ...i, error } : i))
+  items = next
+  changed()
+  const item = next.find((i) => i.id === id)
+  if (item) await tx('outbox', 'readwrite', (s) => s.put(item)).catch(() => {})
+}
+
+/** Drop the offline read copy only (a revoked session must not leave threads readable); the
+ * outbox stays so what you wrote is sent after you sign in again. */
+export async function clearReadCache(qc?: QueryClient): Promise<void> {
+  if (available()) await tx('kv', 'readwrite', (s) => s.clear()).catch(() => {})
+  qc?.removeQueries({ predicate: (q) => CACHED.includes(String(q.queryKey[0])) })
+}
+
+/** Send queued items in order. Stops at the first network failure (still offline), a 5xx, a 401
+ * (kept until you sign in again) or a 429 (retried after Retry-After). Another 4xx means the
+ * server refused that item (say, a question someone already answered): it stays, with the
+ * reason, and is skipped until you retry or discard it. */
 export async function flushOutbox(qc: QueryClient): Promise<void> {
-  if (flushing || !items.length || !navigator.onLine) return
+  if (flushing || !navigator.onLine) return
   flushing = true
+  let sent = false
   try {
     for (const item of [...items]) {
+      if (item.error) continue
       let res: Response
       try {
         res = await fetch(target(item), { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', ...CLIENT_HEADERS }, body: JSON.stringify(item.body) })
       } catch {
         return
       }
+      if (res.status === 401) {
+        await clearReadCache(qc)
+        void qc.invalidateQueries({ queryKey: ['me'] })
+        return
+      }
+      // 429, or 409 in_progress (an earlier copy of this item is still being handled): retry later.
+      const busy = res.status === 409 && (await res.clone().json().catch(() => null))?.error === 'in_progress'
+      if (res.status === 429 || busy) {
+        if (retryTimer) clearTimeout(retryTimer)
+        retryTimer = setTimeout(() => { retryTimer = null; void flushOutbox(qc) }, busy ? 3000 : retryDelay(res))
+        return
+      }
       if (res.status >= 500) return
-      await remove(item.id!)
+      if (res.ok) { await remove(item.id!); sent = true } else await markFailed(item.id!, await errorText(res))
     }
-    qc.invalidateQueries()
   } finally {
     flushing = false
+    if (sent) void qc.invalidateQueries()
   }
 }
+
+/** Put a refused item back in line and try again. */
+export async function retryItem(id: number, qc: QueryClient): Promise<void> {
+  const item = items.find((i) => i.id === id)
+  if (!item) return
+  const next = { ...item, error: undefined }
+  items = items.map((i) => (i.id === id ? next : i))
+  changed()
+  await tx('outbox', 'readwrite', (s) => s.put(next)).catch(() => {})
+  await flushOutbox(qc)
+}
+
+export const discardItem = remove

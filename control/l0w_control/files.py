@@ -32,6 +32,8 @@ O_NONBLOCK = getattr(os, "O_NONBLOCK", 0)
 MAX_ENTRIES = 5000
 ZIP_MAX_BYTES = 1024 * 1024 * 1024
 ZIP_MAX_FILES = 50_000
+CHUNK = 1 << 20
+REFS_MAX = 20_000
 PATCH_MAX = 2 * 1024 * 1024
 RUN_RE = re.compile(r"\brun #(\d+)")
 
@@ -175,7 +177,7 @@ class Storage:
 
         def gen() -> Iterator[bytes]:
             try:
-                while chunk := os.read(fd, 1 << 20):
+                while chunk := os.read(fd, CHUNK):
                     yield chunk
             finally:
                 os.close(fd)
@@ -201,10 +203,19 @@ class Storage:
                     if files > ZIP_MAX_FILES or total > ZIP_MAX_BYTES:
                         raise BadRequest("too_large", "That folder is too big to zip here.")
                     try:
-                        data = self.read(volume, "/".join(sub))
+                        fd = self.open(volume, "/".join(sub))
                     except (BadRequest, NotFound):
                         continue
-                    z.writestr("/".join(sub[len(base):]) or e.name, data)
+                    # Stream the file in chunks: the agent decides how big its files are.
+                    try:
+                        info = zipfile.ZipInfo("/".join(sub[len(base):]) or e.name, datetime.fromtimestamp(e.mtime or 0, UTC).timetuple()[:6])
+                        info.compress_type = zipfile.ZIP_DEFLATED
+                        info.external_attr = 0o644 << 16
+                        with z.open(info, "w", force_zip64=True) as dest:
+                            while chunk := os.read(fd, CHUNK):
+                                dest.write(chunk)
+                    finally:
+                        os.close(fd)
 
             base = clean(rel)
             walk(base)
@@ -239,9 +250,39 @@ class Storage:
                 info = os.stat(name, dir_fd=fd, follow_symlinks=False)
                 if not st.S_ISDIR(info.st_mode):
                     return False
-            return True
+            # dulwich opens the rest by path and follows links, so refuse any link in what it reads,
+            # and the files that point outside the repo.
+            for name in (".git/HEAD", ".git/packed-refs", ".git/config"):
+                try:
+                    if st.S_ISLNK(os.stat(name, dir_fd=fd, follow_symlinks=False).st_mode):
+                        return False
+                except FileNotFoundError:
+                    pass
+            for name in (".git/commondir", ".git/objects/info/alternates"):
+                try:
+                    os.stat(name, dir_fd=fd, follow_symlinks=False)
+                    return False
+                except FileNotFoundError:
+                    pass
+            return self._no_links(os.open(".git/refs", O_DIR | O_NOFOLLOW | os.O_RDONLY, dir_fd=fd), [0])
         except OSError:
             return False
+        finally:
+            os.close(fd)
+
+    def _no_links(self, fd: int, seen: list[int]) -> bool:
+        """True when nothing under this folder (closed here) is a symlink."""
+        try:
+            with os.scandir(fd) as it:
+                for e in it:
+                    seen[0] += 1
+                    if seen[0] > REFS_MAX or e.is_symlink():
+                        return False
+                    if e.is_dir(follow_symlinks=False):
+                        sub = os.open(e.name, O_DIR | O_NOFOLLOW | os.O_RDONLY, dir_fd=fd)
+                        if not self._no_links(sub, seen):
+                            return False
+            return True
         finally:
             os.close(fd)
 

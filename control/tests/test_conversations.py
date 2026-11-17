@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from l0w_control.app import create_app
+from l0w_control.backends.base import BadRequest
 from l0w_control.backends.sqlite import SqliteBackend
 from l0w_control.config import Env
 
@@ -129,7 +130,7 @@ def test_permission_actions(c, be):
     p2 = ok(agent(c, "POST", "/permissions", json={"text": "Shorter holds", "actions": [{"kind": "setting", "key": "HOLD_MINUTES", "value": "2"}]}))
     ok(c.post(f"/api/permissions/{p2['id']}/decide", json={"decision": "allow", "scope": "once"}))
     assert be.settings.get("HOLD_MINUTES") == 2
-    assert be.conv.revert_once(run_id=999, run_started_at="2000-01-01T00:00:00Z") == ["set HOLD_MINUTES to 2"]
+    assert be.conv.revert_once() == ["set HOLD_MINUTES to 2"]
     assert be.settings.get("HOLD_MINUTES") == 9
 
 
@@ -235,8 +236,72 @@ def test_harness_news_announces_the_new_commands(c):
     titles = [n["title"] for n in news]  # newest first
     assert titles[0] == "Brokered integrations" and "permission #N" in news[0]["body"]
     assert titles[1] == "Secrets can be scoped" and "assistant secret list" in news[1]["body"]
-    news, titles = news[2:], titles[2:]
+    brief = next(n for n in news if n["title"] == "A fuller brief, `assistant runs` and `assistant help`")
+    assert "assistant run show N" in brief["body"]
+    first = titles.index("Monthly budgets and spending caps")  # entries added later in the same stretch come before it
+    news, titles = news[first:], titles[first:]
     assert titles[:6] == ["Monthly budgets and spending caps", "You may run on opencode", "Updates wait for you", "Budgets, your wakeup plan, routines, the reviewer and long jobs",
                           "The shelf and the owner's uploads", "Threads, asks, claims and suggestions"]
     assert "per month" in news[0]["body"] and "opencode" in news[1]["body"] and "--dont-interrupt" in news[2]["body"]
     assert "assistant wake at" in news[3]["body"] and "assistant shelf add" in news[4]["body"] and "assistant claim N" in news[5]["body"]
+
+
+def test_agent_may_propose_only_run_shape_settings(c, be):
+    def propose(key, value):
+        return agent(c, "POST", "/permissions", json={"text": "x", "actions": [{"kind": "setting", "key": key, "value": value}]})
+
+    assert propose("HOLD_MINUTES", 7).status_code == 200
+    for key, value in (("USAGE_UNKNOWN_POLICY", "allow"), ("LOGIN_MAX_FAILURES_PER_IP", 100000), ("RESERVE_WEEKLY_PCT", 99), ("SESSION_DAYS", 365)):
+        r = propose(key, value)
+        assert r.status_code == 400 and "owner's to change" in r.json()["detail"], key
+    assert propose("HOLD_MINUTES", 100000).status_code == 400  # outside the range
+    assert propose("HOLD_MINUTES", -1).status_code == 400
+    # Settings.set enforces ranges for everyone.
+    with pytest.raises(ValueError):
+        be.settings.set("RESERVE_WEEKLY_PCT", 1000)
+    be.settings.set("RESERVE_WEEKLY_PCT", 60)
+    assert be.settings.get("RESERVE_WEEKLY_PCT") == 60
+
+
+def test_ask_cap_per_run(c, be):
+    be.db.ex("INSERT INTO runs(id, kind, status, why, started_at) VALUES(?,?,?,?,?)", (901, "wakeup", "running", "manual", be.db.now()))
+    for i in range(20):
+        be.conv.file_task(901, None, f"task {i}", None)
+    with pytest.raises(BadRequest) as e:
+        be.conv.file_task(901, None, "one too many", None)
+    assert e.value.error == "too_many_asks"
+    with pytest.raises(BadRequest):
+        be.conv.file_question(901, None, "yes_no", "q?", [], True, None)
+    be.conv.file_task(None, None, "no run, no cap", None)
+    be.conv.withdraw("task", be.db.q1("SELECT id FROM tasks WHERE run_id=901 ORDER BY id")["id"])  # withdrawing frees room
+    be.conv.file_task(901, None, "fits again", None)
+
+
+def test_ask_notifications_fold_after_ten_an_hour(be, monkeypatch):
+    sent = []
+
+    class Loop:
+        def is_running(self):
+            return True
+
+    def fake_run(coro, loop):
+        sent.append(coro.cr_frame.f_locals["payload"]["title"])
+        coro.close()
+
+    monkeypatch.setattr("asyncio.run_coroutine_threadsafe", fake_run)
+    n = be.notifier
+    n.loop = Loop()
+    for i in range(14):
+        n.notify("approval", f"Approval needed {i}", "x", "/inbox", "permission", str(i))
+    assert len(sent) == 11 and sent[10] == "More waiting for you"
+    assert be.db.q1("SELECT COUNT(*) AS n FROM notifications WHERE kind='approval'")["n"] == 14  # all still recorded
+
+
+def test_project_links_are_scheme_checked(c):
+    good = [{"label": "Docs", "url": "https://example.org/x"}, {"label": "Thread", "url": "l0wagent://thread/3"}]
+    ok(agent(c, "POST", "/projects", json={"name": "Linky", "links": good}))
+    for bad in ("javascript:alert(1)", "data:text/html,hi", "file:///etc/passwd", "//evil.example", "https://"):
+        assert agent(c, "POST", "/projects", json={"name": "Bad one", "links": [{"label": "x", "url": bad}]}).status_code == 400, bad
+        assert agent(c, "PATCH", "/projects/linky", json={"links": [{"label": "x", "url": bad}]}).status_code == 400, bad
+    p = ok(agent(c, "PATCH", "/projects/linky", json={"links": [{"label": "L" * 200, "url": "http://example.org"}]}))
+    assert p["links"] == [{"label": "L" * 80, "url": "http://example.org"}]

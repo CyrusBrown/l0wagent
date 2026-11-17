@@ -13,7 +13,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 
 def _env(name: str, default: str = "") -> str:
@@ -36,6 +36,10 @@ class Env:
     usage_url: str = field(default_factory=lambda: _env("L0W_USAGE_URL", "https://api.anthropic.com/api/oauth/usage"))
     # Set the session cookie's Secure flag. "auto" = only when the request came over HTTPS.
     cookie_secure: str = field(default_factory=lambda: _env("L0W_COOKIE_SECURE", "auto"))
+    # Reverse proxies / tunnels whose forwarding headers are believed (addresses or subnets, comma-separated).
+    trusted_proxies: str = field(default_factory=lambda: _env("L0W_TRUSTED_PROXIES"))
+    # One-time code the first owner setup must present (./l0w install writes it). Unset = loopback/private callers only.
+    setup_code: str = field(default_factory=lambda: _env("L0W_SETUP_CODE"))
     instance_name: str = field(default_factory=lambda: _env("L0W_INSTANCE_NAME", "l0wagent"))
     # The chat-runtime sidecar (Claude-subscription chats). Its subnet may only call /api/chat-runtime/*.
     chat_runtime_url: str = field(default_factory=lambda: _env("L0W_CHAT_RUNTIME_URL").rstrip("/"))
@@ -43,34 +47,44 @@ class Env:
     chat_subnet: str = field(default_factory=lambda: _env("L0W_CHAT_SUBNET"))
     # How the sidecar reaches control (for its per-turn MCP endpoint).
     chat_control_url: str = field(default_factory=lambda: _env("L0W_CHAT_CONTROL_URL", "http://control:8000").rstrip("/"))
+    # Dev only (dev_stack.py, tests): let /api/agent/* be called from any address, not just the sandbox subnet.
+    agent_api_any_address: bool = field(default_factory=lambda: _env("L0W_AGENT_API_ANY_ADDRESS") == "1")
 
 
-# key: (type, default, description)
-SPECS: dict[str, tuple[str, Any, str]] = {
-    "USAGE_UNKNOWN_POLICY": ("str", "refuse", "'refuse' (fail closed) or 'allow': whether runs may start when usage can't be read."),
-    "RESERVE_WEEKLY_PCT": ("float", 80.0, "Don't start a run at or above this weekly usage (%), so the owner keeps room."),
-    "RESERVE_FIVE_HOUR_PCT": ("float", 70.0, "Don't start a run, and stop a running one, at or above this 5-hour usage (%)."),
-    "MANUAL_RUN_MAX_MINUTES": ("int", 60, "Wall-clock cap for a run started by the owner."),
-    "WAKEUP_MAX_MINUTES": ("int", 180, "Wall-clock cap for a planned wakeup or routine run."),
-    "MANUAL_RUN_PTS": ("float", 20.0, "Budget (pts) for a run you start with Wake now, unless you give one."),
-    "REPLY_RUN_MAX_PTS": ("float", 6.0, "Most a single Reply-now run may spend from the reply budget (pts)."),
-    "SWEEP_WINDOW_HOURS": ("float", 5.0, "Sweep: how many hours before the weekly reset sweep wakeups may run."),
-    "SWEEP_CEILING_PCT": ("float", 95.0, "Sweep: the weekly usage (%) sweep wakeups won't go past."),
-    "WAKEUP_LATE_MINUTES": ("int", 30, "A planned wakeup that can't start within this many minutes of its time (another run is busy) is marked missed."),
-    "UPDATE_CHECK": ("bool", True, "Check GitHub for new stable releases every few hours (shows the Update available banner)."),
-    "PROMOTE_WAIT_MINUTES": ("float", 10.0, "How long a reply run's promote request stays open before it expires."),
-    "DEFAULT_TIER": ("str", "sonnet", "Model (optionally model/effort) for runs that don't name one."),
-    "REPLY_TIER": ("str", "sonnet", "Model (optionally model/effort) for Reply-now runs."),
-    "REPLY_MAX_MINUTES": ("int", 15, "Wall-clock cap for a Reply-now run, including time held open for your reply."),
-    "HOLD_MINUTES": ("float", 5.0, "If the assistant messaged you or asked something, hold the run open this long for your reply (0 = off)."),
-    "HOLD_MAX_ROUNDS": ("int", 3, "How many times one run may wait for and resume on your replies."),
-    "RUN_MAX_RESUMES": ("int", 3, "How many times a run is resumed after the agent computer restarts mid-run."),
-    "STOP_GRACE_SECONDS": ("int", 90, "After asking a session to stop, force it this many seconds later."),
-    "LOGIN_MAX_FAILURES_PER_IP": ("int", 10, "Failed logins from one address within 15 minutes before it's rate-limited."),
-    "LOGIN_LOCKOUT_FAILURES": ("int", 5, "Consecutive failed logins for the account before a temporary lockout."),
-    "LOGIN_LOCKOUT_MINUTES": ("int", 15, "Length of the temporary lockout."),
-    "SESSION_DAYS": ("int", 30, "Browser sessions expire after this many days without use."),
-    "SELFTEST_LAN_TARGETS": ("str", "host.docker.internal:22,192.168.1.1:80,10.0.0.1:80", "LAN/host addresses the self-test checks the agent can't reach (host:port, comma-separated)."),
+class Spec(NamedTuple):
+    kind: str
+    default: Any
+    desc: str
+    who: str = "owner"  # who may propose a change: "agent" (run-shape settings only) or "owner"
+    lo: float | None = None
+    hi: float | None = None
+
+
+SPECS: dict[str, Spec] = {
+    "USAGE_UNKNOWN_POLICY": Spec("str", "refuse", "'refuse' (fail closed) or 'allow': whether runs may start when usage can't be read."),
+    "RESERVE_WEEKLY_PCT": Spec("float", 80.0, "Don't start a run at or above this weekly usage (%), so the owner keeps room.", lo=0, hi=100),
+    "RESERVE_FIVE_HOUR_PCT": Spec("float", 70.0, "Don't start a run, and stop a running one, at or above this 5-hour usage (%).", lo=0, hi=100),
+    "MANUAL_RUN_MAX_MINUTES": Spec("int", 60, "Wall-clock cap for a run started by the owner.", lo=1, hi=1440),
+    "WAKEUP_MAX_MINUTES": Spec("int", 180, "Wall-clock cap for a planned wakeup or routine run.", "agent", 1, 1440),
+    "MANUAL_RUN_PTS": Spec("float", 20.0, "Budget (pts) for a run you start with Wake now, unless you give one.", lo=0, hi=1000),
+    "REPLY_RUN_MAX_PTS": Spec("float", 6.0, "Most a single Reply-now run may spend from the reply budget (pts).", lo=0, hi=1000),
+    "SWEEP_WINDOW_HOURS": Spec("float", 5.0, "Sweep: how many hours before the weekly reset sweep wakeups may run.", lo=0, hi=48),
+    "SWEEP_CEILING_PCT": Spec("float", 95.0, "Sweep: the weekly usage (%) sweep wakeups won't go past.", lo=0, hi=100),
+    "WAKEUP_LATE_MINUTES": Spec("int", 30, "A planned wakeup that can't start within this many minutes of its time (another run is busy) is marked missed.", lo=1, hi=1440),
+    "UPDATE_CHECK": Spec("bool", True, "Check GitHub for new stable releases every few hours (shows the Update available banner)."),
+    "PROMOTE_WAIT_MINUTES": Spec("float", 10.0, "How long a reply run's promote request stays open before it expires.", "agent", 1, 120),
+    "DEFAULT_TIER": Spec("str", "sonnet", "Model (optionally model/effort) for runs that don't name one."),
+    "REPLY_TIER": Spec("str", "sonnet", "Model (optionally model/effort) for Reply-now runs."),
+    "REPLY_MAX_MINUTES": Spec("int", 15, "Wall-clock cap for a Reply-now run, including time held open for your reply.", "agent", 1, 240),
+    "HOLD_MINUTES": Spec("float", 5.0, "If the assistant messaged you or asked something, hold the run open this long for your reply (0 = off).", "agent", 0, 60),
+    "HOLD_MAX_ROUNDS": Spec("int", 3, "How many times one run may wait for and resume on your replies.", "agent", 0, 20),
+    "RUN_MAX_RESUMES": Spec("int", 3, "How many times a run is resumed after the agent computer restarts mid-run.", lo=0, hi=20),
+    "STOP_GRACE_SECONDS": Spec("int", 90, "After asking a session to stop, force it this many seconds later.", lo=1, hi=3600),
+    "LOGIN_MAX_FAILURES_PER_IP": Spec("int", 10, "Failed logins from one address within 15 minutes before it's rate-limited.", lo=1, hi=1000),
+    "RUN_EVENTS_KEEP_DAYS": Spec("int", 30, "Delete the raw event log of finished runs after this many days (the run's timeline stays).", lo=1, hi=3650),
+    "SESSION_DAYS": Spec("int", 30, "Browser sessions expire after this many days without use.", lo=1, hi=365),
+    "DISK_WARN_FREE_GB": Spec("float", 5.0, "Warn (Settings → System, and one notification a day) when the server's free disk space drops below this many GB.", lo=0.5, hi=1000),
+    "SELFTEST_LAN_TARGETS": Spec("str", "host.docker.internal:22,192.168.1.1:80,10.0.0.1:80", "LAN/host addresses the self-test checks the agent can't reach (host:port, comma-separated)."),
 }
 
 
@@ -84,6 +98,13 @@ def cast(kind: str, raw: Any) -> Any:
     return str(raw)
 
 
+def check_range(key: str, value: Any) -> None:
+    """Raises ValueError when a number is outside the setting's range."""
+    spec = SPECS[key]
+    if spec.kind in ("int", "float") and ((spec.lo is not None and value < spec.lo) or (spec.hi is not None and value > spec.hi)):
+        raise ValueError(f"{key} must be between {spec.lo:g} and {spec.hi:g}.")
+
+
 class Settings:
     """Reads and writes SPECS through the `settings` table."""
 
@@ -91,7 +112,7 @@ class Settings:
         self.db = db
 
     def get(self, key: str) -> Any:
-        kind, default, _ = SPECS[key]
+        kind, default = SPECS[key][:2]
         row = self.db.q1("SELECT value_json FROM settings WHERE key=?", (key,))
         candidates = [json.loads(row["value_json"])] if row else []
         if key in os.environ:
@@ -104,8 +125,9 @@ class Settings:
         return default
 
     def set(self, key: str, value: Any) -> None:
-        kind, _, _ = SPECS[key]
-        value = cast(kind, value)
+        spec = SPECS[key]
+        value = cast(spec.kind, value)
+        check_range(key, value)
         self.db.ex(
             "INSERT INTO settings(key, value_json, updated_at) VALUES(?,?,?) "
             "ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json, updated_at=excluded.updated_at",

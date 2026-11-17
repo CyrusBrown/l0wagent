@@ -43,6 +43,9 @@ CODE_TTL = timedelta(minutes=10)
 ACCESS_TTL = timedelta(hours=1)
 REFRESH_TTL = timedelta(days=30)
 MAX_CLIENTS = 100
+CLIENT_GRACE = timedelta(days=1)  # a registered client with no grant after this long is dropped
+REGISTER_PER_HOUR = 10  # per address
+REFRESH_GRACE = timedelta(seconds=10)  # a retried refresh whose response was lost
 LOOPBACK = ("localhost", "127.0.0.1", "[::1]", "::1")
 INSTRUCTIONS = """\
 This is the owner's l0wagent: a long-running personal assistant on their own server. You act as their 1:1 chat
@@ -89,16 +92,37 @@ def _scopes(text: str | None) -> list[str]:
 class Connector:
     def __init__(self, db: Database, be: Any):
         self.db, self.be = db, be
+        self._registrations: dict[str, list] = {}
 
     # ── registration and consent ───────────────────────────────────────────
-    def register(self, body: dict) -> dict:
+    def _rate_limit_registration(self, addr: str | None) -> None:
+        now = utcnow()
+        hits = [t for t in self._registrations.get(addr or "?", []) if now - t < timedelta(hours=1)]
+        if len(hits) >= REGISTER_PER_HOUR:
+            raise OAuthError("slow_down", "Too many client registrations from this address; try again later.", 429)
+        hits.append(now)
+        self._registrations[addr or "?"] = hits
+        for k in [k for k, v in self._registrations.items() if not v or now - v[-1] >= timedelta(hours=1)]:
+            del self._registrations[k]
+
+    def _prune_clients(self, room: int = 0) -> None:
+        """Drop clients that registered but never got a grant: all older than a day, then the oldest if still at the cap."""
+        grantless = "NOT EXISTS (SELECT 1 FROM oauth_grants g WHERE g.client_id=oauth_clients.client_id)"
+        self.db.ex(f"DELETE FROM oauth_clients WHERE created_at<? AND {grantless}", (iso(utcnow() - CLIENT_GRACE),))
+        n = (self.db.q1("SELECT COUNT(*) AS n FROM oauth_clients") or {}).get("n", 0)
+        if n + room > MAX_CLIENTS:
+            self.db.ex(f"DELETE FROM oauth_clients WHERE id IN (SELECT id FROM oauth_clients WHERE {grantless} ORDER BY id LIMIT ?)", (n + room - MAX_CLIENTS,))
+
+    def register(self, body: dict, addr: str | None = None) -> dict:
+        self._rate_limit_registration(addr)
         uris = body.get("redirect_uris")
         if not isinstance(uris, list) or not uris or len(uris) > 10 or not all(isinstance(u, str) and check_redirect(u) for u in uris):
             raise OAuthError("invalid_redirect_uri", "redirect_uris: 1–10 URIs over https, or http to localhost/127.0.0.1.")
         if body.get("token_endpoint_auth_method", "none") != "none":
             raise OAuthError("invalid_client_metadata", "Only public clients (token_endpoint_auth_method none, with PKCE) are supported.")
+        self._prune_clients(room=1)
         if (self.db.q1("SELECT COUNT(*) AS n FROM oauth_clients") or {}).get("n", 0) >= MAX_CLIENTS:
-            raise OAuthError("invalid_client_metadata", "Too many registered clients; revoke some in Tools & Secrets → Connected apps.")
+            raise OAuthError("invalid_client_metadata", "Too many connected clients; revoke some in Tools & Secrets → Connected apps.")
         name = " ".join(str(body.get("client_name") or "An MCP client").split())[:60]
         cid = "l0w-" + secrets.token_urlsafe(18)
         now = self.db.now()
@@ -187,12 +211,27 @@ class Connector:
         if grant_type == "refresh_token":
             row = self._token(form.get("refresh_token"), "refresh")
             if row is None:
+                retried = self._check_reuse(form)
+                if retried:
+                    return self._issue(retried)
                 raise OAuthError("invalid_grant", "The refresh token is unknown, revoked or expired.")
             if row["client_id"] != form.get("client_id"):
                 raise OAuthError("invalid_grant", "client_id doesn't match.")
             self.db.ex("UPDATE oauth_tokens SET revoked_at=? WHERE token_hash=?", (self.db.now(), row["token_hash"]))
             return self._issue(row["grant_id"])
         raise OAuthError("unsupported_grant_type", "grant_type is authorization_code or refresh_token.")
+
+    def _check_reuse(self, form: dict) -> int | None:
+        """A refresh token that was already rotated is presented again: treat it as stolen and revoke the grant,
+        unless it was rotated a moment ago (a client retrying a refresh whose response it lost): then returns its grant id."""
+        old = self.db.q1("SELECT t.revoked_at, t.grant_id, g.revoked_at AS grant_revoked, g.client_id FROM oauth_tokens t JOIN oauth_grants g ON g.id=t.grant_id "
+                         "WHERE t.token_hash=? AND t.kind='refresh'", (_hash(form.get("refresh_token") or ""),))
+        if not old or not old["revoked_at"] or old["grant_revoked"] or old["client_id"] != form.get("client_id"):
+            return None
+        if utcnow() - parse(old["revoked_at"]) <= REFRESH_GRACE:  # type: ignore[operator]
+            return old["grant_id"]  # the caller issues a fresh pair
+        self._revoke_grant(old["grant_id"])
+        return None
 
     def _token(self, token: str | None, kind: str) -> dict | None:
         if not token:

@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING
 from ..api import schemas as s
 from ..auth import iso, parse, utcnow
 from ..backends.base import Conflict, NotFound
-from ..budgets import SUBSCRIPTION, Budgets
+from ..budgets import SUBSCRIPTION, UNIT, Budgets
 from ..config import Env, Settings
 from ..db import Database
 from ..live import Live
@@ -58,6 +58,10 @@ LOST_CONTACT_GIVE_UP_S = 600
 MAX_EVENT_BYTES = 200_000
 PROMPTS = Path(__file__).parent.parent / "prompts"
 ACTIVE = ("starting", "running")
+BRIEF_LIST_CAP = 15      # items per list section of the brief; a line points to the command for the rest
+NEWS_CAP = 6
+CLAIM_UNCLOSED = "The run ended before this was closed."
+NUDGE_MARK = "Nudged to carry on"
 
 
 def run_model(db: Database, row: dict) -> s.Run:
@@ -305,34 +309,46 @@ class RunManager:
         system = _strip_comment((PROMPTS / "core.md").read_text())
         detail = run["why_detail"] or ""
         why = self.WHY.get(run["why"], run["why"]).format(detail=detail)
-        bucket = {"allowance": "the weekly allowance", "reply": "the reply budget", "sweep": "what the owner left unused this week"}.get(run["bucket"], run["bucket"])
+        unit = self.budgets.period_unit(run["provider"] or SUBSCRIPTION)
+        bucket = {"allowance": f"the {unit}ly allowance", "reply": "the reply budget", "sweep": f"what the owner left unused this {unit}"}.get(run["bucket"], run["bucket"])
+        deadline = f"{self.budgets.local(parse(run['deadline'])):%a %b %d %H:%M}" if run["deadline"] else "none"
         reviewer = run["reviewer_mode"] if run["reviewer_mode"] != "off" else "off"
         if reviewer != "off":
             reviewer += f" (`assistant reviewer ask|start|done`; it may use up to {self.budgets.reviewer_config().budget_share:.0%} of your budget)"
         brief = _strip_comment((PROMPTS / "brief.md").read_text()).format(
-            run_id=run_id, why=why, budget=f"{run['budget'] or 0:g}", bucket=bucket, deadline=run["deadline"], tier=run["tier"], level=(run["level"] or "?").capitalize(),
+            run_id=run_id, why=why, budget=f"{run['budget'] or 0:g}", bucket=bucket, deadline=deadline, tier=run["tier"], level=(run["level"] or "?").capitalize(),
             reviewer=reviewer)
         instructions = self.budgets.instructions().text
         if instructions:
             brief += "\n\n## Standing instructions from the owner\n\n" + instructions
+        since = self._since_last_run(run_id)
+        if since:
+            brief += "\n\n## Since your last run\n\n" + since
         if run["routine_id"]:
             r = self.db.q1("SELECT name, prompt FROM routines WHERE id=?", (run["routine_id"],))
             if r:
                 brief += f"\n\n## Routine: {r['name']}\n\n" + _strip_comment(r["prompt"])
         if run["thread_id"]:
             t = self.conv.thread(run["thread_id"])
-            brief += (_strip_comment((PROMPTS / "reply.md").read_text()).format(thread_id=t.id, title=t.title, project=t.project or "General", budget=f"{run['budget'] or 0:g}")
-                      + "\n\n" + self.conv.thread_history(t.id))
+            promote_min = self.settings.get("PROMOTE_WAIT_MINUTES")
+            reply = _strip_comment((PROMPTS / "reply.md").read_text()).format(
+                thread_id=t.id, title=t.title, project=t.project or "General", budget=f"{run['budget'] or 0:g}",
+                promote_wait=f"{min(promote_min, 9.5):g}", promote_expiry=f"{promote_min:g}")
+            brief += reply + "\n\n" + self.conv.thread_history(t.id)
         inbox, counts = self.conv.deliver()
         brief += "\n\n## Inbox\n\n" + (inbox or "Nothing new.")
         if counts:
             self.timeline(run_id, Item("control", "Delivered in the brief: " + _counts_text(counts), True, {"counts": counts}))
         claims = self.conv.claims(active=True)
         if claims:
-            brief += "\n\n## Claims still open from earlier runs\n\n" + "\n".join(f"- thread #{c.thread_id} “{c.thread_title}”: {c.plan}" for c in claims)
+            brief += "\n\n## Claims still open from earlier runs\n\n" + "\n".join(f"- thread #{c.thread_id} “{c.thread_title}”: {c.plan}" for c in claims[:BRIEF_LIST_CAP])
+            if len(claims) > BRIEF_LIST_CAP:
+                brief += f"\n- {len(claims) - BRIEF_LIST_CAP} more open claims: close the finished ones with `assistant claim done N \"result\"` and they'll show here"
         waiting = self.conv.inbox_entries(True, [])
         if waiting:
-            brief += "\n\n## Waiting on the owner\n\n" + "\n".join(f"- {e.kind}" + (f" in thread #{e.thread_id} “{e.thread_title}”" if e.thread_id else "") for e in waiting[:30])
+            brief += "\n\n## Waiting on the owner\n\n" + "\n".join(self._waiting_line(e) for e in waiting[:BRIEF_LIST_CAP])
+            if len(waiting) > BRIEF_LIST_CAP:
+                brief += f"\n- {len(waiting) - BRIEF_LIST_CAP} more: `assistant asks --status open`"
         if run["kind"] != "reply":
             brief += "\n\n## Budget and your wakeup plan\n\n" + self.budgets.check_text(run["provider"] or SUBSCRIPTION)
             if self.brief_extra:
@@ -341,9 +357,59 @@ class RunManager:
                     brief += "\n\n" + extra
         news = self.db.q("SELECT id, date, title, body FROM harness_news WHERE shown_in_run_id IS NULL ORDER BY date, id")
         if news:
-            brief += "\n\n## Harness news (shown once; `assistant news` lists all)\n\n" + "\n\n".join(f"### {n['date']}: {n['title']}\n\n{n['body']}" for n in news)
+            shown = news[-NEWS_CAP:]  # the newest; all count as shown, and `assistant news` has the rest
+            brief += "\n\n## Harness news (shown once; `assistant news` lists all)\n\n"
+            if len(news) > len(shown):
+                brief += f"{len(news) - len(shown)} older entries not shown here: `assistant news`\n\n"
+            brief += "\n\n".join(f"### {n['date']}: {n['title']}\n\n{n['body']}" for n in shown)
             self.db.ex(f"UPDATE harness_news SET shown_in_run_id=? WHERE id IN ({','.join('?' * len(news))})", (run_id, *[n["id"] for n in news]))
+        self.timeline(run_id, Item("control", f"Brief: {len(brief):,} characters (system prompt {len(system):,})", False, {"brief_chars": len(brief), "system_chars": len(system)}))
         return brief, system
+
+    def _waiting_line(self, e: s.InboxEntry) -> str:
+        obj = getattr(e, e.kind, None)
+        text = getattr(obj, "reason", None) if e.kind == "promote" else getattr(obj, "text", None)
+        where = f" in thread #{e.thread_id} “{e.thread_title}”" if e.thread_id else ""
+        body = " ".join((text or "").split())
+        body = body[:100] + ("…" if len(body) > 100 else "")
+        return f"- {e.kind} #{e.id}{where}: {body}, asked {_ago(e.at)}"
+
+    def _since_last_run(self, run_id: int) -> str:
+        """What control knows about the previous run, for the brief: how it ended and why, its last
+        status sentence and notes, claims it left open and files only the safety-net commit saved."""
+        prev = self.db.q1("SELECT * FROM runs WHERE id<? AND status NOT IN ('starting','running') AND kind!='reviewer' ORDER BY id DESC LIMIT 1", (run_id,))
+        if not prev:
+            return ""
+        pid = prev["id"]
+        when = self.budgets.local(parse(prev["ended_at"] or prev["started_at"]))
+        used = f"used {prev['used'] or 0:.1f} of {prev['budget'] or 0:g} {UNIT}"
+        if prev["status"] == "stopped":
+            how = f"was stopped ({prev['stop_reason'] or prev['end_reason'] or 'stopped'}), {used}"
+        elif prev["status"] == "failed":
+            how = f"failed ({prev['end_reason'] or 'error'}), {used}"
+        elif prev["idle"]:
+            how = f"ended on its own with IDLE, {used}"
+        else:
+            how = f"ended without writing IDLE, {used}"
+        lines = [f"- Run #{pid} ({prev['kind']}, {prev['why']}) ended {when:%a %b %d %H:%M}: it {how}."]
+        if prev["now_sentence"]:
+            lines.append(f"- Its last status: {prev['now_sentence']}")
+        notes = self.db.q("SELECT text FROM run_notes WHERE run_id=? ORDER BY id DESC LIMIT 3", (pid,))
+        if notes:
+            lines.append("- Its last notes: " + " | ".join(n["text"] for n in reversed(notes)))
+        left = self.db.q("SELECT thread_id, plan FROM claims WHERE run_id=? AND status='partial' AND result=?", (pid, CLAIM_UNCLOSED))
+        if left:
+            lines.append("- Claims it left open: " + "; ".join(f"thread #{c['thread_id']} “{c['plan'][:60]}”" for c in left[:5]))
+        for item in self.db.q("SELECT data_json FROM timeline_items WHERE run_id=? AND kind='diff' ORDER BY id", (pid,)):
+            try:
+                data = json.loads(item["data_json"])
+            except ValueError:
+                continue
+            files = [f["path"] for f in data.get("files", []) if f.get("path")]
+            if data.get("volume") == "workspace" and files:
+                more = f" (+{len(files) - 10} more)" if len(files) > 10 else ""
+                lines.append("- Files it changed without committing (control's safety-net commit saved them): " + ", ".join(files[:10]) + more)
+        return "\n".join(lines)
 
     def _mcp_servers(self) -> list[dict]:
         rows = self.db.q(
@@ -413,6 +479,8 @@ class RunManager:
                 if state == "exited" and ok and await self._gate(run_id, sess, result):
                     continue
                 if state == "exited" and ok and await self._hold(run_id, sess):
+                    continue
+                if state == "exited" and ok and await self._nudge(run_id, sess, result):
                     continue
                 break
             await self._finish(run_id, end_state, last_result)
@@ -521,14 +589,15 @@ class RunManager:
         return True
 
     async def _gate(self, run_id: int, sess: Session, result: dict | None) -> bool:
-        """Gate mode: the reviewer must agree before a session that ends `IDLE:` ends the run.
-        If it doesn't, resume the conversation with its reply (at most GATE_MAX_ROUNDS times)."""
+        """Gate mode: the reviewer must agree before a session that ends cleanly ends the run
+        (whether or not it wrote `IDLE:`). If it doesn't, resume the conversation with its reply
+        (at most GATE_MAX_ROUNDS times)."""
         from ..reviewer import GATE_MAX_ROUNDS
 
         run = self.db.q1("SELECT * FROM runs WHERE id=?", (run_id,))
         assert run
         text = ((result or {}).get("text") or "").strip()
-        if run["reviewer_mode"] != "gate" or not self.reviewer or run["stop_requested_at"] or not text.startswith("IDLE") or not sess.runtime_session:
+        if run["reviewer_mode"] != "gate" or not self.reviewer or run["stop_requested_at"] or not sess.runtime_session:
             return False
         if run["gate_rounds"] >= GATE_MAX_ROUNDS:
             self.timeline(run_id, Item("control", f"The reviewer gate already sent it back {run['gate_rounds']} times; letting the run end", True))
@@ -536,7 +605,8 @@ class RunManager:
         if run["deadline"] and parse(run["deadline"]) <= utcnow() + timedelta(minutes=3):  # type: ignore[operator]
             return False
         left = (run["budget"] or 0) - (run["used"] or 0)
-        agree, reply = await self.reviewer.approve(run_id, f"The assistant wants to end the wakeup. Budget left: {left:.1f} pts. Its final message:", text)
+        idle_note = "" if ends_idle(text) else " (it didn't write IDLE)"
+        agree, reply = await self.reviewer.approve(run_id, f"The assistant wants to end the wakeup{idle_note}. Budget left: {left:.1f} pts. Its final message:", text or "(none)")
         if agree:
             self.timeline(run_id, Item("reviewer", "The reviewer agreed to end the wakeup", True))
             return False
@@ -547,6 +617,39 @@ class RunManager:
             self.timeline(run_id, Item("error", f"Couldn't resume after the reviewer's reply: {e}", True))
             return False
         self.timeline(run_id, Item("control", "Resumed: the reviewer didn't agree to end yet", True))
+        return True
+
+    def _reached_out(self, run_id: int, sess: Session, run: dict) -> bool:
+        started = (self.db.q1("SELECT started_at FROM run_sessions WHERE id=?", (sess.id,)) or {}).get("started_at", run["started_at"])
+        return bool(self.db.q1("SELECT 1 FROM messages WHERE run_id=? AND sender='assistant' AND created_at>=? LIMIT 1", (run_id, started)) or any(
+            self.db.q1(f"SELECT 1 FROM {t} WHERE run_id=? AND status='open' LIMIT 1", (run_id,)) for t in ("questions", "permissions", "tasks")))
+
+    async def _nudge(self, run_id: int, sess: Session, result: dict | None) -> bool:
+        """Outside gate mode: a run that stopped on its own without `IDLE:` while more than a
+        quarter of its budget is left gets one nudge to carry on (or say why it's done)."""
+        run = self.db.q1("SELECT * FROM runs WHERE id=?", (run_id,))
+        assert run
+        if run["kind"] == "reply" or run["bucket"] == "reply" or run["stop_requested_at"] or not sess.runtime_session or not run["budget"]:
+            return False
+        if run["reviewer_mode"] == "gate" and self.reviewer:
+            return False
+        if ends_idle((result or {}).get("text")) or self._reached_out(run_id, sess, run):
+            return False
+        if self.db.q1("SELECT 1 FROM timeline_items WHERE run_id=? AND kind='control' AND text LIKE ? LIMIT 1", (run_id, NUDGE_MARK + "%")):
+            return False
+        used = self.budgets.run_pts(run_id)
+        left = run["budget"] - used
+        if left <= run["budget"] / 4:
+            return False
+        if run["deadline"] and parse(run["deadline"]) <= utcnow() + timedelta(minutes=3):  # type: ignore[operator]
+            return False
+        self.timeline(run_id, Item("control", f"{NUDGE_MARK}: it stopped without IDLE with {left:.0f} {UNIT} of its budget left", True))
+        try:
+            await self._start_session(run_id, resume=sess.runtime_session, prompt=(
+                f"[control] You have {left:.0f} {UNIT} left of this run's budget. Carry on with the next useful thing, or end with `IDLE: <reason>` as the last line."))
+        except RunnerError as e:
+            self.timeline(run_id, Item("error", f"Couldn't resume after the nudge: {e}", True))
+            return False
         return True
 
     async def _hold(self, run_id: int, sess: Session) -> bool:
@@ -561,9 +664,7 @@ class RunManager:
         if run["deadline"] and parse(run["deadline"]) <= utcnow():  # type: ignore[operator]
             return False
         if not run["waiting_until"]:
-            started = (self.db.q1("SELECT started_at FROM run_sessions WHERE id=?", (sess.id,)) or {}).get("started_at", run["started_at"])
-            reached_out = self.db.q1("SELECT 1 FROM messages WHERE run_id=? AND sender='assistant' AND created_at>=? LIMIT 1", (run_id, started)) or any(
-                self.db.q1(f"SELECT 1 FROM {t} WHERE run_id=? AND status='open' LIMIT 1", (run_id,)) for t in ("questions", "permissions", "tasks"))
+            reached_out = self._reached_out(run_id, sess, run)
             if not reached_out:
                 return False
             until = utcnow() + timedelta(minutes=minutes)
@@ -602,13 +703,13 @@ class RunManager:
         if run["stop_requested_at"]:
             status, reason = "stopped", run["stop_reason"] or "stopped"
         elif result and result.get("ok"):
-            status, reason = "done", "idle" if (result.get("text") or "").startswith("IDLE") else "finished"
+            status, reason = "done", "idle" if ends_idle(result.get("text")) else "finished"
         else:
             status, reason = "failed", "error"
         if status == "stopped":
             r = (run["stop_reason"] or "").lower()
             reason = "budget" if "budget" in r else "deadline" if "deadline" in r else "usage" if "usage" in r or "reserve" in r or "ceiling" in r else "stopped"
-        idle = bool(result and (result.get("text") or "").lstrip().startswith("IDLE"))
+        idle = bool(result and ends_idle(result.get("text")))
         try:
             commit = await self.runner.commit(f"run #{run_id} ({status})", run["workspace_head"])
             files = [f for f in commit.get("files", []) if f.get("path")]
@@ -628,7 +729,7 @@ class RunManager:
                 pass
         self.conv.drop_open_claims(run_id)
         self.conv.expire_promotes(run_id)
-        for undone in self.conv.revert_once(run_id, run["started_at"]):
+        for undone in self.conv.revert_once():
             self.timeline(run_id, Item("control", f"Undid a one-time approval: {undone}", True))
         self.db.ex("UPDATE runs SET status=?, end_reason=?, ended_at=?, used=?, idle=?, waiting_until=NULL WHERE id=?", (status, reason, self.db.now(), used, int(idle), run_id))
         label = {"done": "Run finished", "stopped": f"Run stopped ({run['stop_reason'] or reason})", "failed": "Run failed"}[status] + f" · used {used:.1f} of {run['budget'] or 0:g} pts"
@@ -719,6 +820,21 @@ class RunManager:
                     continue
                 if reading is not None and reading.seven_day_pct is not None and not ok:
                     await self.stop(run_id, reason or "usage reserve reached")
+
+
+def ends_idle(text: str | None) -> bool:
+    """True when the first or the last non-empty line of a final message starts with `IDLE:`."""
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    return bool(lines) and (lines[0].startswith("IDLE:") or lines[-1].startswith("IDLE:"))
+
+
+def _ago(at) -> str:
+    secs = max(0, (utcnow() - at).total_seconds())
+    for size, name in ((86400, "day"), (3600, "hour"), (60, "minute")):
+        if secs >= size:
+            n = int(secs // size)
+            return f"{n} {name}{'s' if n != 1 else ''} ago"
+    return "just now"
 
 
 def _strip_comment(text: str) -> str:

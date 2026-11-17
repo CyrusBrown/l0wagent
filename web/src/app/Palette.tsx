@@ -57,7 +57,9 @@ export function Palette({ onClose }: { onClose: () => void }) {
   return (
     <div className="scrim" onClick={onClose}>
       <div className="palette" role="dialog" aria-modal="true" aria-label="Search" onClick={(e) => e.stopPropagation()}>
+        <div className="palette-top">
         <input
+          className="palette-input" enterKeyHint="search" autoComplete="off"
           autoFocus placeholder="Search threads, messages, projects, files, runs…" value={q}
           onChange={(e) => { setQ(e.target.value); setSel(0) }}
           onKeyDown={(e) => {
@@ -66,6 +68,8 @@ export function Palette({ onClose }: { onClose: () => void }) {
             if (e.key === 'Enter') go(hits[sel])
           }}
         />
+        <button className="palette-cancel" onClick={onClose}>Cancel</button>
+        </div>
         <div className="results">
           {hits.length === 0 && <div className="empty" style={{ margin: 8 }}>{search.isFetching ? 'Searching…' : 'Nothing found'}</div>}
           {groups.map((g) => (

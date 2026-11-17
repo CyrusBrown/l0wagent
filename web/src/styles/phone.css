@@ -1,0 +1,319 @@
+/* The phone layout: one thumb, 360-430 px, an installed app. Loaded after app.css, so these rules win
+   at equal specificity. Everything is under the same breakpoint app.css uses (760 px), and touch
+   sizing under `pointer: coarse`. Desktop never sees any of it. */
+
+@keyframes sheetUp { from { transform: translateY(100%) } to { transform: none } }
+@keyframes sheetDown { from { transform: none } to { transform: translateY(100%) } }
+@keyframes drawerIn { from { transform: translateX(-100%) } to { transform: none } }
+@keyframes drawerOut { from { transform: none } to { transform: translateX(-100%) } }
+
+.search-ic { display: none }
+.palette-top { display: flex; align-items: center; border-bottom: 1px solid var(--line) }
+.palette-top > input { flex: 1; min-width: 0; border-bottom: none !important }
+.palette-cancel { display: none }
+
+/* Sheets and the drawer (components/Overlay.tsx). Entering uses `backwards` so a drag's inline
+   transform isn't pinned by the animation's end state; leaving uses `forwards`. */
+.ov-scrim { position: fixed; inset: 0; z-index: 55; background: rgba(20,19,17,.4); animation: fade .2s ease both }
+.ov-scrim.closing { animation: fadeOut .24s ease both }
+.ov-panel { position: absolute; display: flex; flex-direction: column; min-height: 0; outline: none; color: var(--fg) }
+.ov-bottom { left: 0; right: 0; bottom: 0; max-height: 86vh; max-height: 86dvh; background: var(--card); border-radius: 16px 16px 0 0; border-top: 1px solid var(--line); box-shadow: var(--shadow); padding-bottom: env(safe-area-inset-bottom); transition: transform .2s ease; animation: sheetUp .28s cubic-bezier(.2,.8,.3,1) backwards }
+.ov-scrim.closing .ov-bottom { animation: sheetDown .24s ease forwards }
+.ov-left { top: 0; bottom: 0; left: 0; width: min(86vw, 320px); background: var(--side); border-right: 1px solid var(--line); box-shadow: var(--shadow); padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); animation: drawerIn .26s cubic-bezier(.2,.8,.3,1) backwards }
+.ov-scrim.closing .ov-left { animation: drawerOut .24s ease forwards }
+.ov-handle { flex: none; display: grid; place-items: center; height: 22px; cursor: grab; touch-action: none }
+.ov-handle > span { width: 36px; height: 4px; border-radius: 2px; background: var(--line3) }
+.sheet-title { flex: none; padding: 0 20px 6px; font: 500 18px/1.3 var(--serif) }
+.sheet-list { overflow: auto; padding: 4px 8px 10px; display: flex; flex-direction: column; gap: 2px }
+.sheet-row { display: flex; align-items: center; gap: 14px; min-height: 56px; padding: 8px 12px; border-radius: 12px; color: var(--fg); text-decoration: none; -webkit-tap-highlight-color: transparent }
+.sheet-row:hover { background: var(--hover); color: var(--fg); text-decoration: none }
+.sheet-row:active { background: var(--active) }
+.sheet-row.on { background: var(--active) }
+.sheet-ic { flex: none; width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; background: var(--soft); color: var(--fg2) }
+.sheet-row.on .sheet-ic { background: var(--card); color: var(--fg) }
+.sheet-text { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px }
+.sheet-label { font: 500 15px var(--sans) }
+.sheet-text .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.sheet-go { flex: none; color: var(--dim); font-size: 20px }
+.drawer-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 8px 8px 4px 18px; min-height: 48px }
+.drawer-title { font: 500 19px var(--serif) }
+.drawer-body { flex: 1; min-height: 0; display: flex; flex-direction: column }
+
+@media (max-width: 760px) {
+  /* ── Shell ── */
+  .header { height: calc(52px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) calc(8px + env(safe-area-inset-right)) 0 calc(6px + env(safe-area-inset-left)); gap: 4px }
+  .nav, .vsep, .header > .icon-btn:last-child:not(.drawer-btn) { display: none }
+  .logo { padding: 6px 8px 6px 6px; font-size: 18px; gap: 6px }
+  .logo svg, .logo.with-drawer { display: none }  /* the wordmark only; Home is in the tab bar, and a conversation screen has the drawer button instead */
+  .header > .new-btn { order: 9; width: 38px; height: 38px; border-radius: 11px; font-size: 20px; margin-left: 2px }
+  .header > .drawer-btn { width: 40px; height: 40px; border-radius: 10px }
+  .search-btn { flex: none; width: 40px; height: 40px; padding: 0; justify-content: center; border: none; background: transparent; color: var(--fg2); border-radius: 10px }
+  .search-btn > span:not(.search-ic), .search-btn kbd { display: none }
+  .search-btn:hover { background: var(--hover) }
+  .search-ic { display: grid; place-items: center }
+  .chip { min-width: 0; min-height: 34px; padding: 4px 11px 4px 10px; gap: 7px; flex: 0 1 auto }
+  .chip .muted, .chip-sep { display: none }
+  .header .btn.small { min-height: 34px; padding: 4px 11px }
+  .main { scrollbar-gutter: auto; overscroll-behavior: contain }
+  .banner { position: relative; padding: 8px 40px 8px 12px; gap: 6px 10px; font-size: 12.5px }
+  .banner .x { position: absolute; top: 3px; right: 2px; margin: 0 }
+  .banner .muted-text, .banner a { display: none }
+  .main.pin { display: flex; overflow: hidden }  /* a 1:1 chat keeps its composer at the bottom, like a thread */
+  .banner .btn { padding: 6px 11px }
+  .offline-bar, .outbox-failed { padding: 6px 12px; font-size: 12px; line-height: 1.4 }
+
+  /* ── Bottom tab bar ── */
+  .tabbar { flex: none; display: flex; background: var(--side); border-top: 1px solid var(--line); padding: 0 calc(4px + env(safe-area-inset-right)) env(safe-area-inset-bottom) calc(4px + env(safe-area-inset-left)); height: calc(58px + env(safe-area-inset-bottom)) }
+  .tab { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 4px 0 0; border: none; border-radius: 0; background: transparent; color: var(--muted); font: 500 11px/1 var(--sans); text-decoration: none; -webkit-tap-highlight-color: transparent }
+  .tab:hover { color: var(--fg); text-decoration: none }
+  .tab:active:not(:disabled) { transform: none }
+  .tab-ic { position: relative; display: grid; place-items: center; width: 58px; height: 30px; border-radius: 15px; transition: background-color .18s ease }
+  .tab:active .tab-ic { background: var(--hover) }
+  .tab.active { color: var(--fg) }
+  .tab.active .tab-ic { background: var(--active) }
+  .tab-count { position: absolute; top: -3px; right: 6px; font-size: 10px; line-height: 14px; padding: 0 4px; min-width: 16px; border: 2px solid var(--side); box-sizing: content-box }
+  .tab.active .tab-count { border-color: var(--side) }
+
+  /* The conversation tree lives in the drawer; the inline sidebar is gone. */
+  .body > .side { display: none }
+  .drawer .side { display: flex; width: 100%; flex: 1; min-height: 0; border-right: none; background: transparent; padding: 4px 8px 12px }
+
+  /* ── Search palette: a full-screen sheet ── */
+  .scrim { padding-top: 0; align-items: stretch }
+  .palette { width: 100vw; max-height: none; height: 100%; border: none; border-radius: 0; box-shadow: none; animation: sheetUp .26s cubic-bezier(.2,.8,.3,1) backwards }
+  .scrim.closing .palette { animation: sheetDown .2s ease forwards }
+  .palette-top { padding-top: env(safe-area-inset-top); flex: none }
+  .palette-top > input { font-size: 16px !important; padding: 16px 14px 16px calc(16px + env(safe-area-inset-left)) !important; min-height: 56px }
+  .palette-cancel { display: block; flex: none; border: none; background: none; color: var(--accentInk); font: 500 15px var(--sans); padding: 0 calc(16px + env(safe-area-inset-right)) 0 6px; min-height: 56px }
+  .palette .results { padding: 6px 8px calc(12px + env(safe-area-inset-bottom)); flex: 1; min-height: 0 }
+  .palette .hit { padding: 11px 12px; min-height: 48px; font-size: 15px }
+  .palette .hit small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+
+  /* ── Global phone rules ── */
+  h1 { font-size: 22px }
+  input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]), textarea, select { font-size: 16px !important }  /* 16 px stops iOS zooming on focus */
+  .page, .page.narrow, .runs-page, .run-page { padding: 16px 16px 28px !important; gap: 16px }
+  .home { padding: 18px 16px 28px; gap: 22px }
+  .home-head h1 { font-size: 26px }
+  .inbox-page { padding: 16px 16px 28px; gap: 14px }
+  .inbox-head h1, .runs-title, .serif-title { font-size: 24px }
+  .settings { padding: 14px 16px 28px; gap: 10px }
+  .new-page { padding: 7vh 16px 24px; gap: 20px }
+  .new-greeting { font-size: 28px }
+  .calendar { padding: 14px 16px 24px }
+  .web-page { padding: 12px 16px 16px; min-height: 0 }
+  .page-head { flex-wrap: wrap; gap: 10px }
+  .row-between { gap: 10px }
+  .banner .x { padding: 8px 12px }
+
+  /* Dialogs and pop-ups: the bottom of the screen, never off it. */
+  .scrim > .palette.add-provider { width: 100%; height: auto; max-height: 86dvh; align-self: flex-end; border: 1px solid var(--line); border-bottom: none; border-radius: 16px 16px 0 0; padding-bottom: env(safe-area-inset-bottom); box-shadow: var(--shadow) }
+  .menu-scrim { background: rgba(20,19,17,.4); animation: fade .2s ease both }
+  .menu, .menu.wide, .chat-pop { position: fixed !important; left: 0 !important; right: 0 !important; top: auto !important; bottom: 0 !important; width: 100% !important; min-width: 0; max-width: none !important; max-height: 72dvh !important; border: none; border-top: 1px solid var(--line); border-radius: 16px 16px 0 0; padding: 18px 8px calc(10px + env(safe-area-inset-bottom)); z-index: 41; animation: sheetUp .26s cubic-bezier(.2,.8,.3,1) backwards }
+  .menu::before { content: ''; position: absolute; top: 8px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--line3) }
+  .menu > button { padding: 11px 14px; font-size: 15px }
+  .link-picker { left: 0; right: 0; min-width: 0 }
+  .sel-pop, .combo-pop { max-width: calc(100vw - 24px) }
+  .cal-editor { top: auto; bottom: 0; left: 0; right: 0; transform: none; width: 100%; max-height: 88dvh; overflow: auto; border-radius: 16px 16px 0 0; padding: 18px 16px calc(16px + env(safe-area-inset-bottom)); animation: sheetUp .28s cubic-bezier(.2,.8,.3,1) backwards }
+
+  /* ── Conversation screens ── */
+  .thread-head { padding: 12px 0 8px; position: static }  /* scrolls away on a phone: the room is for the conversation */
+  .thread-head h1 { font-size: 22px }
+  .thread-head .btns { gap: 6px }
+  .thread-items { gap: 18px; padding: 14px 16px 20px }
+  .mine { max-width: 88% }
+  .composer-wrap { padding: 0 10px 8px }
+  .composer { border-radius: 16px; padding: 10px 10px 8px 14px; gap: 8px }
+  .composer textarea { min-height: 44px; max-height: 38dvh }
+  .composer-foot { gap: 8px }
+  .composer-foot .btn.small { min-height: 36px }
+  .send { width: 38px; height: 38px; border-radius: 11px; font-size: 17px }
+  .delivery { padding: 0 4px; font-size: 12px; gap: 4px 12px }
+  .attach-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-right: -6px; padding-right: 6px }
+  .attach-row::-webkit-scrollbar { display: none }
+  .attach-row > * { flex: none }
+  .chat-head { padding: 10px 16px; gap: 8px }
+  .chat-head .btns { gap: 6px }
+  .chat-title { flex: 1 1 100% }
+  .model-pick { max-width: 150px }
+  .composer-foot .model-picker, .composer-foot .row-start { min-width: 0 }
+  .card { padding: 14px; border-radius: 14px }
+  .card .btns { gap: 8px }
+  .card .btns > .btn { flex: 1 1 120px; justify-content: center; min-height: 44px; font-size: 14px }
+  .card .btns > .link-btn { flex: 1 0 100%; margin-left: 0 !important; min-height: 36px; text-align: center }
+  .card-inbox .btns > .btn { font-size: 14px !important }
+  .opt { padding: 12px 12px; min-height: 46px }
+  .opts-grid { grid-template-columns: minmax(0, 1fr) }
+  .inline-edit { flex-direction: column; align-items: stretch }
+  .inline-edit .input { width: 100%; max-width: none }
+  .inline-edit .btn { min-height: 44px }
+
+  /* The project files shelf in a thread: a full-screen sheet. */
+  .thread-files { position: fixed; inset: 0; width: 100%; max-width: none; z-index: 58; border-left: none; box-shadow: none; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); animation: sheetUp .28s cubic-bezier(.2,.8,.3,1) backwards }
+  .thread-files.closing { animation: sheetDown .24s ease forwards }
+  .thread-files .shelf.compact { align-items: stretch }
+  .thread-files .shelf.compact > .stack { max-height: 40% }
+
+  /* ── Lists ── */
+  .proj-row { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 14px 4px }
+  .proj-row > .stack:last-child { flex-direction: row !important; align-items: center !important; justify-content: space-between; flex-wrap: wrap }
+  .thread-row { padding: 14px 4px; gap: 10px }
+  .tabs { overflow-x: auto; scrollbar-width: none }
+  .tabs::-webkit-scrollbar { display: none }
+  .tabs button { flex: none; padding: 11px 12px }
+  .pills { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px }
+  .pills::-webkit-scrollbar { display: none }
+  .pills > * { flex: none }
+  .proj-overview { grid-template-columns: minmax(0, 1fr); gap: 20px }
+  .new-chips { grid-template-columns: minmax(0, 1fr) }
+  .table { display: block; overflow-x: auto }
+
+  /* ── Files: a volume switch on top, folders by tapping, breadcrumbs that scroll ── */
+  .files-layout { flex-direction: column }
+  .files-side { display: flex; width: 100%; border-right: none; border-bottom: 1px solid var(--line); flex: none }
+  .files-roots { padding: 10px 16px 10px }
+  .files-roots .sub { display: none }
+  .files-tree { display: none }
+  .files-main { overflow: auto }
+  .files-bar { padding: 10px 16px; gap: 8px }
+  .files-bar .crumbs { flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; max-width: 100%; scrollbar-width: none; flex: 1 1 100% }
+  .files-bar .crumbs::-webkit-scrollbar { display: none }
+  .files-bar .crumbs > * { flex: none }
+  .files-pane { padding: 14px 16px 28px; gap: 12px }
+  .fs-row { padding: 12px 14px; grid-template-columns: minmax(0, 1fr) auto }
+  .fs-row.head { display: none }
+  .md-preview { padding: 16px; font-size: 15px }
+  .code-preview { padding: 14px; font-size: 12.5px }
+  .model3d { height: 320px }
+  .frame-preview { height: 60dvh }
+  .hist-row { grid-template-columns: 64px minmax(0, 1fr) auto }
+  .shelf-row { grid-template-columns: minmax(0, 1fr) auto; padding: 12px 14px }
+  .shelf-row.head { display: none }
+
+  /* ── Settings: the nav is a scrolling row of pills ── */
+  .settings-nav { flex-direction: row; flex-wrap: nowrap; overflow-x: auto; gap: 6px; margin: 0 -16px; padding: 2px 16px 8px; scrollbar-width: none }
+  .settings-nav::-webkit-scrollbar { display: none }
+  .settings-nav h1 { display: none }
+  .settings-nav a { flex: none; white-space: nowrap; padding: 8px 14px; border-radius: 999px; background: var(--card); border: 1px solid var(--line2); font: 500 13.5px var(--sans); color: var(--fg2) }
+  .settings-nav a.on { background: var(--fg); color: var(--bg); border-color: var(--fg) }
+  .set-row { gap: 12px }
+  .set-row > :first-child { flex: 1 1 0; min-width: 0 }
+  .set-row .k { flex: 1 1 0 }
+  .set-row2 { padding: 13px 14px }
+  .set-row2 > :first-child { flex: 1 1 160px; min-width: 0 }
+  .set-row2 .ctl { flex: 0 0 auto; max-width: 100% }
+  .level-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) }
+  .allowance-row, .roles-row { padding: 12px 14px }
+  .roles-row { grid-template-columns: minmax(0, 1fr) }
+  .roles-row.head { display: none }
+  .model-picker { display: flex; width: 100% }
+  .model-picker > :first-child { flex: 1 1 0; min-width: 0 }
+  .model-picker > :not(:first-child) { flex: none; min-width: 112px }
+  .ms-labels button { font-size: 12.5px; padding: 2px 3px }
+  .theme-opts { grid-template-columns: minmax(0, 1fr) }
+  .set-form { max-width: none }
+  .model-row { grid-template-columns: minmax(0, 1fr) auto }
+  .value-chip { max-width: 100% }
+  .boost-box { padding: 12px 14px }
+
+  /* ── Network, tools, runs ── */
+  .net-row { grid-template-columns: 56px minmax(0, 1fr) 44px; font-size: 12px; padding: 8px 12px }
+  .net-row > :nth-child(2), .net-row > :nth-child(5) { display: none }
+  .rule-row { grid-template-columns: minmax(0, 1fr) 24px; row-gap: 3px }
+  .rule-row > :nth-child(1) { grid-column: 1 }
+  .rule-row > :nth-child(2) { grid-column: 1 / -1; grid-row: 2; overflow-wrap: anywhere }
+  .rule-row > :nth-child(3) { grid-column: 1; grid-row: 3; justify-self: start }
+  .rule-row > :nth-child(4) { grid-column: 2; grid-row: 1 }
+  .rule-note { grid-column: 1 / -1 }
+  .rule-row.compact { grid-template-columns: 72px minmax(0, 1fr) 24px }
+  .secrets-row { padding: 12px 14px }
+  .int-head { padding: 12px 14px }
+  .int-tool { padding-left: 14px; flex-wrap: wrap }
+  .int-call { grid-template-columns: minmax(0, 1fr) auto }
+  .int-call > :first-child { grid-column: 1 / -1 }
+  .app-row { flex-wrap: wrap }
+  .run-row { padding: 14px 14px }
+  .run-head { gap: 12px }
+  .run-meta { gap: 14px 22px; align-items: flex-start }
+  .run-budget { max-width: none; min-width: 0; flex: 1 1 100%; margin-left: 0 }
+  .run-now .headline { font-size: 18px }
+  .run-grid { grid-template-columns: minmax(0, 1fr); gap: 18px }
+  .tl-card-head { padding: 12px 14px }
+  .tl-list { padding: 8px 14px 12px }
+  .tl-row { grid-template-columns: 40px 12px minmax(0, 1fr); gap: 8px }
+  .tl-row .tag { display: none }
+  .detail-row { padding: 10px 12px }
+  .tl-search { flex: 1 1 100%; max-width: none; min-width: 0 }
+  .switch-label { min-height: 36px }
+  .job-head { padding: 12px 14px }
+
+  /* ── Home ── */
+  .home-grid { grid-template-columns: minmax(0, 1fr); gap: 22px }
+  .up-row { grid-template-columns: 64px minmax(0, 1fr) auto }
+  .work-card, .web-card { padding: 12px 14px }
+
+  /* ── Calendar ── */
+  .cal-layout { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 18px }
+  .cal-side { max-width: none; flex: none }
+  .cal-grid-card { flex: none }
+  .cal-legend { gap: 8px 14px }
+
+  /* ── Login, setup, connect ── */
+  .login { padding: 20px 16px; align-items: flex-start; padding-top: max(12vh, env(safe-area-inset-top)) }
+  .setup { padding: calc(16px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom)) }
+  .setup-grid { gap: 18px }
+  .setup-body { padding-top: 6px; gap: 16px }
+  .setup-body h2 { font-size: 22px }
+  .setup-steps { gap: 2px 4px; flex-wrap: wrap; align-content: flex-start }
+  .setup-logo { flex: 1 1 100%; padding: 0 4px 6px }
+  .setup-step { padding: 6px 8px; font-size: 13px; gap: 7px }
+  .code-input { font-size: 18px !important; letter-spacing: .12em; padding: 12px 8px !important }
+  .code-input::placeholder { letter-spacing: 0; font-size: 14px }
+  .setup-fields { max-width: none }
+  .provider-card { flex-wrap: wrap }
+  .connect-actions { flex-direction: column-reverse }
+  .connect-actions .btn { min-height: 44px; justify-content: center }
+}
+
+/* ── Touch sizing: fingers, not pointers ── */
+@media (pointer: coarse) {
+  .icon-btn { width: 40px; height: 40px }
+  .btn { min-height: 40px }
+  .btn.small { min-height: 36px }
+  .btn.square { width: 40px; height: 40px }
+  .filter, .chip-opt { min-height: 36px; display: inline-flex; align-items: center }
+  .seg button { min-height: 34px }
+  .menu > button, .link-picker button, .combo-item, .sel-opt, .ap-row, .hist-row { min-height: 44px }
+  .side a, .side button.row { min-height: 42px }
+  .side .side-label a { min-height: 0 }
+  .tree-row { min-height: 40px }
+  .thread-row, .proj-row, .run-row, .fs-row, .shelf-row { min-height: 52px }
+  .link-btn { padding: 8px 4px }
+  .crumbs button { padding: 8px 6px }
+  .input, .textarea { padding: 10px 12px }
+  .sel-input, .sel-big, .combo-btn { min-height: 44px }
+  .back-link { padding: 8px 0 }
+  .toggle { min-height: 40px }
+  .banner .btn { min-height: 36px }
+  .icon-x { padding: 8px }
+  .caret { width: 20px }
+}
+
+/* ── Calendar agenda (the phone's week, screens/Calendar.tsx) ── */
+.cal-agenda { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px }
+.ag-day { display: flex; flex-direction: column; gap: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 12px 12px }
+.ag-day.today { border-color: var(--accentLine); background: var(--today) }
+.ag-head { display: flex; align-items: baseline; gap: 8px }
+.ag-dow { font: 500 14px var(--sans); color: var(--fg2) }
+.ag-num { font: 500 20px var(--serif) }
+.ag-day.today .ag-dow, .ag-day.today .ag-num { color: var(--accentInk) }
+.ag-ev { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; text-align: left; border-width: 1px; border-style: solid; border-radius: 10px; padding: 10px 12px; min-height: 44px; font: 500 13.5px/1.35 var(--sans) }
+.ag-ev.fallback { border-style: dashed }
+.ag-ev.mine { max-width: none; align-self: stretch; display: grid; gap: 10px; background: var(--okSoft); border-color: var(--okLine); color: var(--okInk) }
+.ag-ev.past { opacity: .6 }
+.ag-time { font: 500 12.5px var(--mono) }
+.ag-text { min-width: 0; overflow-wrap: anywhere }
+.ag-pts { font: 400 12px var(--sans); opacity: .75; white-space: nowrap }
+.ag-none { padding: 2px 2px }
+.ag-protected { display: flex; align-items: center; gap: 8px; font: 400 12px var(--sans); color: var(--faint) }
+.ag-protected .cal-swatch { flex: none }

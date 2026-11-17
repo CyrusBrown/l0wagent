@@ -51,7 +51,7 @@ Code is reused from the old repo where it fits: egress, the agent-web forwarder,
 ## M1: Core platform
 **Goal:** log in, start a run, watch it live, and nothing breaks if control restarts.
 - **Control skeleton**: FastAPI, SQLite with versioned migrations, settings (`config.SPECS`-style), the request guard (sandbox, owner, agent token), and the auth-mode seams (session, device token, agent token; OAuth and signed requests come later).
-- **Owner account and login**: one owner, username + password (argon2id, breached-password check, rate limits, lockout), optional TOTP, sessions and device tokens, new-device alerts (Inbox card).
+- **Owner account and login**: one owner, username + password (argon2id, breached-password check, rate limits, global slow-down), optional TOTP, sessions and device tokens, new-device alerts (Inbox card).
 - **API foundations**: `/api/meta`, the live event stream (fetch-readable with a token), the sync feed, idempotency keys.
 - **Agent stack**: the agent image, egress (lease, rules, log), agent-web. The runner writes events to an append-only log, and control **re-attaches after a restart**; the agent resumes with `--resume` after an agent restart.
 - **Runtime adapter interface + Claude Code adapter**; the Claude subscription usage reader; the fail-closed usage gate.
@@ -224,17 +224,33 @@ The Tauri app per [ui.md](ui.md#desktop-tauri): connect screen, login → device
 
 **Done when:** installed from a CI build on each OS, it works offline with queued messages and opens `l0wagent://` links.
 
+## Providers track
+Decided 2026-11-16 ([wakeups review](../review/2026-11-16-wakeups-and-providers.md), [agents-and-runs.md](agents-and-runs.md#several-providers-planned)). It makes a second provider useful, and it absorbs the first part of M8's model registry. It can run alongside M8 and M9; each step ships on its own, with a harness-news entry.
+
+| Step | Delivers | Done when |
+|---|---|---|
+| P0 | **Real-account tests**: a smoke suite of five scenarios, and the model proxy's Phase-0 test | The "unverified" notes above are each confirmed or turned into a fix; the proxy is a yes or a no |
+| P1 | **Dollars for arithmetic**; warnings at 75% and 90%; the early-end nudge; `IDLE:` on the last line | A run on Claude with a reviewer on opencode Go adds up correctly; a run cut off at its budget had two warnings first |
+| P2 | **Schedule and pools**, the instance-wide level, the budget settings screen | Two providers both show a plan on the Calendar |
+| P3 | **Groups and routing**, Reply now included; `assistant budget` shows every pool; calibration per family | With the subscription at its reserve, a planned wakeup runs on the second provider |
+| P4 | **The model proxy** (if P0 said yes) | No provider credential in the agent container; the ledger matches the provider's own numbers |
+| P5 | **Continuations** and limit handling | A run that hits a provider limit finishes on another |
+| P6 | **Event and conditional wakeups** | A wakeup starts when a registered job ends, and another is skipped by its check script |
+| P7 | **Delegates** | A run on a strong model hands a reading task to a cheap one and uses the result |
+
 ---
 
 ## Later: not started until you say
-- **Hub**: core and l0w.run on Cloudflare, friends and presence, the board, email, shared spaces, published services, streams, linking. Order in [hub.md](hub.md#build-order). Most of it plugs in as first-party extensions (needs M8).
+- **Hub**: revised 2026-11-16. Step 0 is making the instance ready for the internet (the "before the hub" fixes, passkeys, backups, scoped tokens, both domains on the Public Suffix List), then the protocol and a fake hub, then the core on Cloudflare, the gateway with friends and messages, the connector through the hub, hub services, published services on the content domain, rooms and spaces, email, linking, streams. Order in [hub.md](hub.md#build-order). The extension SDK is built with the first hub service that needs it, not before.
 - **More providers** (Google AI Studio, OpenRouter, local models), the planner model, the adaptive reserve.
-- The extension catalog, backups, the CAD visual diff, the desktop app starting a local Docker stack.
+- The extension catalog, the CAD visual diff, the desktop app starting a local Docker stack.
+- **Backups** (`./l0w backup`, encrypted, restore tested in CI): no longer optional once a hub is joined, since the instance key and the friends list live there. Worth doing before friends rely on an instance at all.
 - The **breached-password check** at login and setup (k-anonymity range API), deferred from M1.
+- **Review of 2026-11-16** ([docs/review/](../review/README.md)): bugs with their fixes (none applied yet), the hub review and the wakeups redesign (both accepted and folded into the plan), and feature ideas (proposals).
 
 ### Seams to keep while building the early milestones
 So the later work doesn't need rewrites:
-- Auth modes with room for **signed requests** (`/api/peer/*`, `/api/hub/*` reserved).
+- Auth modes with room for **signed requests** (`/api/peer/*`, `/api/hub/*` reserved; `/s/*` to be reserved for published services).
 - `/api/meta` **capabilities**, so features can be switched on when a hub advertises them.
 - Message `sender` and thread types that can grow (peer, email).
 - UI **extension slots** (sidebar sections, pages, Inbox card types, thread types, previewers, settings panels) used by the core screens themselves.

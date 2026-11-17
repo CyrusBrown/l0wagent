@@ -25,7 +25,7 @@ const zones = (): string[] => {
 export function Setup({ onDone }: { onDone: () => void }) {
   const qc = useQueryClient()
   const [step, setStep] = useState(0)
-  const [f, setF] = useState({ display_name: '', username: '', password: '', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' })
+  const [f, setF] = useState({ display_name: '', username: '', password: '', setup_code: '', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' })
   const create = useSetupOwner()
   const login = useLogin()
   const created = create.isSuccess && login.isSuccess
@@ -34,7 +34,7 @@ export function Setup({ onDone }: { onDone: () => void }) {
 
   const finishAccount = () => {
     if (created) return setStep(2)
-    create.mutate({ username: f.username.trim(), password: f.password, display_name: f.display_name.trim() || null, timezone: f.timezone }, {
+    create.mutate({ username: f.username.trim(), password: f.password, display_name: f.display_name.trim() || null, timezone: f.timezone, setup_code: f.setup_code.trim() || null }, {
       onSuccess: () => login.mutate({ username: f.username.trim(), password: f.password, want: 'session' }, { onSuccess: () => setStep(2) }),
     })
   }
@@ -65,6 +65,8 @@ export function Setup({ onDone }: { onDone: () => void }) {
               <input className="input big" placeholder="Your name" autoComplete="name" value={f.display_name} onChange={(e) => setF({ ...f, display_name: e.target.value })} />
               <input className="input big" placeholder="Username" autoComplete="username" autoFocus value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} />
               <input className="input big" type="password" placeholder="Password (12 characters or more)" autoComplete="new-password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} />
+              <input className="input big" placeholder="Setup code" autoComplete="off" value={f.setup_code} onChange={(e) => setF({ ...f, setup_code: e.target.value })} />
+              <div className="sub">Printed by ./l0w install. Leave it empty if you're setting up from this network and none was printed.</div>
             </div>
           )}
           {step === 1 && (

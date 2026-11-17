@@ -22,6 +22,13 @@ fi
 # Volumes are normally initialised with the image's ownership, but be safe.
 chown agent:agent /workspace /work /cache /home/agent 2>/dev/null || true
 mkdir -p /work/_inbox && chown agent:agent /work/_inbox
+# The reviewer (a second unix user, no sudo) reads /workspace and /work as "other" but never the agent's home.
+chmod 0700 /home/agent 2>/dev/null || true
+chmod o+rx /workspace /work /work/_inbox 2>/dev/null || true
+if id reviewer >/dev/null 2>&1; then
+  mkdir -p /home/reviewer && chown reviewer:reviewer /home/reviewer 2>/dev/null || true
+  chmod 0755 /home/reviewer 2>/dev/null || true
+fi
 
 # The proxy may still be starting (containers are recreated together): wait for it before apt runs.
 for _ in $(seq 90); do (exec 3<>/dev/tcp/egress/3128) 2>/dev/null && break; sleep 1; done

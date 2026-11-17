@@ -17,6 +17,7 @@ from starlette.concurrency import run_in_threadpool
 
 from ..backends.base import Unauthorized
 from ..connector import SCOPES, OAuthError
+from ..netaddr import client_ip
 
 if TYPE_CHECKING:
     from ..connector import Connector
@@ -62,7 +63,7 @@ async def register(request: Request) -> Response:
         body = await request.json()
         if not isinstance(body, dict):
             raise OAuthError("invalid_client_metadata", "Send a JSON object.")
-        return JSONResponse(_c(request).register(body), status_code=201, headers=NO_STORE)
+        return JSONResponse(_c(request).register(body, client_ip(request)), status_code=201, headers=NO_STORE)
     except ValueError:
         return _oauth_error(OAuthError("invalid_client_metadata", "Send a JSON object."))
     except OAuthError as e:

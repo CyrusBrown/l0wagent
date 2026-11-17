@@ -2,26 +2,37 @@ import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import type { S } from '../api/client'
 import { useLive } from '../api/live'
-import { useChats, useInboxCounts, useProjects, useStatus, useStopRun, useThreads, useUpdateInfo } from '../api/queries'
+import { useChats, useInboxCounts, useProjects, useStatus, useStopRun, useThreads, useUpdateInfo, useCancelUpdate } from '../api/queries'
 import { pts, until, usageText } from '../components/format'
 import { useOnline } from '../components/online'
 import { useEscape } from '../components/useEscape'
 import { useOutbox } from '../api/offline'
+import { OutboxFailures } from '../components/OutboxFailures'
 import { useTimeFormat } from './timeFormat'
 import { Palette } from './Palette'
 import { Caret } from '../components/Caret'
+import { Overlay } from '../components/Overlay'
+import { useIsPhone } from '../components/useIsPhone'
+import { Icon } from './icons'
 
 const CONVERSATION = /^\/(t|c|p|projects|general|new)(\/|$)/
 
 export function Shell() {
   const live = useLive(true)
   const online = useOnline()
-  const outbox = useOutbox()
+  const waiting = useOutbox().filter((i) => !i.error).length
   const loc = useLocation()
   const nav = useNavigate()
   const [palette, setPalette] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
+  const [drawer, setDrawer] = useState(false)
+  const [sheet, setSheet] = useState(false)
+  const phone = useIsPhone()
   const inConversation = CONVERSATION.test(loc.pathname)
+
+  // Phone sheets close on navigation (and when the window grows to a desktop width).
+  useEffect(() => { setDrawer(false); setSheet(false) }, [loc.pathname, loc.search])
+  useEffect(() => { if (!phone) { setDrawer(false); setSheet(false) } }, [phone])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -41,40 +52,64 @@ export function Shell() {
 
   return (
     <div className="app">
-      <Header onSearch={() => setPalette(true)} moreOpen={moreOpen} setMoreOpen={setMoreOpen} />
+      <Header onSearch={() => setPalette(true)} moreOpen={moreOpen} setMoreOpen={setMoreOpen} onDrawer={phone && inConversation ? () => setDrawer(true) : undefined} drawerOpen={drawer} />
       <UpdateBanner />
       {(!online || live === 'offline') && (
-        <div className="offline-bar">{!online ? `Offline. ${outbox.length ? `${outbox.length} item${outbox.length === 1 ? '' : 's'} waiting` : 'Messages wait'} on this device until the connection returns.` : 'Reconnecting to the server…'}</div>
+        <div className="offline-bar">{!online ? `Offline. ${waiting ? `${waiting} item${waiting === 1 ? '' : 's'} waiting on this device until the connection returns.` : 'Thread messages, answers and finished tasks wait on this device until the connection returns; chat needs a connection.'}` : 'Reconnecting to the server…'}</div>
       )}
+      <OutboxFailures />
       <div className="body">
         {inConversation && <Sidebar />}
-        <main className="main" style={/^\/(t\/|files|web)/.test(loc.pathname) ? { display: 'flex', overflow: 'hidden' } : undefined}>
+        <main className={/^\/c\//.test(loc.pathname) ? 'main pin' : 'main'} style={/^\/(t\/|files|web)/.test(loc.pathname) ? { display: 'flex', overflow: 'hidden' } : undefined}>
           <Outlet />
         </main>
       </div>
+      {phone && <TabBar chatsActive={inConversation} openDrawer={() => setDrawer(true)} openMore={() => setSheet(true)} moreOpen={sheet} />}
+      {phone && inConversation && (
+        <Overlay open={drawer} onClose={() => setDrawer(false)} side="left" label="Conversations" className="drawer">
+          <div className="drawer-head">
+            <span className="drawer-title">Conversations</span>
+            <button className="icon-btn" aria-label="Close conversations" onClick={() => setDrawer(false)}>{Icon.close(17)}</button>
+          </div>
+          <div className="drawer-body" onClick={(e) => { if ((e.target as HTMLElement).closest('a')) setDrawer(false) }}><Sidebar /></div>
+        </Overlay>
+      )}
+      {phone && <MoreSheet open={sheet} onClose={() => setSheet(false)} />}
       {palette && <Palette onClose={() => setPalette(false)} />}
     </div>
   )
 }
 
-function Header({ onSearch, moreOpen, setMoreOpen }: { onSearch: () => void; moreOpen: boolean; setMoreOpen: (b: boolean) => void }) {
+/** What the More dropdown (desktop) and the More sheet (phone) list; the first three are the dropdown's. */
+const MORE_DESKTOP = [['/calendar', 'Calendar', 'Wakeups, routines, protected hours'], ['/network', 'Network', 'Request log and egress rules'], ['/web', 'Web page', "The assistant's web port"]]
+const MORE_PHONE: [string, string, string, keyof typeof Icon][] = [
+  ['/files', 'Files', "The assistant's workspace and project shelves", 'files'],
+  ['/tools', 'Tools', 'Integrations, connected apps and secrets', 'tools'],
+  ['/calendar', 'Calendar', 'Wakeups, routines, protected hours', 'calendar'],
+  ['/network', 'Network', 'Request log and egress rules', 'network'],
+  ['/web', 'Web page', "The assistant's web port", 'web'],
+  ['/settings', 'Settings', 'Budgets, providers, account, appearance', 'settings'],
+]
+
+function Header({ onSearch, moreOpen, setMoreOpen, onDrawer, drawerOpen }: { onSearch: () => void; moreOpen: boolean; setMoreOpen: (b: boolean) => void; onDrawer?: () => void; drawerOpen: boolean }) {
   const counts = useInboxCounts()
   const loc = useLocation()
   const convActive = CONVERSATION.test(loc.pathname)
-  const more = [['/calendar', 'Calendar', 'Wakeups, routines, protected hours'], ['/network', 'Network', 'Request log and egress rules'], ['/web', 'Web page', "The assistant's web port"]]
+  const more = MORE_DESKTOP
   const moreCur = more.find(([to]) => loc.pathname.startsWith(to))
   useEscape(moreOpen, () => setMoreOpen(false))
   return (
     <header className="header">
-      <NavLink to="/" end className={({ isActive }) => `logo ${isActive ? 'active' : ''}`} title="Home">
+      {onDrawer && <button className="icon-btn drawer-btn" aria-label="Conversations" aria-haspopup="dialog" aria-expanded={drawerOpen} onClick={onDrawer}>{Icon.menu()}</button>}
+      <NavLink to="/" end className={({ isActive }) => `logo ${isActive ? 'active' : ''} ${onDrawer ? 'with-drawer' : ''}`} title="Home">
         <span>l0wagent</span>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 10.5 12 3.5l8.5 7V20a1 1 0 0 1-1 1H15v-6.5H9V21H4.5a1 1 0 0 1-1-1z" /></svg>
       </NavLink>
       <Link to="/new" className="new-btn" title="New chat or thread (N)" style={{ textDecoration: 'none' }}>+</Link>
       <span className="vsep" />
       <nav className="nav">
-        <NavLink to="/projects" className={() => (convActive ? 'active' : '')}>Conversations</NavLink>
-        <NavLink to="/inbox">Inbox{!!counts.data?.waiting && <span className="count">{counts.data.waiting}</span>}</NavLink>
+        <NavLink to="/projects" className={() => (convActive ? 'active' : '')} aria-current={convActive ? 'page' : undefined}>Conversations</NavLink>
+        <NavLink to="/inbox" aria-label={counts.data?.waiting ? `Inbox, ${counts.data.waiting} waiting` : undefined}>Inbox{!!counts.data?.waiting && <span className="count" aria-hidden="true">{counts.data.waiting}</span>}</NavLink>
         <NavLink to="/runs">Runs</NavLink>
         <NavLink to="/files">Files</NavLink>
         <NavLink to="/tools">Tools</NavLink>
@@ -95,12 +130,59 @@ function Header({ onSearch, moreOpen, setMoreOpen }: { onSearch: () => void; mor
         </div>
       </nav>
       <div className="spacer" />
-      <button className="search-btn" onClick={onSearch} title="Search (⌘K)"><span>Search</span><kbd>⌘K</kbd></button>
+      <button className="search-btn" onClick={onSearch} title="Search (⌘K)" aria-label="Search"><span>Search</span><kbd>⌘K</kbd><span className="search-ic">{Icon.search()}</span></button>
       <StatusChip />
       <NavLink to="/settings" className={({ isActive }) => `icon-btn ${isActive ? 'active' : ''}`} title="Settings">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="17" x2="20" y2="17" /><circle cx="9" cy="7" r="2.4" fill="var(--side)" /><circle cx="15" cy="17" r="2.4" fill="var(--side)" /></svg>
       </NavLink>
     </header>
+  )
+}
+
+/** The phone's bottom navigation: five places, thumb height. Chats opens the conversation drawer when
+ * you're already in a conversation, and the Projects list otherwise. */
+function TabBar({ chatsActive, openDrawer, openMore, moreOpen }: { chatsActive: boolean; openDrawer: () => void; openMore: () => void; moreOpen: boolean }) {
+  const counts = useInboxCounts()
+  const { pathname } = useLocation()
+  const waiting = counts.data?.waiting ?? 0
+  const moreActive = MORE_PHONE.some(([to]) => pathname.startsWith(to))
+  const cur = (on: boolean) => (on ? 'page' : undefined)
+  const cls = (on: boolean) => `tab ${on ? 'active' : ''}`
+  return (
+    <nav className="tabbar" aria-label="Main">
+      <Link to="/" className={cls(pathname === '/')} aria-current={cur(pathname === '/')}><span className="tab-ic">{Icon.home()}</span><span className="tab-label">Home</span></Link>
+      <Link to="/projects" className={cls(chatsActive)} aria-current={cur(chatsActive)} onClick={(e) => { if (chatsActive) { e.preventDefault(); openDrawer() } }}>
+        <span className="tab-ic">{Icon.chats()}</span><span className="tab-label">Chats</span>
+      </Link>
+      <Link to="/inbox" className={cls(pathname.startsWith('/inbox'))} aria-current={cur(pathname.startsWith('/inbox'))} aria-label={waiting ? `Inbox, ${waiting} waiting` : undefined}>
+        <span className="tab-ic">{Icon.inbox()}{waiting > 0 && <span className="count tab-count" aria-hidden="true">{waiting}</span>}</span><span className="tab-label">Inbox</span>
+      </Link>
+      <Link to="/runs" className={cls(pathname.startsWith('/runs'))} aria-current={cur(pathname.startsWith('/runs'))}><span className="tab-ic">{Icon.runs()}</span><span className="tab-label">Runs</span></Link>
+      <button className={cls(moreActive || moreOpen)} aria-current={cur(moreActive)} aria-haspopup="dialog" aria-expanded={moreOpen} onClick={openMore}>
+        <span className="tab-ic">{Icon.more()}</span><span className="tab-label">More</span>
+      </button>
+    </nav>
+  )
+}
+
+function MoreSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { pathname } = useLocation()
+  return (
+    <Overlay open={open} onClose={onClose} side="bottom" label="More" className="more-sheet">
+      <div className="sheet-title">More</div>
+      <div className="sheet-list">
+        {MORE_PHONE.map(([to, label, desc, icon]) => {
+          const on = pathname.startsWith(to)
+          return (
+            <Link key={to} to={to} className={`sheet-row ${on ? 'on' : ''}`} aria-current={on ? 'page' : undefined} onClick={onClose}>
+              <span className="sheet-ic">{Icon[icon]()}</span>
+              <span className="sheet-text"><span className="sheet-label">{label}</span><span className="sub">{desc}</span></span>
+              <span className="sheet-go" aria-hidden="true">›</span>
+            </Link>
+          )
+        })}
+      </div>
+    </Overlay>
   )
 }
 
@@ -120,7 +202,7 @@ function StatusChip() {
       <span className={`dot ${working ? 'working' : ''}`} />
       <span style={{ fontWeight: 500, flex: 'none' }}>{label}</span>
       <span className="muted">{text}</span>
-      <span style={{ color: 'var(--dim)' }}>·</span>
+      <span className="chip-sep" style={{ color: 'var(--dim)' }}>·</span>
       <span className="muted">{budget}</span>
     </Link>
     {working && st.run_id && (
@@ -225,9 +307,13 @@ function UpdateBanner() {
   const key = `l0w-update-dismissed-${u?.latest}`
   const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(key) === '1' } catch { return false } })
   const [how, setHow] = useState(false)
+  const cancel = useCancelUpdate()
   useEffect(() => { try { setHidden(localStorage.getItem(key) === '1') } catch { /* private mode */ } }, [key])
   if (u?.draining_until) {
-    return <div className="banner"><span style={{ fontWeight: 500 }}>Updating</span><span>Waiting for {u.waiting_for.length ? u.waiting_for.join('; ') : 'the assistant to be idle'}. No new runs start meanwhile.</span></div>
+    return <div className="banner"><span style={{ fontWeight: 500 }}>Updating</span><span>Waiting for {u.waiting_for.length ? u.waiting_for.join('; ') : 'the assistant to be idle'}. No new runs start meanwhile.</span>
+      <span style={{ flex: 1 }} />
+      <button className="btn" disabled={cancel.isPending} onClick={() => cancel.mutate()} title="Clear this if ./l0w update isn't running any more">Cancel update</button>
+    </div>
   }
   if (!u?.available || hidden) return null
   const summary = (u.notes ?? '').split('\n').map((l) => l.replace(/^[-#*\s]+/, '')).find((l) => l.trim()) ?? ''

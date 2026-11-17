@@ -35,7 +35,7 @@ export function Login() {
           <div className="sub" style={{ fontSize: 14, color: 'var(--muted)' }}>{challenge ? 'Enter the code from your authenticator app' : 'Sign in to your assistant'}</div>
         </div>
         {challenge ? <>
-          <input className="input big code-input" aria-label="Code" autoFocus inputMode="numeric" autoComplete="one-time-code" placeholder="6-digit code" value={code} onChange={(e) => setCode(e.target.value)} />
+          <input className="input big code-input" aria-label="Code" autoFocus autoComplete="one-time-code" placeholder="6-digit or recovery code" value={code} onChange={(e) => setCode(e.target.value)} />
           {err && <div className="error" role="alert">{message(err)}</div>}
           <button className="btn primary big" type="submit" disabled={totp.isPending || code.trim().length < 6}>Sign in</button>
           <div className="sub" style={{ textAlign: 'center' }}>Your other devices will get a new-device notice.</div>

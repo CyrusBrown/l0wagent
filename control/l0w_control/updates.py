@@ -7,7 +7,9 @@
 - **Draining** (`./l0w update` turns it on through `python -m l0w_control.hostctl drain on`):
   no new run starts (wakeups wait, Reply now and Wake now are refused), the current run
   finishes, and jobs marked "don't interrupt" are waited for. The flag lives in the database
-  with an expiry, so it survives the restart and can't strand the assistant.
+  with an expiry, so it survives the restart and can't strand the assistant. `./l0w update`
+  renews it while it works (heartbeat); one not renewed for STALE_AFTER is a leftover from an
+  update that died, and is cleared. The owner can also cancel it (POST /api/system/update/cancel).
 """
 
 from __future__ import annotations
@@ -29,6 +31,8 @@ log = logging.getLogger("l0w.updates")
 RELEASES_URL = os.environ.get("L0W_UPDATE_URL", "https://api.github.com/repos/CyrusBrown/l0wagent/releases/latest")
 CHECK_EVERY = timedelta(hours=6)
 DRAIN_KEY = "drain_until"
+DRAIN_BY_KEY = "drain_by"
+STALE_AFTER = timedelta(minutes=10)
 
 
 def _ver(v: str | None) -> tuple[int, ...] | None:
@@ -37,17 +41,28 @@ def _ver(v: str | None) -> tuple[int, ...] | None:
 
 
 def draining(db: Database) -> datetime | None:
-    row = db.q1("SELECT value FROM kv WHERE key=?", (DRAIN_KEY,))
-    until = parse(row["value"]) if row else None
-    return until if until and until > utcnow() else None
+    row = db.q1("SELECT value, updated_at FROM kv WHERE key=?", (DRAIN_KEY,))
+    if not row:
+        return None
+    until, renewed = parse(row["value"]), parse(row["updated_at"])
+    if not until or until <= utcnow():
+        return None
+    if renewed and renewed < utcnow() - STALE_AFTER:  # nobody has renewed it: the updater died
+        log.warning("clearing a stale update drain (last renewed %s)", row["updated_at"])
+        set_drain(db, False)
+        return None
+    return until
 
 
-def set_drain(db: Database, on: bool, minutes: float = 120) -> None:
+def set_drain(db: Database, on: bool, minutes: float = 120, by: str | None = None) -> None:
+    """Turn the drain on, or renew it (each call is a heartbeat), or off."""
     if on:
-        db.ex("INSERT INTO kv(key, value, updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
-              (DRAIN_KEY, iso(utcnow() + timedelta(minutes=minutes)), db.now()))
+        upsert = "INSERT INTO kv(key, value, updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at"
+        db.ex(upsert, (DRAIN_KEY, iso(utcnow() + timedelta(minutes=minutes)), db.now()))
+        if by:
+            db.ex(upsert, (DRAIN_BY_KEY, by, db.now()))
     else:
-        db.ex("DELETE FROM kv WHERE key=?", (DRAIN_KEY,))
+        db.ex("DELETE FROM kv WHERE key IN (?,?)", (DRAIN_KEY, DRAIN_BY_KEY))
 
 
 def blockers(db: Database) -> list[str]:
@@ -86,6 +101,11 @@ class Updates:
         self.db.ex("INSERT INTO kv(key, value, updated_at) VALUES('update_check', ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
                    (json.dumps(result), self.db.now()))
         return result
+
+    def cancel(self) -> s.UpdateInfo:
+        """Clear the drain (owner action): new runs may start again."""
+        set_drain(self.db, False)
+        return self.info()
 
     def info(self) -> s.UpdateInfo:
         c = self._cached()

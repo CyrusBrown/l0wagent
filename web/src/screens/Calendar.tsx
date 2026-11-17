@@ -4,6 +4,7 @@ import type { S } from '../api/client'
 import { useTimeFormat } from '../app/timeFormat'
 import { clockIn } from '../components/format'
 import { Select } from '../components/Select'
+import { useIsPhone } from '../components/useIsPhone'
 import { DatePicker, TimePicker } from '../components/DateTimePicker'
 import { Switch } from '../components/settings'
 import { useEscape } from '../components/useEscape'
@@ -54,6 +55,7 @@ export function Calendar() {
   }, [offset])
   const cal = useCalendar(start, end)
   const [open, setOpen] = useState<number | 'new' | null>(null)
+  const phone = useIsPhone()
   if (cal.isError) return <div className="page"><div className="error">Couldn't load the calendar.</div></div>
   const c = cal.data
   if (!c) return <div className="page" />
@@ -80,7 +82,7 @@ export function Calendar() {
       </div>
       <div className="cal-legend">{LEGEND.map(([label, k]) => <span key={k}><span className={`cal-swatch ${k}`} />{label}</span>)}</div>
       <div className="cal-layout">
-        <Week c={c} days={days} today={today} onOpen={setOpen} />
+        {phone ? <Agenda c={c} days={days} today={today} onOpen={setOpen} /> : <Week c={c} days={days} today={today} onOpen={setOpen} />}
         <Side c={c} />
       </div>
       {open === 'new' && <WakeupEditor tz={tz} tiers={c.budget.limits.tiers} onClose={() => setOpen(null)} />}
@@ -91,15 +93,9 @@ export function Calendar() {
 
 type Day = ReturnType<typeof parts>
 
-function Week({ c, days, today, onOpen }: { c: S['Calendar']; days: Day[]; today: string; onOpen: (id: number) => void }) {
-  const { hour12 } = useTimeFormat()
+/** Per day, the [startMin, endMin] spans that are protected for you: everything outside the allowed windows. */
+function protectedByDay(c: S['Calendar'], days: Day[]): [number, number][][] {
   const tz = c.timezone
-  const patch = usePatchWakeup()
-  const grid = useRef<HTMLDivElement>(null)
-  const [drag, setDrag] = useState<{ id: number; dx: number; dy: number; x0: number; y0: number } | null>(null)
-  const [err, setErr] = useState<string | null>(null)
-
-  // Allowed windows per day as [startMin, endMin]; the rest is protected for you.
   const allowed = days.map((d) => {
     const out: [number, number][] = []
     for (const w of c.windows.filter((x) => x.kind === 'allowed')) {
@@ -110,7 +106,7 @@ function Week({ c, days, today, onOpen }: { c: S['Calendar']; days: Day[]; today
     }
     return out.sort((x, y) => x[0] - y[0])
   })
-  const protectedBlocks = allowed.map((xs) => {
+  return allowed.map((xs) => {
     const out: [number, number][] = []
     let t = 0
     for (const [a, b] of xs) {
@@ -120,6 +116,17 @@ function Week({ c, days, today, onOpen }: { c: S['Calendar']; days: Day[]; today
     if (t < 1440) out.push([t, 1440])
     return out
   })
+}
+
+function Week({ c, days, today, onOpen }: { c: S['Calendar']; days: Day[]; today: string; onOpen: (id: number) => void }) {
+  const { hour12 } = useTimeFormat()
+  const tz = c.timezone
+  const patch = usePatchWakeup()
+  const grid = useRef<HTMLDivElement>(null)
+  const [drag, setDrag] = useState<{ id: number; dx: number; dy: number; x0: number; y0: number } | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  const protectedBlocks = protectedByDay(c, days)
   const sweep = c.windows.find((w) => w.kind === 'sweep')
 
   function drop(e: React.PointerEvent, w: S['Wakeup']) {
@@ -181,6 +188,39 @@ function Week({ c, days, today, onOpen }: { c: S['Calendar']; days: Day[]; today
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+/** The phone's calendar: the same week as an agenda, one section a day. A grid of seven narrow columns
+ * can't be read or dragged on a phone; tap an item to open it. */
+function Agenda({ c, days, today, onOpen }: { c: S['Calendar']; days: Day[]; today: string; onOpen: (id: number) => void }) {
+  const { hour12 } = useTimeFormat()
+  const tz = c.timezone
+  const blocks = protectedByDay(c, days)
+  const clock = (m: number) => {
+    const h = Math.floor(m / 60) % 24, mm = String(m % 60).padStart(2, '0')
+    return hour12 ? `${h % 12 || 12}${mm === '00' ? '' : `:${mm}`} ${h < 12 ? 'AM' : 'PM'}` : `${String(h).padStart(2, '0')}:${mm}`
+  }
+  return (
+    <div className="cal-agenda">
+      {days.map((d, i) => {
+        const list = c.wakeups.filter((w) => parts(w.at, tz).date === d.date).sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
+        return (
+          <section key={d.date} className={`ag-day ${d.date === today ? 'today' : ''}`} aria-label={`${d.weekday} ${d.day}`}>
+            <div className="ag-head"><span className="ag-dow">{d.weekday}</span><span className="ag-num">{d.day}</span>{d.date === today && <span className="pill run">Today</span>}</div>
+            {list.map((w) => (
+              <button key={w.id} className={`ag-ev ${KIND_CLASS[w.kind]} ${w.status !== 'planned' ? 'past' : ''}`} onClick={() => onOpen(w.id)}>
+                <span className="ag-time">{clockIn(w.at, tz)}</span>
+                <span className="ag-text">{w.kind === 'routine' ? w.reason.replace(/^Routine: /, '') : w.kind === 'fallback' ? 'Fallback' : w.kind === 'sweep' ? 'Sweep' : w.reason}</span>
+                <span className="ag-pts">{w.budget} pts</span>
+              </button>
+            ))}
+            {!list.length && <div className="sub ag-none">Nothing planned</div>}
+            {!!blocks[i].length && <div className="ag-protected"><span className="cal-swatch protected" />Protected {blocks[i].map(([a, b]) => `${clock(a)}–${b >= 1440 ? clock(0) : clock(b)}`).join(', ')}</div>}
+          </section>
+        )
+      })}
     </div>
   )
 }

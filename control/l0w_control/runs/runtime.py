@@ -74,6 +74,13 @@ def _clip(text: str, n: int) -> str:
     return text if len(text) <= n else text[: n - 1] + "…"
 
 
+def _keep_lines(text: str, n: int) -> str:
+    """The final message with its line breaks (control looks for `IDLE:` on the last line);
+    a long one keeps its head and its tail."""
+    text = str(text).strip()
+    return text if len(text) <= n else text[: n // 2] + "\n…\n" + text[-(n // 2):]
+
+
 def _tool_summary(name: str, inp: dict) -> str:
     if name.lower() == "bash":
         return f"$ {_clip(inp.get('command', ''), TOOL_TEXT_MAX)}"
@@ -112,6 +119,10 @@ class ClaudeCode(RuntimeAdapter):
                     p.items.append(Item("model", f"Model {ev['model']}", False, {"model": ev["model"]}))
             elif p.runner == "pre_run":
                 p.items.append(Item("control", f"Pre-run report (exit {ev.get('returncode')})", False, {"output": _clip(ev.get("output") or "", RESULT_MAX)}))
+            elif p.runner == "foreign_cli":
+                procs = ev.get("processes") or []
+                p.items.append(Item("control", "Warning: the agent started a model CLI of its own (a second session control can't meter): "
+                                    + _clip("; ".join(str(x.get("cmd")) for x in procs if isinstance(x, dict)), 200), True, {"processes": procs}))
             elif p.runner == "lost":
                 p.items.append(Item("error", "The agent computer restarted mid-session", True))
             elif p.runner == "exited" and ev.get("returncode") not in (0, None, 130):
@@ -157,7 +168,7 @@ class ClaudeCode(RuntimeAdapter):
             p.session_id = ev.get("session_id")
             ok = not ev.get("is_error")
             text = ev.get("result") or ev.get("subtype") or ""
-            p.result = {"ok": ok, "text": _clip(text, RESULT_MAX), "turns": ev.get("num_turns"), "cost_usd": ev.get("total_cost_usd"),
+            p.result = {"ok": ok, "text": _keep_lines(text, RESULT_MAX), "turns": ev.get("num_turns"), "cost_usd": ev.get("total_cost_usd"),
                         "subtype": ev.get("subtype"), "usage": ev.get("usage")}
             label = "Session finished" if ok else "Session ended with an error"
             p.items.append(Item("control" if ok else "error", f"{label}: {_clip(text, 200)}", True, {"turns": ev.get("num_turns"), "usage": ev.get("usage")}))

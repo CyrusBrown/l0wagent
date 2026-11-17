@@ -4,6 +4,9 @@
   assistant status "one sentence"        what you're doing now (shown live to the owner)
   assistant status                       the current run and usage
   assistant run describe "a paragraph"   what this run is for
+  assistant runs [-n 20]                 recent runs: id, when, why, used of budget, how they ended, what they were about
+  assistant run show N                   one run's notes, claims and result
+  assistant help [topic]                 this text by section (a topic: a word from a heading or a command)
   assistant note "one sentence"          a milestone on this run's status timeline
   assistant inbox [--peek]               anything new for you
   assistant wait [minutes]               pause (no tokens used) until something arrives, max 9.5 min
@@ -125,6 +128,41 @@ def fmt_project(p: dict) -> str:
     return head + (f"\n{'':<23}{p['summary']}" if p.get("summary") else "")
 
 
+def fmt_run(r: dict) -> str:
+    end = r["status"] + (f"/{r['end_reason']}" if r.get("end_reason") and r["end_reason"] != r["status"] else "")
+    used = f"{r['used']:g}/{r['budget']:g}" if r.get("budget") else f"{r['used']:g}"
+    about = (r.get("about") or "").strip()
+    return f"#{r['id']:<5} {r['when']:<17} {r['kind']}/{r['why']:<12} {used:>9} pts  {end:<14} {about[:100]}"
+
+
+def print_run(r: dict) -> None:
+    print(fmt_run(r))
+    if r.get("stop_reason"):
+        print(f"stopped: {r['stop_reason']}")
+    if r.get("now"):
+        print(f"last status: {r['now']}")
+    if r.get("notes"):
+        print("notes:\n" + "\n".join(f"  {n}" for n in r["notes"]))
+    for c in r.get("claims") or []:
+        print(f"claim on thread #{c['thread_id']} “{c['title']}” [{c['status']}]: {c['plan']}" + (f" -> {c['result']}" if c.get("result") else ""))
+    if r.get("result"):
+        print("result:\n  " + r["result"].replace("\n", "\n  "))
+
+
+def print_help(topic: str) -> None:
+    """The usage text above, section by section (sections are separated by blank lines)."""
+    sections = [s.strip("\n") for s in (__doc__ or "").split("\n\n") if s.strip()]
+    sections = [s for s in sections if not s.startswith("assistant: talk to control")] or sections
+    # The first block (the opening commands) is "Basics"; the rest start with a heading line.
+    heads = ["Basics" if s.lstrip().startswith("assistant ") else s.splitlines()[0].rstrip(":") for s in sections]
+    if not topic:
+        print("assistant help TOPIC prints one section. Sections:\n" + "\n".join(f"  {h}" for h in heads))
+        return
+    words = topic.lower().split()
+    hits = [s for s, h in zip(sections, heads) if all(w in (h + "\n" + s).lower() for w in words)]
+    print("\n\n".join(hits) if hits else f"No section matches {topic!r}. `assistant help` lists them.")
+
+
 def ids(text: str | None) -> list[int]:
     return [int(x) for x in (text or "").replace(" ", "").split(",") if x]
 
@@ -167,9 +205,13 @@ def main() -> None:
     sub = p.add_subparsers(dest="cmd", required=True)
     st = sub.add_parser("status", help="set your 'now' sentence, or show the run and usage")
     st.add_argument("text", nargs="*")
-    rn = sub.add_parser("run", help="run describe \"…\"")
-    rn.add_argument("action", choices=["describe"])
+    rn = sub.add_parser("run", help="run describe \"…\"  |  run show N")
+    rn.add_argument("action", choices=["describe", "show"])
     rn.add_argument("text", nargs="+")
+    rl = sub.add_parser("runs", help="recent runs")
+    rl.add_argument("-n", "--limit", type=int, default=20)
+    hp = sub.add_parser("help", help="the usage text, by section")
+    hp.add_argument("topic", nargs="*")
     nt = sub.add_parser("note", help="a milestone on the status timeline")
     nt.add_argument("text", nargs="+")
     ib = sub.add_parser("inbox", help="anything new for you")
@@ -333,9 +375,18 @@ def main() -> None:
             print(f"status set (run #{r['run_id']})")
         else:
             print(call("GET", "/status")["text"])
+    elif a.cmd == "run" and a.action == "show":
+        if not a.text[0].isdigit():
+            sys.exit("run show N: N is a run number (see `assistant runs`)")
+        print_run(call("GET", f"/runs/{int(a.text[0])}"))
     elif a.cmd == "run":
         r = call("POST", "/run/describe", {"text": text(a.text), "run_id": run_id()})
         print(f"run #{r['run_id']} described")
+    elif a.cmd == "runs":
+        rows = call("GET", f"/runs?limit={max(1, a.limit)}")
+        print("\n".join(fmt_run(r) for r in rows) or "No runs yet.")
+    elif a.cmd == "help":
+        print_help(" ".join(a.topic))
     elif a.cmd == "note":
         r = call("POST", "/notes", {"text": text(a.text), "run_id": run_id()})
         print(f"noted (run #{r['run_id']})")

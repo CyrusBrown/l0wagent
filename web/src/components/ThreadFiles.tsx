@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { S } from '../api/client'
 import { ShelfView } from './ShelfView'
+import { useEscape } from './useEscape'
+import { useIsPhone } from './useIsPhone'
 
 export const THREAD_FILES_KEY = 'l0w.threadFilesWidth'
 export const THREAD_FILES_MIN = 280
@@ -19,7 +21,10 @@ export function readThreadFilesWidth() {
   }
 }
 
-export function ThreadFiles({ project, onClose, onLink }: { project: string; onClose: () => void; onLink: (item: S['ShelfItem']) => void }) {
+export function ThreadFiles({ project, onClose, onLink, closing }: { project: string; onClose: () => void; onLink: (item: S['ShelfItem']) => void; closing?: boolean }) {
+  // On a phone the panel is a full-screen sheet: a dialog that Escape closes.
+  const phone = useIsPhone()
+  useEscape(phone && !closing, onClose)
   const [width, setWidth] = useState(readThreadFilesWidth)
   const [resizing, setResizing] = useState(false)
   const drag = useRef<{ x: number; w: number } | null>(null)
@@ -52,7 +57,8 @@ export function ThreadFiles({ project, onClose, onLink }: { project: string; onC
   const nudge = (by: number) => setWidth((w) => clamp(w + by))
 
   return (
-    <aside id="thread-files-panel" className={`thread-files${resizing ? ' resizing' : ''}`}
+    <aside id="thread-files-panel" className={`thread-files${resizing ? ' resizing' : ''}${closing ? ' closing' : ''}`}
+      {...(phone ? { role: 'dialog', 'aria-modal': true, 'aria-label': 'Project files' } : {})}
       style={{ '--thread-files-w': `${width}px` } as CSSProperties}>
       <div
         className="thread-files-handle" role="separator" aria-label="Resize project files" aria-orientation="vertical"

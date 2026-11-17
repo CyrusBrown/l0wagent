@@ -15,6 +15,7 @@ import asyncio
 import ipaddress
 import logging
 import os
+import re
 import secrets
 import socket
 import sqlite3
@@ -112,9 +113,10 @@ def parse_pattern(pattern: str) -> dict:
         return {"net": ipaddress.ip_network(p, strict=False), "domain": None, "port": port}
     except ValueError:
         pass
-    if not p or " " in p or "/" in p:
+    domain = p.strip(".")
+    if not domain or " " in domain or "/" in domain or not re.search(r"[a-z0-9]", domain):
         raise ValueError(f"invalid pattern: {pattern}")
-    return {"net": None, "domain": p.rstrip("."), "port": port}
+    return {"net": None, "domain": domain, "port": port}
 
 
 def _load_rules() -> list[dict]:
@@ -132,6 +134,8 @@ def _match(rule: dict, host: str, port: int, ips: list) -> bool:
         return False
     if rule["domain"]:
         return host == rule["domain"] or host.endswith("." + rule["domain"])
+    if rule["net"] is None:
+        return False
     return any(ip in rule["net"] for ip in ips)
 
 
@@ -273,6 +277,101 @@ async def _pipe(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, coun
             pass
 
 
+# ------------------------------------------------------------------ TLS server name (SNI)
+
+HELLO_MAX = 16384
+HELLO_TIMEOUT = 5.0
+
+
+def _handshake_bytes(data: bytes) -> tuple[bytes | None, bool]:
+    """Join the handshake records at the start of `data`. Returns (payload, complete): payload is None
+    when `data` doesn't start with a TLS handshake record; complete says the first handshake message
+    is all there (a hello may be split over several records or reads)."""
+    if len(data) < 1 or data[0] != 0x16:
+        return None, False
+    payload, pos = b"", 0
+    while pos + 5 <= len(data) and data[pos] == 0x16:
+        n = int.from_bytes(data[pos + 3:pos + 5], "big")
+        payload += data[pos + 5:pos + 5 + n]
+        pos += 5 + n
+        if len(payload) >= 4 and len(payload) >= 4 + int.from_bytes(payload[1:4], "big"):
+            return payload, True
+    return payload, False
+
+
+def parse_sni(data: bytes) -> str | None:
+    """The server_name from a TLS ClientHello at the start of `data`, or None (not TLS, no SNI, malformed)."""
+    try:
+        payload, complete = _handshake_bytes(data)
+        if not payload or not complete or payload[0] != 1:
+            return None
+        end = 4 + int.from_bytes(payload[1:4], "big")
+        i = 4 + 2 + 32  # version, random
+        i += 1 + payload[i]  # session id
+        i += 2 + int.from_bytes(payload[i:i + 2], "big")  # cipher suites
+        i += 1 + payload[i]  # compression
+        if i + 2 > end:
+            return None
+        ext_end = i + 2 + int.from_bytes(payload[i:i + 2], "big")
+        i += 2
+        ext_end = min(ext_end, end)
+        while i + 4 <= ext_end:
+            etype = int.from_bytes(payload[i:i + 2], "big")
+            elen = int.from_bytes(payload[i + 2:i + 4], "big")
+            body = payload[i + 4:i + 4 + elen]
+            i += 4 + elen
+            if etype != 0:
+                continue
+            # server_name_list: u16 length, then (u8 type, u16 length, name)
+            j = 2
+            while j + 3 <= len(body):
+                ntype, nlen = body[j], int.from_bytes(body[j + 1:j + 3], "big")
+                name = body[j + 3:j + 3 + nlen]
+                j += 3 + nlen
+                if ntype == 0 and name:
+                    return name.decode("ascii").lower().rstrip(".") or None
+            return None
+    except (IndexError, ValueError, UnicodeDecodeError):
+        return None
+    return None
+
+
+async def read_client_hello(reader: asyncio.StreamReader) -> bytes:
+    """The client's first bytes after the tunnel opens: up to a whole ClientHello (HELLO_MAX bytes,
+    HELLO_TIMEOUT seconds). Anything that doesn't start like TLS is returned as soon as it arrives."""
+    data = b""
+    deadline = time.monotonic() + HELLO_TIMEOUT
+    while len(data) < HELLO_MAX:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            break
+        try:
+            chunk = await asyncio.wait_for(reader.read(HELLO_MAX - len(data)), timeout=left)
+        except TimeoutError:
+            break
+        if not chunk:
+            break
+        data += chunk
+        payload, complete = _handshake_bytes(data)
+        if payload is None or complete:
+            break
+    return data
+
+
+def sni_verdict(sni: str, port: int, chat: bool) -> str | None:
+    """A reason to refuse the tunnel because of the TLS server name, or None."""
+    if chat:
+        return None if sni in CHAT_HOSTS else "the chat runtime may only reach the model provider"
+    if is_gated(sni) and not Lease.active():
+        return "model providers are only reachable during runs (no active lease)"
+    rules = _load_rules()
+    allowed = any(r["action"] in ("allow", "allow_ro") and _match(r, sni, port, []) for r in rules)
+    block = next((r for r in rules if r["action"] == "block" and _match(r, sni, port, [])), None)
+    if block and not allowed:
+        return f"blocked by rule '{block['pattern']}'"
+    return None
+
+
 def _split_hostport(target: str, default_port: int) -> tuple[str, int]:
     if target.startswith("["):
         host, _, rest = target[1:].partition("]")
@@ -342,14 +441,48 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
         path = parts.path or "/"
         if parts.query:
             path += "?" + parts.query
-        headers = [h for h in lines[1:] if h and not h.lower().startswith(("proxy-", "connection:", "keep-alive:"))]
+        drop = ("proxy-", "connection:", "keep-alive:")
+        if read_only:  # a read-only rule must not let a header turn the GET into a write upstream
+            drop += ("x-http-method-override:", "x-method-override:", "x-http-method:")
+        headers = [h for h in lines[1:] if h and not h.lower().startswith(drop)]
         up_writer.write((f"{method} {path} {version}\r\n" + "\r\n".join(headers + ["Connection: close"]) + "\r\n\r\n").encode("latin-1"))
         await up_writer.drain()
         status = None
 
     entry = (host, writer, up_writer)
     _tunnels.add(entry)
+    sni_entry = None
+    pre_down = None
     try:
+        if status == 200:
+            # The CONNECT line can name a harmless host while the TLS server name says otherwise, so
+            # read the ClientHello and vet that name too. Start the server->client pipe first so
+            # protocols where the server speaks first don't stall.
+            pre_down = asyncio.create_task(_pipe(up_reader, writer, counter, "down"))
+            hello = await read_client_hello(reader)
+            sni = parse_sni(hello)
+            started_tls, complete = _handshake_bytes(hello)
+            if started_tls is not None and not complete:
+                # A handshake that stalls or overruns before its server name can be read would
+                # otherwise go through unvetted (send 5 bytes, wait out the timeout, send the rest).
+                sni, why = None, "incomplete TLS ClientHello"
+            else:
+                why = sni_verdict(sni, port, from_chat(client)) if sni else None
+            if why:
+                log_request(client=client, method="CONNECT", host=sni or host, port=port, url=None, action="blocked",
+                            reason=f"TLS server name {sni or '?'} (tunnel to {host}): {why}", status=403)
+                pre_down.cancel()
+                for w in (writer, up_writer):
+                    w.close()
+                return
+            if sni:
+                if sni != host:
+                    sni_entry = (sni, writer, up_writer)
+                    _tunnels.add(sni_entry)
+            if hello:
+                counter["up"] += len(hello)
+                up_writer.write(hello)
+                await up_writer.drain()
         if read_only:
             # Forward only the vetted request; never relay further client bytes (no smuggled
             # pipelined writes on the same connection). Reads carry no body.
@@ -358,10 +491,11 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
         else:
             await asyncio.gather(
                 _pipe(reader, up_writer, counter, "up"),
-                _pipe(up_reader, writer, counter, "down", first if status is None else None),
+                pre_down or _pipe(up_reader, writer, counter, "down", first if status is None else None),
             )
     finally:
         _tunnels.discard(entry)
+        _tunnels.discard(sni_entry)
         if status is None and first:
             try:
                 status = int(first[0].split(b" ", 2)[1])
@@ -372,7 +506,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
 
 
 def close_gated_tunnels() -> int:
-    n = 0
+    closed = set()
     for host, cw, uw in list(_tunnels):
         if is_gated(host):
             for w in (cw, uw):
@@ -380,8 +514,8 @@ def close_gated_tunnels() -> int:
                     w.close()
                 except Exception:  # noqa: BLE001
                     pass
-            n += 1
-    return n
+            closed.add(id(cw))
+    return len(closed)
 
 
 # ------------------------------------------------------------------ admin API

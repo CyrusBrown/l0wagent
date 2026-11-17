@@ -3,10 +3,12 @@
 import base64
 import hashlib
 import json
+from datetime import timedelta
 from urllib.parse import parse_qs, urlparse
 
 import pytest
 
+from l0w_control.auth import iso, utcnow
 from tests.test_conversations import be, c  # noqa: F401
 
 CB = "https://claude.ai/api/mcp/auth_callback"
@@ -189,9 +191,53 @@ def test_refresh_rotates(c):  # noqa: F811
     n = r.json()
     assert n["access_token"] != t["access_token"] and n["refresh_token"] != t["refresh_token"]
     assert rpc(c, n["access_token"], "ping").status_code == 200
-    r = refresh(t["refresh_token"])
-    assert r.status_code == 400 and r.json()["error"] == "invalid_grant"
+    # Presented again at once: a client retrying a lost response, so it gets a fresh pair and the grant lives.
+    retry = refresh(t["refresh_token"])
+    assert retry.status_code == 200 and retry.json()["refresh_token"] not in (t["refresh_token"], n["refresh_token"])
     assert refresh(n["refresh_token"]).status_code == 200
+
+
+def _age_rotation(be, seconds):  # noqa: F811
+    be.db.ex("UPDATE oauth_tokens SET revoked_at=? WHERE revoked_at IS NOT NULL", (iso(utcnow() - timedelta(seconds=seconds)),))
+
+
+def test_reused_refresh_token_revokes_the_grant(c, be):  # noqa: F811
+    cid, t = connect(c)
+
+    def refresh(rt):
+        return c.post("/oauth/token", data={"grant_type": "refresh_token", "refresh_token": rt, "client_id": cid})
+
+    n = refresh(t["refresh_token"]).json()
+    _age_rotation(be, 60)
+    r = refresh(t["refresh_token"])  # long after rotation: theft
+    assert r.status_code == 400 and r.json()["error"] == "invalid_grant"
+    # Everything the grant issued is dead, including the newest tokens.
+    assert refresh(n["refresh_token"]).status_code == 400
+    assert rpc(c, n["access_token"], "ping").status_code == 401
+    assert c.get("/api/connected-apps").json() == []
+
+
+def test_registration_prunes_grantless_clients_and_is_rate_limited(c, be, monkeypatch):  # noqa: F811
+    old = register(c)
+    be.db.ex("UPDATE oauth_clients SET created_at=? WHERE client_id=?", (iso(utcnow() - timedelta(days=2)), old))
+    keep_cid, _ = connect(c)
+    be.db.ex("UPDATE oauth_clients SET created_at=? WHERE client_id=?", (iso(utcnow() - timedelta(days=2)), keep_cid))
+    register(c)
+    ids = {r["client_id"] for r in be.db.q("SELECT client_id FROM oauth_clients")}
+    assert old not in ids and keep_cid in ids  # old and grantless: gone; old with a grant: kept
+    # At the cap the oldest grantless ones go.
+    monkeypatch.setattr("l0w_control.connector.MAX_CLIENTS", 3)
+    first = register(c)
+    register(c)
+    register(c)
+    ids = {r["client_id"] for r in be.db.q("SELECT client_id FROM oauth_clients")}
+    assert len(ids) == 3 and keep_cid in ids and first not in ids
+    # Ten registrations an hour per address.
+    monkeypatch.setattr("l0w_control.connector.MAX_CLIENTS", 100)
+    r = None
+    for _ in range(12):
+        r = c.post("/oauth/register", json={"client_name": "x", "redirect_uris": [CB]})
+    assert r.status_code == 429 and r.json()["error"] == "slow_down"
 
 
 def test_deny(c):  # noqa: F811

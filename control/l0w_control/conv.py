@@ -15,26 +15,29 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 from collections.abc import Callable
+from datetime import timedelta
 from typing import Any
 
 from pydantic import BaseModel
 
 from .api import schemas as s
-from .auth import parse
+from .auth import iso, parse
 from .backends.base import BadRequest, Conflict, NotFound
-from .config import SPECS, Settings, cast
+from .config import SPECS, Settings, cast, check_range
 from .db import Database
 from .live import Live
 from .vault import Vault
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 PREVIEW = 90
+MAX_OPEN_ASKS_PER_RUN = 20
 SUGGESTION_KINDS = {
     "thread_archive": "thread", "thread_rename": "thread", "thread_move": "thread", "thread_split": "thread", "thread_merge": "thread",
     "project_split": "project", "project_merge": "project", "project_stale": "project", "project_archive": "project",
 }
-SCOPE_ONCE_NOTE = "once = undone when the run that asked ends"
+SCOPE_ONCE_NOTE = "once = undone when the run that asked ends, or the next run if it already has"
 
 
 def slugify(name: str) -> str:
@@ -75,17 +78,34 @@ class Conversations:
 
     # ── idempotency ────────────────────────────────────────────────────────
     def once(self, key: str | None, endpoint: str, cls: type[BaseModel], make: Callable[[], BaseModel]) -> Any:
-        """Repeat a create with the same key → the first result (the offline outbox retries)."""
-        if key:
-            row = self.db.q1("SELECT endpoint, response_json FROM idempotency_keys WHERE key=?", (key,))
-            if row:
-                if row["endpoint"] != endpoint:
-                    raise Conflict("idempotency_key_reused", "That key was used for a different request.")
+        """Repeat a create with the same key → the first result (the offline outbox retries).
+        The key is claimed first (a placeholder row), so two concurrent retries can't both run `make`."""
+        if not key:
+            return make()
+        now = self.db.now()
+        try:
+            self.db.ex("INSERT INTO idempotency_keys(key, endpoint, response_json, created_at) VALUES(?,?,?,?)", (key, endpoint, "", now))
+            claimed = True
+        except sqlite3.IntegrityError:   # the key exists
+            claimed = False
+        if not claimed:
+            row = self.db.q1("SELECT endpoint, response_json, created_at FROM idempotency_keys WHERE key=?", (key,))
+            if row is None:   # deleted in between (the first attempt failed): try again
+                return self.once(key, endpoint, cls, make)
+            if row["endpoint"] != endpoint:
+                raise Conflict("idempotency_key_reused", "That key was used for a different request.")
+            if row["response_json"]:
                 return cls.model_validate_json(row["response_json"])
-        result = make()
-        if key:
-            self.db.ex("INSERT OR IGNORE INTO idempotency_keys(key, endpoint, response_json, created_at) VALUES(?,?,?,?)",
-                       (key, endpoint, result.model_dump_json(), self.db.now()))
+            # Still being made. An attempt that died leaves its claim behind: take it over after a minute.
+            stale = iso(parse(now) - timedelta(seconds=60))  # type: ignore[operator]
+            if row["created_at"] > stale or not self.db.ex("UPDATE idempotency_keys SET created_at=? WHERE key=? AND response_json='' AND created_at<=?", (now, key, stale)):
+                raise Conflict("in_progress", "The first attempt of this request is still running; try again in a moment.")
+        try:
+            result = make()
+        except BaseException:
+            self.db.ex("DELETE FROM idempotency_keys WHERE key=? AND response_json=''", (key,))
+            raise
+        self.db.ex("UPDATE idempotency_keys SET response_json=? WHERE key=?", (result.model_dump_json(), key))
         return result
 
     # ── reading ────────────────────────────────────────────────────────────
@@ -101,25 +121,30 @@ class Conversations:
             raise NotFound(f"thread {thread_id}")
         return row
 
-    def _open_asks(self, where: str, params: tuple) -> int:
-        n = 0
-        for table in ("questions", "permissions", "tasks"):
-            n += self.db.q1(f"SELECT COUNT(*) AS n FROM {table} WHERE status='open' AND {where}", params)["n"]
-        return n
+    def _counts(self, thread_ids: list[int]) -> dict[int, dict]:
+        """Unread, open asks and the last message for many threads, in one query per 500 threads."""
+        out: dict[int, dict] = {}
+        for i in range(0, len(thread_ids), 500):
+            chunk = thread_ids[i:i + 500]
+            marks = ",".join("?" * len(chunk))
+            asks = " + ".join(f"(SELECT COUNT(*) FROM {tb} x WHERE x.thread_id=t.id AND x.status='open')" for tb in ("questions", "permissions", "tasks"))
+            rows = self.db.q(
+                "SELECT t.id, (SELECT COUNT(*) FROM messages m WHERE m.thread_id=t.id AND m.sender='assistant' AND m.id>COALESCE(t.last_read_message_id,0)) AS unread, "
+                f"{asks} AS open_asks, "
+                "(SELECT sender FROM messages WHERE thread_id=t.id ORDER BY id DESC LIMIT 1) AS last_sender, "
+                f"(SELECT body FROM messages WHERE thread_id=t.id ORDER BY id DESC LIMIT 1) AS last_body FROM threads t WHERE t.id IN ({marks})", chunk)
+            out.update({r["id"]: r for r in rows})
+        return out
 
-    def _unread(self, thread_row: dict) -> int:
-        return self.db.q1("SELECT COUNT(*) AS n FROM messages WHERE thread_id=? AND sender='assistant' AND id>?",
-                          (thread_row["id"], thread_row["last_read_message_id"] or 0))["n"]
-
-    def thread_model(self, row: dict) -> s.Thread:
-        last = self.db.q1("SELECT sender, body FROM messages WHERE thread_id=? ORDER BY id DESC LIMIT 1", (row["id"],))
+    def thread_model(self, row: dict, counts: dict | None = None) -> s.Thread:
+        c = counts if counts is not None else self._counts([row["id"]]).get(row["id"], {})
         preview = None
-        if last:
-            who = {"owner": "You: ", "chat": "Chat: ", "system": ""}.get(last["sender"], "")
-            preview = (who + " ".join(last["body"].split()))[:PREVIEW]
+        if c.get("last_sender") is not None:
+            who = {"owner": "You: ", "chat": "Chat: ", "system": ""}.get(c["last_sender"], "")
+            preview = (who + " ".join(c["last_body"].split()))[:PREVIEW]
         return s.Thread(id=row["id"], project=row.get("project"), title=row["title"], type=row["type"], status=row["status"], created_by=row["created_by"],
                         pinned=bool(row["pinned"]), created_at=parse(row["created_at"]), last_activity_at=parse(row["updated_at"]),  # type: ignore[arg-type]
-                        last_message_preview=preview, unread=self._unread(row), open_asks=self._open_asks("thread_id=?", (row["id"],)))
+                        last_message_preview=preview, unread=c.get("unread", 0), open_asks=c.get("open_asks", 0))
 
     def thread(self, thread_id: int) -> s.Thread:
         return self.thread_model(self._thread_row(thread_id))
@@ -134,15 +159,20 @@ class Conversations:
         if project:
             sql += " AND p.slug=?"
             params.append(project)
-        return [self.thread_model(r) for r in self.db.q(sql + " ORDER BY t.pinned DESC, t.updated_at DESC", params)]
+        rows = self.db.q(sql + " ORDER BY t.pinned DESC, t.updated_at DESC", params)
+        counts = self._counts([r["id"] for r in rows])
+        return [self.thread_model(r, counts.get(r["id"], {})) for r in rows]
 
-    def project_model(self, row: dict) -> s.Project:
-        threads = self.db.q("SELECT * FROM threads WHERE project_id=?", (row["id"],))
+    def project_model(self, row: dict, threads: list[dict] | None = None, counts: dict | None = None) -> s.Project:
+        if threads is None:
+            threads = self.db.q("SELECT * FROM threads WHERE project_id=?", (row["id"],))
+        if counts is None:
+            counts = self._counts([t["id"] for t in threads])
         last = max([row["updated_at"], *[t["updated_at"] for t in threads]])
         return s.Project(slug=row["slug"], name=row["name"], summary=row["summary"], status=row["status"], doc_path=row["doc_path"],
                          links=_j(row["links_json"], []), created_by=row["created_by"], created_at=parse(row["created_at"]),  # type: ignore[arg-type]
-                         last_activity_at=parse(last), unread=sum(self._unread(t) for t in threads if t["status"] == "open"),  # type: ignore[arg-type]
-                         open_asks=self._open_asks("thread_id IN (SELECT id FROM threads WHERE project_id=?)", (row["id"],)),
+                         last_activity_at=parse(last), unread=sum(counts.get(t["id"], {}).get("unread", 0) for t in threads if t["status"] == "open"),  # type: ignore[arg-type]
+                         open_asks=sum(counts.get(t["id"], {}).get("open_asks", 0) for t in threads),
                          thread_count=sum(1 for t in threads if t["status"] == "open"))
 
     def project(self, slug: str) -> s.Project:
@@ -150,7 +180,12 @@ class Conversations:
 
     def projects(self, status: str | None) -> list[s.Project]:
         rows = self.db.q("SELECT * FROM projects WHERE (? IS NULL OR status=?)", (status, status))
-        return sorted((self.project_model(r) for r in rows), key=lambda p: p.last_activity_at, reverse=True)
+        by_project: dict[int, list[dict]] = {r["id"]: [] for r in rows}
+        for th in self.db.q("SELECT * FROM threads WHERE project_id IS NOT NULL"):
+            if th["project_id"] in by_project:
+                by_project[th["project_id"]].append(th)
+        counts = self._counts([th["id"] for ths in by_project.values() for th in ths])
+        return sorted((self.project_model(r, by_project[r["id"]], counts) for r in rows), key=lambda p: p.last_activity_at, reverse=True)
 
     def message_model(self, row: dict) -> s.Message:
         atts = [s.Attachment(name=a["name"], volume=a["volume"], path=a["path"], size=a["size"], mime=a["mime"])
@@ -235,23 +270,32 @@ class Conversations:
     def thread_items(self, thread_id: int, before: str | None, limit: int) -> s.ThreadItems:
         self._thread_row(thread_id)
         live = "AND status!='withdrawn'"
-        sources: list[tuple[str, Callable, Callable]] = [
-            ("SELECT * FROM messages WHERE thread_id=?", self.message_model, lambda x: s.MessageItem(at=x.created_at, message=x)),
-            (f"SELECT * FROM questions WHERE thread_id=? {live}", self.question_model, lambda x: s.QuestionItem(at=x.created_at, question=x)),
-            (f"SELECT * FROM permissions WHERE thread_id=? {live}", self.permission_model, lambda x: s.PermissionItem(at=x.created_at, permission=x)),
-            (f"SELECT * FROM tasks WHERE thread_id=? {live}", self.task_model, lambda x: s.TaskItem(at=x.created_at, task=x)),
-            ("SELECT * FROM claims WHERE thread_id=?", self.claim_model, lambda x: s.ClaimItem(at=x.created_at, claim=x)),
-            (f"SELECT * FROM suggestions WHERE target_kind='thread' AND target_id=? {live}", self.suggestion_model, lambda x: s.SuggestionItem(at=x.created_at, suggestion=x)),
-            ("SELECT * FROM promote_requests WHERE thread_id=?", self.promote_model, lambda x: s.PromoteItem(at=x.created_at, promote=x)),
+        # (type, table, where, order within a timestamp, model, wrapper); the page is cut in SQL, then rows are loaded by id.
+        sources: list[tuple[str, str, str, int, Callable, Callable]] = [
+            ("message", "messages", "thread_id=:t", 0, self.message_model, lambda x: s.MessageItem(at=x.created_at, message=x)),
+            ("claim", "claims", "thread_id=:t", 1, self.claim_model, lambda x: s.ClaimItem(at=x.created_at, claim=x)),
+            ("question", "questions", f"thread_id=:t {live}", 2, self.question_model, lambda x: s.QuestionItem(at=x.created_at, question=x)),
+            ("permission", "permissions", f"thread_id=:t {live}", 3, self.permission_model, lambda x: s.PermissionItem(at=x.created_at, permission=x)),
+            ("task", "tasks", f"thread_id=:t {live}", 4, self.task_model, lambda x: s.TaskItem(at=x.created_at, task=x)),
+            ("suggestion", "suggestions", f"target_kind='thread' AND target_id=:t {live}", 5, self.suggestion_model, lambda x: s.SuggestionItem(at=x.created_at, suggestion=x)),
+            ("promote", "promote_requests", "thread_id=:t", 6, self.promote_model, lambda x: s.PromoteItem(at=x.created_at, promote=x)),
         ]
-        items: list[Any] = [wrap(model(r)) for sql, model, wrap in sources for r in self.db.q(sql, (thread_id,))]
-        order = {"message": 0, "claim": 1, "question": 2, "permission": 2, "task": 2, "suggestion": 3, "promote": 3}
-        items.sort(key=lambda i: (i.at, order[i.type]))
+        cut = " AND created_at < :before" if before else ""
+        union = " UNION ALL ".join(f"SELECT '{ty}' AS ty, id, created_at, {o} AS o FROM {table} WHERE {where}{cut}" for ty, table, where, o, _, _ in sources)
+        params: dict[str, Any] = {"t": thread_id, "n": limit + 1}
         if before:
-            cutoff = parse(before)
-            items = [i for i in items if i.at < cutoff]
-        older = len(items) > limit
-        items = items[-limit:]
+            params["before"] = iso(parse(before))  # type: ignore[arg-type]
+        page = self.db.q(f"SELECT ty, id FROM ({union}) ORDER BY created_at DESC, o DESC, id DESC LIMIT :n", params)  # type: ignore[arg-type]
+        older = len(page) > limit
+        page = page[:limit][::-1]
+        by_type = {ty: (table, model, wrap) for ty, table, _, _, model, wrap in sources}
+        loaded: dict[tuple[str, int], Any] = {}
+        for ty, (table, model, wrap) in by_type.items():
+            ids = [r["id"] for r in page if r["ty"] == ty]
+            if ids:
+                marks = ",".join("?" * len(ids))
+                loaded.update({(ty, r["id"]): wrap(model(r)) for r in self.db.q(f"SELECT * FROM {table} WHERE id IN ({marks})", ids)})
+        items: list[Any] = [loaded[(r["ty"], r["id"])] for r in page]
         return s.ThreadItems(items=items, before_cursor=items[0].at.isoformat() if older and items else None)
 
     def recent_messages(self, sender: str | None, limit: int) -> list[s.RecentMessage]:
@@ -387,7 +431,16 @@ class Conversations:
         if thread_id:
             self._touch_thread(thread_id)
 
+    def _check_ask_cap(self, run_id: int | None) -> None:
+        """A run can't have more than MAX_OPEN_ASKS_PER_RUN asks open at once (a loop would bury the owner)."""
+        if run_id is None:
+            return
+        n = sum(self.db.q1(f"SELECT COUNT(*) AS n FROM {t} WHERE run_id=? AND status='open'", (run_id,))["n"] for t in ("questions", "permissions", "tasks"))
+        if n >= MAX_OPEN_ASKS_PER_RUN:
+            raise BadRequest("too_many_asks", f"This run already has {n} asks waiting for the owner. Wait for answers, or withdraw some, before asking more.")
+
     def file_question(self, run_id: int | None, thread_id: int | None, kind: str, text: str, options: list[str], default: Any, scale_labels: list[str] | None) -> s.Question:
+        self._check_ask_cap(run_id)
         if kind in ("single", "multi", "slot") and len(options) < 2:
             raise BadRequest("options", f"A {kind} question needs at least two options.")
         if kind == "scale" and scale_labels is not None and len(scale_labels) != 2:
@@ -405,6 +458,7 @@ class Conversations:
     def file_permission(self, run_id: int | None, thread_id: int | None, text: str, reason: str | None, actions: list[dict],
                         trusted: bool = False) -> s.Permission:
         """`trusted`: filed by control itself (a brokered call), so 'mcp_call' actions are accepted."""
+        self._check_ask_cap(run_id)
         checked = [self._check_routine(a) if a.get("kind") == "routine"
                    else self.integrations.check_action(a) if trusted and a.get("kind") == "mcp_call" and self.integrations
                    else _check_action(a) for a in actions]
@@ -431,6 +485,7 @@ class Conversations:
         return "routine", self.routines.propose_payload(req)
 
     def file_task(self, run_id: int | None, thread_id: int | None, text: str, detail: str | None) -> s.Task:
+        self._check_ask_cap(run_id)
         tid = self.db.ex("INSERT INTO tasks(thread_id, run_id, text, detail, created_at) VALUES(?,?,?,?,?)",
                          (self._ask_thread(thread_id), run_id, self.r(text), self.r(detail), self.db.now()))
         self._card("task", tid, thread_id)
@@ -511,12 +566,12 @@ class Conversations:
             raise Conflict("action_failed", f"Couldn't apply '{_action_summary(a['kind'], payload)}': {e}") from e
         self.db.ex("UPDATE permission_actions SET applied_at=?, result_json=?, error=NULL WHERE id=?", (self.db.now(), json.dumps(result), a["id"]))
 
-    def revert_once(self, run_id: int, run_started_at: str) -> list[str]:
-        """At the end of a run: undo actions approved 'once' for it (or during it)."""
+    def revert_once(self) -> list[str]:
+        """At the end of a run: undo every applied 'once' action (only one run exists at a time, so an approval
+        given after the asking run ended is undone at the end of the next run)."""
         rows = self.db.q(
             "SELECT a.*, p.run_id AS p_run FROM permission_actions a JOIN permissions p ON p.id=a.permission_id "
-            "WHERE p.status='allowed' AND p.scope='once' AND a.applied_at IS NOT NULL AND a.reverted_at IS NULL AND (p.run_id=? OR a.applied_at>=?)",
-            (run_id, run_started_at))
+            "WHERE p.status='allowed' AND p.scope='once' AND a.applied_at IS NOT NULL AND a.reverted_at IS NULL")
         undone = []
         for a in rows:
             payload, result = _j(a["payload_json"], {}), _j(a["result_json"], {})
@@ -765,7 +820,7 @@ class Conversations:
             atts = self.db.q("SELECT path FROM attachments WHERE message_id=?", (m["id"],))
             extra = f"\n  (attached: {', '.join('/work/' + a['path'] for a in atts)})" if atts else ""
             body = m["body"].strip().replace("\n", "\n  ")
-            add(m["thread_id"], f"- Owner (message #{m['id']}): {body}{extra}", "messages")
+            add(m["thread_id"], f"- {_owner_label(m['via'], m['sender'])} (message #{m['id']}): {body}{extra}", "messages")
         qs = self.db.q("SELECT * FROM questions WHERE delivered_at IS NULL AND status='answered' ORDER BY id")
         for q in qs:
             note = f" Note: {q['note']}" if q["note"] else ""
@@ -792,10 +847,18 @@ class Conversations:
         rvs = self.db.q("SELECT * FROM reviewer_messages WHERE sender='reviewer' AND kind='reply' AND delivered_at IS NULL ORDER BY id")
         for rv in rvs:
             add(None, f"- The reviewer: {rv['body']}", "reviewer")
-        secrets = self.db.q("SELECT id, name, description FROM secrets WHERE announced_at IS NULL ORDER BY name")
+        secrets = self.db.q("SELECT id, name, description, scope FROM secrets WHERE announced_at IS NULL ORDER BY name")
         for sec in secrets:
+            if sec["scope"] == "integrations":
+                continue  # control's brokered tools only; the agent is told nothing (it's marked announced below)
             desc = f" ({sec['description']})" if sec["description"] else ""
-            add(None, f"- New secret {sec['name']}{desc}: in your environment from the next session; now via `assistant secret get {sec['name']}`.", "secrets")
+            limit = ""
+            kind, _, ref = sec["scope"].partition(":")
+            if kind == "project":
+                limit = f" Only in runs on project {self.vault.scope_label(sec['scope'])}'s threads."
+            elif kind == "routine":
+                limit = f" Only in runs of routine {self.vault.scope_label(sec['scope'])}."
+            add(None, f"- New secret {sec['name']}{desc}: in your environment from the next session; now via `assistant secret get {sec['name']}`.{limit}", "secrets")
         notes = self.db.q("SELECT * FROM agent_notifications WHERE delivered_at IS NULL ORDER BY id")
         for n in notes:
             add(None, f"- Note to yourself ({n['created_at']}): {n['body']}", "notes")
@@ -827,24 +890,30 @@ class Conversations:
 
     # ── search ─────────────────────────────────────────────────────────────
     def search(self, q: str, kind: str | None, project: str | None, since: str | None) -> list[s.SearchHit]:
-        like = f"%{q}%"
+        like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        # FTS5 (trigram: case-insensitive substring) for text of 3+ characters; shorter queries use LIKE.
+        fts = '"' + q.replace('"', '""') + '"' if len(q) >= 3 else None
         hits: list[s.SearchHit] = []
         if kind in (None, "project"):
-            for r in self.db.q("SELECT * FROM projects WHERE name LIKE ? OR summary LIKE ? OR slug LIKE ? LIMIT 20", (like, like, like)):
+            for r in self.db.q("SELECT * FROM projects WHERE name LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR slug LIKE ? ESCAPE '\\' LIMIT 20", (like, like, like)):
                 hits.append(s.SearchHit(kind="project", title=r["name"], snippet=r["summary"] or None, link=f"l0wagent://project/{r['slug']}", project=r["slug"], at=parse(r["updated_at"])))
         if kind in (None, "thread"):
-            for r in self.db.q("SELECT t.*, p.slug AS project FROM threads t LEFT JOIN projects p ON p.id=t.project_id WHERE t.title LIKE ? ORDER BY t.updated_at DESC LIMIT 30", (like,)):
+            where, params = ("t.id IN (SELECT rowid FROM threads_fts WHERE threads_fts MATCH ?)", (fts,)) if fts else ("t.title LIKE ? ESCAPE '\\'", (like,))
+            for r in self.db.q(f"SELECT t.*, p.slug AS project FROM threads t LEFT JOIN projects p ON p.id=t.project_id WHERE {where} ORDER BY t.updated_at DESC LIMIT 30", params):
                 hits.append(s.SearchHit(kind="thread", title=r["title"], snippet="archived" if r["status"] == "archived" else None, link=f"l0wagent://thread/{r['id']}",
                                         project=r["project"], at=parse(r["updated_at"])))
         if kind in (None, "message"):
+            where, params = ("m.id IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)", (fts,)) if fts else ("m.body LIKE ? ESCAPE '\\'", (like,))
             for r in self.db.q("SELECT m.*, t.title, p.slug AS project FROM messages m JOIN threads t ON t.id=m.thread_id LEFT JOIN projects p ON p.id=t.project_id "
-                               "WHERE m.body LIKE ? ORDER BY m.id DESC LIMIT 40", (like,)):
+                               f"WHERE {where} ORDER BY m.id DESC LIMIT 40", params):
                 i = r["body"].lower().find(q.lower())
                 snippet = ("…" if i > 40 else "") + r["body"][max(0, i - 40): i + 80].replace("\n", " ") + "…"
                 hits.append(s.SearchHit(kind="message", title=r["title"], snippet=snippet, link=f"l0wagent://thread/{r['thread_id']}#m{r['id']}",
                                         project=r["project"], at=parse(r["created_at"])))
         if kind in (None, "run"):
-            for r in self.db.q("SELECT * FROM runs WHERE description LIKE ? OR now_sentence LIKE ? OR result LIKE ? ORDER BY id DESC LIMIT 20", (like, like, like)):
+            where, params = (("id IN (SELECT rowid FROM runs_fts WHERE runs_fts MATCH ?)", (fts,)) if fts else
+                             ("description LIKE ? ESCAPE '\\' OR now_sentence LIKE ? ESCAPE '\\' OR result LIKE ? ESCAPE '\\'", (like, like, like)))
+            for r in self.db.q(f"SELECT * FROM runs WHERE {where} ORDER BY id DESC LIMIT 20", params):
                 hits.append(s.SearchHit(kind="run", title=f"#{r['id']} {r['description'] or r['why']}", snippet=r["now_sentence"] or r["status"],
                                         link=f"l0wagent://run/{r['id']}", project=None, at=parse(r["started_at"])))
         return [h for h in hits if (project is None or h.project == project) and (since is None or (h.at is not None and h.at.date().isoformat() >= since))]
@@ -856,7 +925,7 @@ def _check_action(a: dict) -> tuple[str, dict]:
     kind = a.get("kind")
     if kind == "egress_rule":
         pattern, mode = str(a.get("pattern", "")).strip(), a.get("mode", "allow_ro")
-        if not re.match(r"^(\*\.)?[A-Za-z0-9.\-]+(/\d{1,2})?(:\d{1,5})?$", pattern):
+        if not re.match(r"^(\*\.)?[A-Za-z0-9.\-]+(/\d{1,2})?(:\d{1,5})?$", pattern) or not re.search(r"[A-Za-z0-9]", re.sub(r"[:/].*$", "", pattern)):
             raise BadRequest("action", f"Not an egress pattern: {pattern!r} (a host, *.domain, host:port or CIDR).")
         if mode not in ("allow", "allow_ro"):
             raise BadRequest("action", "Egress rules are allow (read and write) or allow_ro (read-only, plain HTTP).")
@@ -869,8 +938,11 @@ def _check_action(a: dict) -> tuple[str, dict]:
         key = str(a.get("key", ""))
         if key not in SPECS:
             raise BadRequest("action", f"Unknown setting {key!r}.")
+        if SPECS[key].who != "agent":
+            raise BadRequest("action", f"{key} is the owner's to change; you can propose only settings that shape your own runs (hold time, reply and wakeup length).")
         try:
-            value = cast(SPECS[key][0], a.get("value"))
+            value = cast(SPECS[key].kind, a.get("value"))
+            check_range(key, value)
         except (TypeError, ValueError):
             raise BadRequest("action", f"Bad value for {key}.") from None
         return kind, {"key": key, "value": value}
@@ -891,6 +963,16 @@ def _action_summary(kind: str, p: dict) -> str:
         v = p.get("value")
         return f"set {p.get('key')} to {v:g}" if isinstance(v, float) else f"set {p.get('key')} to {v}"
     return kind
+
+
+def _owner_label(via: str | None, sender: str) -> str:
+    """Who the agent sees as the sender of an owner-side message, including the way it was posted."""
+    via = via or ""
+    if sender == "chat" or via.startswith("chat:"):
+        return "Owner (via chat)"
+    if via.startswith("connector:"):
+        return f"Owner, via {via[10:]} (connector)"
+    return "Owner"
 
 
 def _show(v: Any) -> str:

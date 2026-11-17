@@ -78,9 +78,18 @@ class Reviewer:
     def _spent(self, run_id: int) -> float:
         return float(self.db.q1("SELECT COALESCE(SUM(pts),0) AS p FROM usage_ledger WHERE run_id=? AND who='reviewer'", (run_id,))["p"])
 
+    def _spent_usd(self, run_id: int) -> float:
+        return float(self.db.q1("SELECT COALESCE(SUM(cost_usd),0) AS c FROM usage_ledger WHERE run_id=? AND who='reviewer'", (run_id,))["c"])
+
+    def _spent_run_pts(self, run: dict) -> float:
+        """The reviewer's spend in the run's own points (its provider's rate), the unit of the run's budget."""
+        return self._spent_usd(run["id"]) * self.budgets.pts_per_usd(run["provider"])
+
     def _out_of_budget(self, run: dict) -> bool:
+        # Compared in dollars: the reviewer may run on another provider, whose points mean something else.
         share = self.budgets.reviewer_config().budget_share
-        return bool(run["budget"]) and self._spent(run["id"]) >= share * run["budget"]
+        limit_usd = share * (run["budget"] or 0) / max(self.budgets.pts_per_usd(run["provider"]), 1e-9)
+        return bool(run["budget"]) and self._spent_usd(run["id"]) >= limit_usd
 
     def _add(self, run_id: int, sender: str, kind: str, body: str, reply_to: int | None = None, delivered: bool = False) -> int:
         return self.db.ex("INSERT INTO reviewer_messages(run_id, sender, kind, body, reply_to, delivered_at, created_at) VALUES(?,?,?,?,?,?,?)",
@@ -98,13 +107,21 @@ class Reviewer:
             tier_text = "You can't change the assistant's tier in this setup."
         from .runs.manager import _strip_comment
 
+        worker, me = self.budgets.role("worker"), self.budgets.role("reviewer")
+        wlabel, mlabel = self.budgets._row(worker.provider)["label"], self.budgets._row(me.provider)["label"]
+        worker_text = (f"The assistant runs on {wlabel} (default tier {worker.tier}). A tier change keeps its conversation, so it can only "
+                       "move between tiers of that same provider, never to another runtime.")
+        strong = me.tier.split("/")[0] == "opus"
+        cost_text = (f"each of your turns spends the owner's usage on {mlabel} ({me.tier}"
+                     + (", a strong model)" if strong else ", a cheaper model, but still the owner's usage)"))
         return Template(_strip_comment((PROMPTS / "reviewer.md").read_text())).safe_substitute(
-            mode=cfg.mode.capitalize(), mode_text=MODE_TEXT.get(cfg.mode, ""), tier_text=tier_text, share=f"{cfg.budget_share:.0%}", timezone=str(self.budgets.tz()))
+            mode=cfg.mode.capitalize(), mode_text=MODE_TEXT.get(cfg.mode, ""), tier_text=tier_text,
+            worker_text=worker_text, cost_text=cost_text, share=f"{cfg.budget_share:.0%}", timezone=str(self.budgets.tz()))
 
     def _header(self, run: dict) -> str:
         now = self.budgets.local(utcnow())
         return (f"[control] {now:%a %Y-%m-%d %H:%M} · run #{run['id']} ({run['kind']}, why: {run['why']}) · tier {run['tier']} · "
-                f"budget {run['used'] or 0:.1f} of {run['budget'] or 0:g} pts used · your share so far {self._spent(run['id']):.1f} pts")
+                f"budget {run['used'] or 0:.1f} of {run['budget'] or 0:g} pts used · your share so far {self._spent_run_pts(run):.1f} pts")
 
     async def turn(self, run_id: int, prompt: str, kind: str) -> tuple[str | None, int | None]:
         """Run one reviewer turn. Returns (reply or None when quiet/unavailable, the reply's message id)."""

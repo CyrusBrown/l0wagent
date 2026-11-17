@@ -83,7 +83,8 @@ export interface paths {
         put?: never;
         /**
          * Setup Owner
-         * @description First-run wizard step 1. Refused once an owner exists.
+         * @description First-run wizard step 1. Refused once an owner exists. Needs the setup code ./l0w install
+         *     printed; with none configured (dev stacks), only a local or private-network caller may.
          */
         post: operations["setup_owner_api_setup_owner_post"];
         delete?: never;
@@ -192,7 +193,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Totp Enable */
+        /**
+         * Totp Enable
+         * @description Verifies against the secret from /totp/setup and returns one-time recovery codes (shown once).
+         */
         post: operations["totp_enable_api_account_totp_enable_post"];
         delete?: never;
         options?: never;
@@ -1687,6 +1691,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/system/update/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Update
+         * @description Clear a pending update's drain, so runs can start again (a stuck ./l0w update).
+         */
+        post: operations["cancel_update_api_system_update_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/files/list": {
         parameters: {
             query?: never;
@@ -2881,6 +2905,12 @@ export interface components {
              * @description The named secret has a value.
              */
             secret_saved: boolean;
+            /**
+             * Allow Private
+             * @description You said this server is on your own network (http and private addresses allowed).
+             * @default false
+             */
+            allow_private?: boolean;
             /** Enabled */
             enabled: boolean;
             /**
@@ -2932,6 +2962,12 @@ export interface components {
             url?: string | null;
             /** Auth Secret */
             auth_secret?: string | null;
+            /**
+             * Allow Private
+             * @description This server is on my own network.
+             * @default false
+             */
+            allow_private?: boolean;
             /** Idempotency Key */
             idempotency_key?: string | null;
         };
@@ -2948,6 +2984,8 @@ export interface components {
             auth_secret?: string | null;
             /** Enabled */
             enabled?: boolean | null;
+            /** Allow Private */
+            allow_private?: boolean | null;
         };
         /** IntegrationPreset */
         IntegrationPreset: {
@@ -2994,6 +3032,12 @@ export interface components {
              * @description False when the server no longer lists the tool.
              */
             present: boolean;
+            /**
+             * Changed Since Allowed
+             * @description The server changed this tool's description or schema after you set its policy; it went back to ask.
+             * @default false
+             */
+            changed_since_allowed?: boolean;
         };
         /** Job */
         Job: {
@@ -3208,6 +3252,23 @@ export interface components {
              * @description Optional: an ntfy topic URL, for installs without HTTPS.
              */
             ntfy_url?: string | null;
+            /**
+             * Ntfy Token
+             * @description Write-only: an ntfy access token, sent as a bearer token. Omit to keep it, empty to remove it. Never returned.
+             */
+            ntfy_token?: string | null;
+            /**
+             * Ntfy Token Saved
+             * @description An ntfy access token is saved (read-only).
+             * @default false
+             */
+            ntfy_token_saved?: boolean;
+            /**
+             * Ntfy Previews
+             * @description Send message previews to ntfy; off sends only the title.
+             * @default false
+             */
+            ntfy_previews?: boolean;
             /** Quiet Start */
             quiet_start?: string | null;
             /** Quiet End */
@@ -3260,7 +3321,7 @@ export interface components {
              * Error
              * @enum {string}
              */
-            error: "too_short" | "breached" | "already_set_up" | "wrong_password";
+            error: "too_short" | "breached" | "already_set_up" | "wrong_password" | "setup_code";
             /** Detail */
             detail: string;
         };
@@ -4102,6 +4163,26 @@ export interface components {
             /** Error */
             error?: string | null;
         };
+        /** SchedulerProblem */
+        SchedulerProblem: {
+            /**
+             * Step
+             * @description Which part of the scheduler keeps failing (routines, fallback, sweep, start_due, housekeeping).
+             */
+            step: string;
+            /** Error */
+            error: string;
+            /**
+             * Count
+             * @description How many ticks in a row it has failed.
+             */
+            count: number;
+            /**
+             * Last At
+             * Format: date-time
+             */
+            last_at: string;
+        };
         /** SearchHit */
         SearchHit: {
             /**
@@ -4249,6 +4330,11 @@ export interface components {
             display_name?: string | null;
             /** Timezone */
             timezone: string;
+            /**
+             * Setup Code
+             * @description The one-time code ./l0w install prints; required when the server has one.
+             */
+            setup_code?: string | null;
         };
         /** ShelfCreate */
         ShelfCreate: {
@@ -4379,6 +4465,35 @@ export interface components {
             /** Reply Budget Left */
             reply_budget_left?: number | null;
         };
+        /** StorageStatus */
+        StorageStatus: {
+            /** Disk Free Bytes */
+            disk_free_bytes: number;
+            /** Disk Total Bytes */
+            disk_total_bytes: number;
+            /**
+             * Warn Free Gb
+             * @description The DISK_WARN_FREE_GB setting.
+             */
+            warn_free_gb: number;
+            /**
+             * Low
+             * @description Free space is below the warning threshold.
+             */
+            low: boolean;
+            /**
+             * Db Bytes
+             * @description The SQLite file plus its write-ahead log.
+             */
+            db_bytes?: number | null;
+            /** Volumes */
+            volumes?: components["schemas"]["VolumeUsage"][];
+            /**
+             * Measured At
+             * @description When the volume sizes were last measured (they're refreshed every 10 minutes).
+             */
+            measured_at?: string | null;
+        };
         /** Suggestion */
         Suggestion: {
             /** Id */
@@ -4474,10 +4589,16 @@ export interface components {
         SystemStatus: {
             /** Server Version */
             server_version: string;
+            storage?: components["schemas"]["StorageStatus"] | null;
             runner: components["schemas"]["RunnerHealth"];
             egress: components["schemas"]["EgressHealth"];
             usage: components["schemas"]["UsageReading"] | null;
             gate: components["schemas"]["GateState"];
+            /**
+             * Scheduler Problems
+             * @description Scheduler steps failing right now; wakeups may be late or missing.
+             */
+            scheduler_problems?: components["schemas"]["SchedulerProblem"][];
         };
         /** Task */
         Task: {
@@ -4674,16 +4795,40 @@ export interface components {
         };
         /** TotpEnable */
         TotpEnable: {
-            /** Secret */
-            secret: string;
+            /**
+             * Secret
+             * @description Ignored: control verifies against the secret it issued in setup.
+             */
+            secret?: string | null;
             /** Code */
             code: string;
+        };
+        /** TotpEnabled */
+        TotpEnabled: {
+            /** Username */
+            username: string;
+            /** Display Name */
+            display_name: string | null;
+            /** Timezone */
+            timezone: string;
+            /** Totp Enabled */
+            totp_enabled: boolean;
+            /** Passkeys */
+            passkeys: number;
+            /**
+             * Recovery Codes
+             * @description One-time codes for signing in without the authenticator. Shown once.
+             */
+            recovery_codes: string[];
         };
         /** TotpRequest */
         TotpRequest: {
             /** Challenge */
             challenge: string;
-            /** Code */
+            /**
+             * Code
+             * @description The 6-digit code, or a one-time recovery code.
+             */
             code: string;
         };
         /**
@@ -4805,6 +4950,18 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** VolumeUsage */
+        VolumeUsage: {
+            /** Name */
+            name: string;
+            /**
+             * Bytes
+             * @description Size in bytes; null when control can't see this volume.
+             */
+            bytes?: number | null;
+            /** Note */
+            note?: string | null;
         };
         /** Wakeup */
         Wakeup: {
@@ -5292,7 +5449,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Owner"];
+                    "application/json": components["schemas"]["TotpEnabled"];
                 };
             };
             /** @description Bad Request */
@@ -8412,6 +8569,26 @@ export interface operations {
         };
     };
     check_update_api_system_update_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateInfo"];
+                };
+            };
+        };
+    };
+    cancel_update_api_system_update_cancel_post: {
         parameters: {
             query?: never;
             header?: never;

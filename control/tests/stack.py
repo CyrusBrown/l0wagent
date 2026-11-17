@@ -105,7 +105,7 @@ class Stack:
             "L0W_SANDBOX_SUBNET": "10.255.255.0/24", "USAGE_UNKNOWN_POLICY": self.usage_policy, "L0W_INBOX_DIR": str(self.tmp / "work" / "_inbox"),
             "L0W_WORK_DIR": str(self.tmp / "work"), "L0W_WORKSPACE_DIR": str(self.tmp / "workspace"), "L0W_FILES_PORT": str(self.ports["files"]),
             "L0W_FILES_HOST": "127.0.0.1",
-            "HOLD_MINUTES": str(self.hold_minutes), "L0W_SCHEDULER": "0",
+            "HOLD_MINUTES": str(self.hold_minutes), "L0W_SCHEDULER": "0", "L0W_AGENT_API_ANY_ADDRESS": "1",  # the runner is on localhost here
             **self.control_env,
         })
         wait_http(f"{self.url}/api/meta")

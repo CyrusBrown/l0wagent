@@ -45,6 +45,7 @@ import os
 import platform
 import secrets
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -320,6 +321,8 @@ def cmd_install(a) -> None:
             "SANDBOX_SUBNET": pick_subnet(),
         })
     add_chat_settings(env)
+    if "L0W_SETUP_CODE" not in env:
+        env["L0W_SETUP_CODE"] = secrets.token_urlsafe(12)  # one-time: the first owner setup asks for it
     env.setdefault("L0W_CHANNEL", a.channel)
     env.setdefault("L0W_VERSION", a.channel)
     env.setdefault("L0W_PORT", str(a.port))
@@ -348,6 +351,8 @@ def cmd_install(a) -> None:
         die("Control didn't come up within 2 minutes: `./l0w logs control`.")
     ip = lan_ip()
     print(f"\nl0wagent is running: open http://{ip}:{port} (or http://localhost:{port} on this machine).")
+    if env.get("L0W_SETUP_CODE"):
+        print(f"Setup code (the wizard asks for it once): {env['L0W_SETUP_CODE']}")
     print("The setup wizard creates your account, then logs the assistant in to Claude and runs the isolation self-test.")
     print("Phones need HTTPS for notifications and installing the app: see docs/install.md (Tailscale HTTPS).")
 
@@ -361,6 +366,8 @@ def _host_tz() -> str:
 
 
 def cmd_update(a) -> None:
+    if a.cancel:
+        return cmd_drain(a)
     need_docker()
     env = env_file()
     port = env.get("L0W_PORT", "8000")
@@ -379,16 +386,63 @@ def cmd_update(a) -> None:
     print("Pulling the new images (the assistant keeps working meanwhile)…")
     pull_images()
     print("Waiting until the assistant is idle (no new runs start meanwhile)…")
+    # The drain is short and renewed while we work, and cleared on any way out (Ctrl-C, kill, an error),
+    # so an update that dies can't leave the assistant refusing runs.
+    restore = _signals_raise()
     try:
-        hostctl("drain", "on", str(a.timeout + 30))
-    except RuntimeError as e:
+        _drain_and_restart(a, port)
+    finally:
+        try:
+            hostctl("drain", "off")
+        except (RuntimeError, OSError, ValueError):
+            print("Couldn't clear the update hold on new runs (control is down?). It clears itself within 10 minutes, or run `./l0w drain off`.", file=sys.stderr)
+        restore()
+    after = compose("exec", "-T", "control", "python", "-m", "l0w_control.hostctl", "version", capture=True, check=False).stdout.strip()
+    print(f"Updated: {before or '?'} → {after or '?'}.")
+    subprocess.run(["docker", "image", "prune", "-f", "--filter", "label=org.opencontainers.image.source=https://github.com/CyrusBrown/l0wagent"], capture_output=True)
+
+
+DRAIN_MINUTES = 15  # renewed every RENEW_EVERY seconds while updating; control drops one not renewed for 10 min
+RENEW_EVERY = 120
+
+
+def _signals_raise():
+    """Make SIGTERM/SIGHUP raise (like Ctrl-C does) so `finally` blocks run; returns a function that undoes it."""
+    def handler(signum, frame):
+        raise KeyboardInterrupt
+    old = {}
+    for name in ("SIGTERM", "SIGHUP"):
+        sig = getattr(signal, name, None)
+        if sig is not None:
+            try:
+                old[sig] = signal.signal(sig, handler)
+            except ValueError:  # not the main thread
+                pass
+    return lambda: [signal.signal(s, h) for s, h in old.items()]
+
+
+def _renew_drain(last: float) -> float:
+    if time.time() - last < RENEW_EVERY:
+        return last
+    try:
+        hostctl("drain", "renew", str(DRAIN_MINUTES))
+    except (RuntimeError, OSError, ValueError):
+        pass  # control may be restarting; the 10-minute grace covers it
+    return time.time()
+
+
+def _drain_and_restart(a, port: str) -> None:
+    try:
+        hostctl("drain", "on", str(DRAIN_MINUTES), "l0w update")
+    except (RuntimeError, OSError, ValueError) as e:
         print(f"Couldn't ask control to wait ({e}); updating anyway.")
+    renewed = time.time()
     deadline = time.time() + a.timeout * 60
     shown = None
     while not a.force:
         try:
             st = hostctl("idle")
-        except RuntimeError:
+        except (RuntimeError, OSError, ValueError):
             break
         if st["idle"]:
             break
@@ -396,22 +450,35 @@ def cmd_update(a) -> None:
             shown = st["waiting_for"]
             print("  waiting for: " + "; ".join(shown))
         if time.time() > deadline:
-            try:
-                hostctl("drain", "off")
-            except RuntimeError:
-                pass
             die(f"Still busy after {a.timeout} min. Run `./l0w update --force` to update anyway (a run in progress resumes after the restart).")
         time.sleep(10)
+        renewed = _renew_drain(renewed)
     compose("up", "-d")
     if not wait_healthy(port):
         die("Control didn't come back within 2 minutes: `./l0w logs control`. The previous images are still on disk.")
+
+
+def cmd_drain(a) -> None:
+    """`./l0w drain off`: clear a stuck update hold (also `./l0w update --cancel`)."""
+    need_docker()
     try:
         hostctl("drain", "off")
-    except RuntimeError:
-        pass
-    after = compose("exec", "-T", "control", "python", "-m", "l0w_control.hostctl", "version", capture=True, check=False).stdout.strip()
-    print(f"Updated: {before or '?'} → {after or '?'}.")
-    subprocess.run(["docker", "image", "prune", "-f", "--filter", "label=org.opencontainers.image.source=https://github.com/CyrusBrown/l0wagent"], capture_output=True)
+    except (RuntimeError, OSError, ValueError) as e:
+        die(f"Couldn't clear it: {e}")
+    print("New runs may start again.")
+
+
+def cmd_2fa_reset(a) -> None:
+    """`./l0w 2fa-reset`: turn off the owner's two-factor sign-in and delete the recovery codes."""
+    need_docker()
+    try:
+        r = hostctl("2fa-reset")
+    except (RuntimeError, OSError, ValueError) as e:
+        die(f"Couldn't reset 2FA: {e}")
+    if r.get("totp_was_enabled"):
+        print(f"Two-factor sign-in is off and {r.get('recovery_codes_deleted', 0)} recovery code(s) were deleted. Sign in with your password, then set 2FA up again in Settings → Account.")
+    else:
+        print(f"2FA wasn't on. Deleted {r.get('recovery_codes_deleted', 0)} leftover recovery code(s).")
 
 
 def cmd_compose(a) -> None:
@@ -761,6 +828,10 @@ def main() -> None:
     u.add_argument("--timeout", type=float, default=120, help="minutes to wait for idle")
     u.add_argument("--force", action="store_true", help="don't wait for idle")
     u.add_argument("--version", help="pin a version (X.Y.Z), or stable / edge")
+    u.add_argument("--cancel", action="store_true", help="clear a stuck update hold and exit")
+    dr = sub.add_parser("drain", help="clear a stuck update hold on new runs")
+    dr.add_argument("action", choices=["off"])
+    sub.add_parser("2fa-reset", help="turn off the owner's 2FA (lost your phone and recovery codes)")
     for name in ("up", "down", "restart", "ps"):
         sub.add_parser(name)
     lg = sub.add_parser("logs")
@@ -838,7 +909,8 @@ def main() -> None:
     sub.add_parser("update-check")
     a = p.parse_args()
     {
-        "install": cmd_install, "update": cmd_update, "up": cmd_compose, "down": cmd_compose, "restart": cmd_compose, "ps": cmd_compose, "logs": cmd_compose,
+        "install": cmd_install, "update": cmd_update, "drain": cmd_drain,
+        "2fa-reset": cmd_2fa_reset, "up": cmd_compose, "down": cmd_compose, "restart": cmd_compose, "ps": cmd_compose, "logs": cmd_compose,
         "claude-login": cmd_claude_login, "migrate": cmd_migrate, "version": cmd_version, "login": cmd_login, "logout": cmd_logout, "status": cmd_status, "inbox": cmd_inbox,
         "answer": cmd_answer, "approve": cmd_decide, "deny": cmd_decide, "done": cmd_task, "decline": cmd_task, "promote": cmd_promote,
         "threads": cmd_threads, "read": cmd_read, "send": cmd_send, "runs": cmd_runs, "run": cmd_run, "wake": cmd_wake, "stop": cmd_stop,

@@ -688,6 +688,11 @@ class Chats:
         text = _strip(PROMPT.read_text())
         now = self.budgets.local(utcnow())
         text += f"\n\nNow: {now:%a %Y-%m-%d %H:%M} ({self.budgets.tz()})."
+        try:
+            left = self.budgets.reply_left(self.budgets.role("replier").provider)
+            text += f" Reply-now budget left: {left:.0f} pts (one Reply now spends up to {min(self.budgets.settings.get('REPLY_RUN_MAX_PTS'), left):.0f})."
+        except Exception:  # noqa: BLE001  (the system prompt must never fail on this)
+            pass
         ctx = json.loads(row["context_thread_ids"] or "[]")
         if ctx:
             text += "\n\nThe owner pulled these threads into this chat as context (read them with read_thread): " + ", ".join(f"#{t}" for t in ctx) + "."
@@ -699,7 +704,7 @@ class Chats:
             return None
         start, end = self.budgets.week(provider)
         used = self.budgets.spent(provider, start, end, who=("chat",))
-        return f"This week's chat cap on {provider} ({cap:g} pts) is used up ({used:.1f} pts)." if used >= cap else None
+        return f"This {self.budgets.period_unit(provider)}'s chat cap on {provider} ({cap:g} pts) is used up ({used:.1f} pts)." if used >= cap else None
 
     def _count(self, chat_id: int, provider: str, turn: Turn) -> None:
         pts = turn.cost_usd * self.budgets.pts_per_usd(provider)

@@ -14,3 +14,6 @@ web/dist/
 *.tsbuildinfo
 # control (local runs)
 control/data/
+
+# smoke suite recordings
+dev/smoke/out/

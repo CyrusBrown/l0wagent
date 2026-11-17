@@ -1,4 +1,4 @@
-import { type JSX, useState } from 'react'
+import { type JSX, useEffect, useState } from 'react'
 import { NavLink, useParams } from 'react-router'
 import type { S } from '../api/client'
 import {
@@ -27,6 +27,8 @@ const TABS: [slug: string, label: string, later?: string][] = [
 export function Settings() {
   const tab = useParams().tab ?? 'budgets'  // the mockup opens Settings on Budgets & levels
   const cur = TABS.find(([slug]) => slug === tab) ?? TABS[0]
+  // On a phone the tab list is a scrolling row of pills: keep the open one in view.
+  useEffect(() => { document.querySelector('.settings-nav a.on')?.scrollIntoView?.({ inline: 'center', block: 'nearest' }) }, [cur[0]])
   return (
     <div className="settings">
       <nav className="settings-nav">
@@ -140,6 +142,7 @@ function TwoFactor({ enabled }: { enabled: boolean }) {
   const [code, setCode] = useState('')
   const [pw, setPw] = useState('')
   const [disabling, setDisabling] = useState(false)
+  const [recovery, setRecovery] = useState<string[] | null>(null)
   const pending = setup.data && !enabled
   return (
     <section className="set-section">
@@ -147,6 +150,14 @@ function TwoFactor({ enabled }: { enabled: boolean }) {
       {enabled ? (
         <div className="stack">
           <div className="done">On. Sign-ins ask for a code from your authenticator app.</div>
+          {recovery && (
+            <div className="stack" style={{ background: 'var(--side)', borderRadius: 12, padding: '14px 16px' }}>
+              <div style={{ fontSize: 13.5 }}>Recovery codes. Each works once if you lose your authenticator. They are shown only now, so save them somewhere safe.</div>
+              <code style={{ display: 'grid', gridTemplateColumns: 'repeat(2, max-content)', columnGap: 28, rowGap: 4 }}>{recovery.map((c) => <span key={c}>{c}</span>)}</code>
+              <div><button className="btn primary" onClick={() => setRecovery(null)}>I've saved them</button></div>
+            </div>
+          )}
+          <div className="sub">Lost your phone and codes? Run <code>./l0w 2fa-reset</code> on the server.</div>
           {disabling ? (
             <form className="set-form" onSubmit={(e) => { e.preventDefault(); disable.mutate({ password: pw }, { onSuccess: () => { setDisabling(false); setPw(''); setup.reset() } }) }}>
               <input className="input" type="password" autoComplete="current-password" placeholder="Your password" value={pw} onChange={(e) => setPw(e.target.value)} />
@@ -156,7 +167,7 @@ function TwoFactor({ enabled }: { enabled: boolean }) {
           ) : <div><button className="btn" onClick={() => setDisabling(true)}>Turn off…</button></div>}
         </div>
       ) : pending ? (
-        <form className="totp" onSubmit={(e) => { e.preventDefault(); enable.mutate({ secret: setup.data!.secret, code }, { onSuccess: () => setCode('') }) }}>
+        <form className="totp" onSubmit={(e) => { e.preventDefault(); enable.mutate({ code }, { onSuccess: (r) => { setCode(''); setRecovery(r.recovery_codes) } }) }}>
           <img alt="QR code for your authenticator app" width={164} height={164} src={`data:image/svg+xml;base64,${btoa(setup.data!.qr_svg)}`} />
           <div className="stack">
             <div style={{ fontSize: 13.5 }}>Scan this with your authenticator app, or enter the key by hand:</div>
@@ -218,6 +229,24 @@ function System() {
         </div>
       )}
     </section>
+    {d?.storage && <Storage st={d.storage} />}
+    {!!d?.scheduler_problems?.length && (
+      <section className="set-section">
+        <div className="set-title">Scheduler problems</div>
+        <div className="sub" style={{ fontSize: 13 }}>These steps keep failing; wakeups may be late or missing.</div>
+        <div className="rows">
+          {d.scheduler_problems?.map((p) => (
+            <div key={p.step} className="set-row">
+              <div className="stack" style={{ gap: 2 }}>
+                <span style={{ fontWeight: 500 }}>{p.step}</span>
+                <span className="sub">{p.error}</span>
+              </div>
+              <span className="sub">failed {p.count} {p.count === 1 ? 'time' : 'times'} in a row · last {ago(p.last_at)}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
     <section className="set-section">
       <div className="row-between">
         <div className="set-title">Self-test</div>
@@ -228,6 +257,30 @@ function System() {
       {test.data && <SelfTestList r={test.data} />}
     </section>
   </>
+}
+
+function bytes(n: number): string {
+  const u = ['B', 'KB', 'MB', 'GB', 'TB']
+  let i = 0
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++ }
+  return `${i < 2 ? Math.round(n) : n.toFixed(1)} ${u[i]}`
+}
+
+function Storage({ st }: { st: S['StorageStatus'] }) {
+  return (
+    <section className="set-section">
+      <div className="set-title">Storage</div>
+      {st.low && <div className="error" role="alert">Low disk space: {bytes(st.disk_free_bytes)} free, below your warning level of {st.warn_free_gb} GB (setting DISK_WARN_FREE_GB).</div>}
+      <div className="rows">
+        <div className="set-row"><span className="k">Free disk space</span><Health ok={!st.low} text={`${bytes(st.disk_free_bytes)} of ${bytes(st.disk_total_bytes)}`} /></div>
+        {st.db_bytes != null && <div className="set-row"><span className="k">Database</span><span>{bytes(st.db_bytes)}</span></div>}
+        {st.volumes?.map((v) => (
+          <div key={v.name} className="set-row"><span className="k">/{v.name}</span><span>{v.bytes != null ? bytes(v.bytes) : ''}{v.note ? <span className="sub">{v.bytes != null ? ' · ' : ''}{v.note}</span> : null}</span></div>
+        ))}
+      </div>
+      {st.measured_at && <div className="sub" style={{ fontSize: 13 }}>Volume sizes measured {ago(st.measured_at)}; refreshed every 10 minutes.</div>}
+    </section>
+  )
 }
 
 function Health({ ok, warn, text }: { ok: boolean; warn?: boolean; text: string }) {

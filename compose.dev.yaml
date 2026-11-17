@@ -39,6 +39,7 @@ services:
       L0W_CHAT_RUNTIME_TOKEN: ${L0W_CHAT_RUNTIME_TOKEN:-dev-chat-runtime-token}
       L0W_CHAT_SUBNET: ${CHAT_SUBNET:-172.31.230.0/24}
       USAGE_UNKNOWN_POLICY: ${USAGE_UNKNOWN_POLICY:-allow}
+      L0W_CORS_ORIGINS: http://localhost:5173  # the Vite dev server (the release image allows only the desktop app)
       L0W_FILES_PORT: "8001"  # the files origin: agent-made files, never on the UI's origin
     ports: ["127.0.0.1:8000:8000", "127.0.0.1:8001:8001"]
     volumes:
@@ -88,6 +89,8 @@ services:
     hostname: sandbox
     environment:
       RUNNER_TOKEN: ${L0W_RUNNER_TOKEN:-dev-runner-token}
+      # The runner answers only control (a host name; Docker resolves it on the sandbox network).
+      RUNNER_ALLOWED_FROM: control
       AGENT_API_TOKEN: ${L0W_AGENT_TOKEN:-dev-agent-token}
       CONTROL_URL: http://control:8000
       FAKE_CLAUDE: ${FAKE_CLAUDE:-1}
@@ -109,6 +112,7 @@ services:
       GIT_COMMITTER_EMAIL: assistant@sandbox.local
     volumes:
       - agent-home:/home/agent
+      - agent-reviewer:/home/reviewer
       - agent-workspace:/workspace
       - agent-work:/work
       - agent-cache:/cache
@@ -191,6 +195,7 @@ volumes:
   control-data:
   egress-data:
   agent-home:
+  agent-reviewer:
   agent-workspace:
   agent-work:
   agent-cache:

@@ -1,8 +1,9 @@
 """Host-side commands for `./l0w`, run inside the control container:
 
-    docker compose exec control python -m l0w_control.hostctl drain on [MINUTES] | off
+    docker compose exec control python -m l0w_control.hostctl drain on [MINUTES] [BY] | renew [MINUTES] | off
     docker compose exec control python -m l0w_control.hostctl idle      → JSON {idle, waiting_for}
     docker compose exec control python -m l0w_control.hostctl version
+    docker compose exec control python -m l0w_control.hostctl 2fa-reset   → JSON {totp_was_enabled, recovery_codes_deleted}
     docker compose exec -T control python -m l0w_control.hostctl import-secrets   < {"secrets": [...]} on stdin
     docker compose exec -T control python -m l0w_control.hostctl import-legacy    (reads /work/_legacy/control-export)
 
@@ -26,8 +27,11 @@ from .updates import blockers, draining, set_drain
 def main(argv: list[str]) -> int:
     db = Database(str(Path(os.environ.get("L0W_DATA_DIR", "/data")) / "control.db"))
     cmd = argv[0] if argv else "help"
-    if cmd == "drain" and len(argv) >= 2 and argv[1] in ("on", "off"):
-        set_drain(db, argv[1] == "on", float(argv[2]) if len(argv) > 2 else 120)
+    if cmd == "drain" and len(argv) >= 2 and argv[1] in ("on", "off", "renew"):
+        if argv[1] == "renew" and not draining(db):  # nothing to renew: don't revive a cleared drain
+            print(json.dumps({"draining_until": None}))
+            return 0
+        set_drain(db, argv[1] != "off", float(argv[2]) if len(argv) > 2 else 120, argv[3] if len(argv) > 3 else None)
         until = draining(db)
         print(json.dumps({"draining_until": until.isoformat() if until else None}))
         return 0
@@ -37,6 +41,15 @@ def main(argv: list[str]) -> int:
         return 0
     if cmd == "version":
         print(__version__)
+        return 0
+    if cmd == "2fa-reset":
+        # Lost the authenticator and the recovery codes: whoever can exec into the container may turn 2FA off.
+        was = bool((db.q1("SELECT totp_secret FROM users WHERE id=1") or {}).get("totp_secret"))
+        codes = db.q1("SELECT COUNT(*) AS n FROM recovery_codes")["n"]
+        db.ex("UPDATE users SET totp_secret=NULL WHERE id=1")
+        db.ex("DELETE FROM recovery_codes")
+        db.ex("DELETE FROM kv WHERE key IN ('totp_pending', 'totp_last_step')")
+        print(json.dumps({"totp_was_enabled": was, "recovery_codes_deleted": codes}))
         return 0
     if cmd in ("import-secrets", "import-legacy"):
         from . import legacy

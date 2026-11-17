@@ -171,6 +171,7 @@ function IntegrationCard({ i }: { i: S['Integration'] }) {
           <span className="mono int-tool-name">{t.name}</span>
           <span className={`pill ${t.read_only ? 'mute' : 'warn'}`}>{t.read_only ? 'Read-only' : 'Can write'}</span>
           {!t.present && <span className="sub">no longer offered</span>}
+          {t.changed_since_allowed && <span className="pill warn" title="The server changed this tool's description or schema, so it went back to Ask.">Changed since you allowed it</span>}
           <div className="seg" role="radiogroup" aria-label={`Policy for ${t.name}`}>
             {POLICIES.map(([k, label]) => (
               <button key={k} type="button" role="radio" aria-checked={t.policy === k} className={t.policy === k ? 'on' : ''} disabled={!online}
@@ -196,14 +197,14 @@ function IntegrationForm({ onDone }: { onDone: () => void }) {
   const add = useAddIntegration()
   const online = useOnline()
   const [choice, setChoice] = useState('custom')
-  const [f, setF] = useState({ name: '', title: '', url: '', auth_secret: '' })
+  const [f, setF] = useState({ name: '', title: '', url: '', auth_secret: '', allow_private: false })
   const preset = presets.data?.find((p) => p.id === choice)
   const options = [...(presets.data ?? []).map((p) => ({ value: p.id, label: p.title })), { value: 'custom', label: 'Custom MCP server' }]
   const ready = preset ? true : !!(f.name.trim() && f.url.trim())
   return (
     <form className="card" onSubmit={(e) => {
       e.preventDefault()
-      const body = preset ? { preset: preset.id } : { name: f.name.trim().toLowerCase(), title: f.title.trim() || null, url: f.url.trim(), auth_secret: f.auth_secret.trim().toUpperCase() || null }
+      const body = preset ? { preset: preset.id } : { name: f.name.trim().toLowerCase(), title: f.title.trim() || null, url: f.url.trim(), auth_secret: f.auth_secret.trim().toUpperCase() || null, allow_private: f.allow_private }
       add.mutate(body, { onSuccess: onDone })
     }}>
       <div className="card-label"><span>New integration</span><span className="r">an MCP server over https</span></div>
@@ -220,6 +221,10 @@ function IntegrationForm({ onDone }: { onDone: () => void }) {
           <input className="input" placeholder="Title (optional)" aria-label="Title" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
           <input className="input mono" placeholder="https://example.com/mcp" aria-label="URL" value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} />
           <input className="input mono" placeholder="SECRET_NAME for its key (optional)" aria-label="Secret name" value={f.auth_secret} onChange={(e) => setF({ ...f, auth_secret: e.target.value })} />
+          <div className="set-row">
+            <span className="sub">This server is on my own network (allows http and private addresses)</span>
+            <Switch label="On my own network" on={f.allow_private} onChange={(allow_private) => setF({ ...f, allow_private })} />
+          </div>
         </>
       )}
       {add.error && <div className="error">{problem(add.error)}</div>}

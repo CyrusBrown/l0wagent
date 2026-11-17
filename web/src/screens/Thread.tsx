@@ -7,6 +7,8 @@ import { bytes, pts } from '../components/format'
 import { useLinkPicker } from '../components/LinkPicker'
 import { Markdown } from '../components/Markdown'
 import { useEscape } from '../components/useEscape'
+import { usePresence } from '../components/motion'
+import { useIsPhone } from '../components/useIsPhone'
 import { ThreadFiles } from '../components/ThreadFiles'
 import { useOnline } from '../components/online'
 import { useOutbox } from '../api/offline'
@@ -28,6 +30,9 @@ export function Thread() {
 
   const [filesOpen, setFilesOpen] = useState(false)
   const [append, setAppend] = useState<string | null>(null)
+  // On a phone the files panel is a sheet that slides out; on a desktop it just goes.
+  const phone = useIsPhone()
+  const files = usePresence(filesOpen, 240)
   if (thread.isError) return <div className="page"><div className="error">{thread.error instanceof ApiError && thread.error.status === 404 ? 'This thread does not exist.' : "Couldn't load the thread."}</div></div>
   const t = thread.data
   return (
@@ -43,9 +48,10 @@ export function Thread() {
       </div>
       {t && <Composer threadId={id} project={t.project} append={append} appended={() => setAppend(null)} />}
     </div>
-    {t?.project && filesOpen && (
+    {t?.project && (phone ? files.mounted : filesOpen) && (
       <ThreadFiles
         project={t.project}
+        closing={phone && files.closing}
         onClose={() => setFilesOpen(false)}
         onLink={(i) => setAppend(`[${i.label}](l0wagent://file/${i.volume}/${i.path})`)}
       />

@@ -59,7 +59,7 @@ def snapshot(be) -> dict:
         "roles": [r.model_dump() for r in be.roles().roles],
         "reviewer": be.reviewer_config().model_dump(),
         "instructions": be.instructions().text,
-        "notifications": be.notification_settings().model_dump(exclude={"ntfy_url"}),
+        "notifications": be.notification_settings().model_dump(exclude={"ntfy_url", "ntfy_token"}),
     }
 
 

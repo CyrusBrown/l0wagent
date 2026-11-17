@@ -2,13 +2,27 @@
 """Claude Code PostToolUse hook: delivers anything new for the agent mid-session as
 additionalContext, so it never has to poll. Must be fast and must never break a session:
 any failure exits 0 silently."""
+import hashlib
 import json
 import os
 import sys
+import tempfile
+import time
 import urllib.request
+
+# After a failure (control down or hung) skip the check for a while, so a run with
+# hundreds of tool calls doesn't wait out the timeout on each one.
+SKIP_S = 30
+_who = hashlib.sha1((os.environ.get("CONTROL_URL", "") + os.environ.get("AGENT_API_TOKEN", "")).encode()).hexdigest()[:10]
+STATE = os.path.join(os.environ.get("TMPDIR") or tempfile.gettempdir(), f"assistant-hook-failed-{_who}")
 
 try:
     sys.stdin.read()
+    try:
+        if time.time() - os.path.getmtime(STATE) < SKIP_S:
+            sys.exit(0)
+    except OSError:
+        pass
     control = os.environ.get("CONTROL_URL", "http://control:8000").rstrip("/")
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     req = urllib.request.Request(f"{control}/api/agent/inbox?hook=true", headers={"X-Agent-Token": os.environ.get("AGENT_API_TOKEN", "")})
@@ -18,5 +32,9 @@ try:
         text = "[control notification]\n" + body + "\n\n(Handle this at a sensible point.)"
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": text}}))
 except Exception:  # noqa: BLE001
-    pass
+    try:
+        with open(STATE, "w"):
+            pass
+    except OSError:
+        pass
 sys.exit(0)

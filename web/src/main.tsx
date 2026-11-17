@@ -7,6 +7,7 @@ import { flushOutbox, loadOutbox, persistCache, restoreCache } from './api/offli
 import { routes } from './app/routes'
 import { applyStoredTheme } from './app/theme'
 import './styles/app.css'
+import './styles/phone.css'
 
 applyStoredTheme()
 

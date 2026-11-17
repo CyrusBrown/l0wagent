@@ -36,6 +36,14 @@ RUN useradd -m -u 1000 -s /bin/bash agent \
  && mkdir -p /workspace /work/_inbox /cache /home/agent/.local/bin /home/agent/.claude \
  && chown -R agent:agent /workspace /work /cache /home/agent
 
+# The reviewer's account (S24): no sudo, its own home. The agent's home is 0700 (the entrypoint
+# re-applies it on the volume), so the reviewer reads /workspace and /work only as "other".
+RUN useradd -m -u 1001 -s /bin/bash reviewer \
+ && chmod 0755 /home/reviewer \
+ && chmod 0700 /home/agent \
+ && git config --system --add safe.directory /workspace \
+ && git config --system --add safe.directory '/work/*'
+
 COPY runner/ /opt/runner/
 COPY bin/ /usr/local/bin/
 COPY seed/ /opt/seed/

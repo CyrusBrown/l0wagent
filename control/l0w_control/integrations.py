@@ -2,8 +2,11 @@
 
 - The owner adds an integration (a remote MCP server reached over streamable HTTP, plus the name
   of a secret sent as a bearer token). Control lists its tools; each gets a policy: allowed, ask
-  (a permission card each time) or blocked. Read-only tools (the server's `readOnlyHint`) start
-  allowed, the rest start on ask.
+  (a permission card each time) or blocked. Every tool starts on ask, except a preset's own vetted
+  read-only tools (a server's `readOnlyHint` is only shown, never trusted). A tool whose description
+  or schema later changes goes back to ask and is flagged.
+- The URL is vetted (safefetch): https, never loopback or this install's own services; http on a
+  private network only when the owner ticks "this is on my network".
 - The agent reaches each integration as an MCP server at /api/agent/mcp/<name> with its agent
   token. It sees only tools that aren't blocked; the credential never enters the sandbox.
 - An "ask" call files a permission with one `mcp_call` action and returns "asked as permission #N".
@@ -25,6 +28,7 @@ import httpx
 from . import __version__
 from .backends.base import BadRequest, Conflict, NotFound
 from .db import Database
+from .safefetch import PinnedTransport, vet_url
 
 NAME_RE = re.compile(r"^[a-z][a-z0-9-]{1,31}$")
 POLICIES = ("allowed", "ask", "blocked")
@@ -44,12 +48,25 @@ PRESETS: dict[str, dict[str, Any]] = {
                      "set to Read. Add Read and write only for what it should change. Save it as GITHUB_TOKEN with the scope "
                      "\"Integrations only\" so it never enters the agent's environment."),
         "egress": [],  # control calls GitHub's MCP server itself; the sandbox needs no rule for it
+        "read_only_tools": [
+            "get_me", "get_issue", "list_issues", "search_issues", "get_issue_comments", "get_pull_request", "list_pull_requests",
+            "search_pull_requests", "get_pull_request_files", "get_pull_request_diff", "get_pull_request_comments",
+            "get_pull_request_reviews", "get_pull_request_status", "get_file_contents", "search_code", "search_repositories",
+            "search_users", "list_commits", "get_commit", "list_branches", "list_tags", "get_tag", "list_releases",
+            "get_latest_release", "list_notifications", "get_notification_details", "list_workflows", "list_workflow_runs",
+            "get_workflow_run", "list_code_scanning_alerts", "get_code_scanning_alert", "list_secret_scanning_alerts",
+            "get_secret_scanning_alert", "list_gists", "get_gist",
+        ],
     },
 }
 
 
 class UpstreamError(Exception):
     pass
+
+
+def spec_hash(description: str, schema: dict) -> str:
+    return hashlib.sha256(json.dumps([description, schema], sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def args_hash(tool: str, args: dict) -> str:
@@ -165,13 +182,15 @@ class Integrations:
         return row
 
     def view(self, row: dict) -> dict:
-        tools = self.db.q("SELECT name, description, read_only, policy, present FROM integration_tools WHERE integration_id=? ORDER BY present DESC, name", (row["id"],))
+        tools = self.db.q("SELECT name, description, read_only, policy, present, changed_at FROM integration_tools WHERE integration_id=? ORDER BY present DESC, name", (row["id"],))
         calls = self.db.q("SELECT tool, run_id, outcome, permission_id, detail, at FROM integration_calls WHERE integration_id=? ORDER BY id DESC LIMIT 20", (row["id"],))
         secret_ok = bool(row["auth_secret"]) and self.vault.exists(row["auth_secret"])
         return {"name": row["name"], "title": row["title"], "preset": row["preset"], "url": row["url"], "auth_secret": row["auth_secret"],
                 "secret_saved": secret_ok, "enabled": bool(row["enabled"]), "status": row["status"], "last_error": row["last_error"],
                 "synced_at": row["synced_at"], "created_at": row["created_at"],
-                "tools": [{**t, "read_only": bool(t["read_only"]), "present": bool(t["present"])} for t in tools],
+                "allow_private": bool(row["allow_private"]),
+                "tools": [{**{k: v for k, v in t.items() if k != "changed_at"}, "read_only": bool(t["read_only"]), "present": bool(t["present"]),
+                           "changed_since_allowed": bool(t["changed_at"])} for t in tools],
                 "recent_calls": calls}
 
     def listing(self) -> list[dict]:
@@ -183,7 +202,7 @@ class Integrations:
     def presets(self) -> list[dict]:
         return [{"id": k, **v} for k, v in PRESETS.items()]
 
-    def create(self, name: str, title: str | None, preset: str | None, url: str | None, auth_secret: str | None) -> dict:
+    def create(self, name: str, title: str | None, preset: str | None, url: str | None, auth_secret: str | None, allow_private: bool = False) -> dict:
         p = PRESETS.get(preset or "") if preset else {}
         if preset and not p:
             raise BadRequest("bad_preset", f"Unknown preset {preset!r}.")
@@ -192,25 +211,31 @@ class Integrations:
             raise BadRequest("bad_name", "Integration names look like github or home-assistant: lowercase letters, digits and -, 2–32 characters.")
         if self.db.q1("SELECT 1 FROM integrations WHERE name=?", (name,)):
             raise Conflict("exists", f"An integration named {name} already exists.")
-        url = _check_url(url or p.get("url", ""))
+        url = _check_url(url or p.get("url", ""), allow_private)
         secret = (auth_secret or p.get("auth_secret") or "").strip().upper() or None
         if secret:
             from .vault import validate_name
             secret = validate_name(secret)
         now = self.db.now()
-        self.db.ex("INSERT INTO integrations(name, title, preset, url, auth_secret, created_at, updated_at) VALUES(?,?,?,?,?,?,?)",
-                   (name, (title or p.get("title") or name).strip()[:80], preset, url, secret, now, now))
+        self.db.ex("INSERT INTO integrations(name, title, preset, url, auth_secret, allow_private, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?)",
+                   (name, (title or p.get("title") or name).strip()[:80], preset, url, secret, int(bool(allow_private)), now, now))
         if not secret or self.vault.exists(secret):
             self.sync(name, quiet=True)
         return self.get(name)
 
-    def update(self, name: str, title: str | None = None, url: str | None = None, auth_secret: str | None = None, enabled: bool | None = None) -> dict:
+    def update(self, name: str, title: str | None = None, url: str | None = None, auth_secret: str | None = None, enabled: bool | None = None,
+               allow_private: bool | None = None) -> dict:
         row = self._row(name)
         fields: dict[str, Any] = {}
+        private = bool(row["allow_private"]) if allow_private is None else allow_private
+        if allow_private is not None:
+            fields["allow_private"] = int(allow_private)
         if title is not None:
             fields["title"] = title.strip()[:80] or row["name"]
         if url is not None:
-            fields["url"] = _check_url(url)
+            fields["url"] = _check_url(url, private)
+        elif allow_private is not None:
+            _check_url(row["url"], private)
         if auth_secret is not None:
             from .vault import validate_name
             fields["auth_secret"] = validate_name(auth_secret) if auth_secret.strip() else None
@@ -232,7 +257,7 @@ class Integrations:
         row = self._row(name)
         if policy not in POLICIES:
             raise BadRequest("bad_policy", "A tool's policy is allowed, ask or blocked.")
-        if not self.db.ex("UPDATE integration_tools SET policy=? WHERE integration_id=? AND name=?", (policy, row["id"], tool)):
+        if not self.db.ex("UPDATE integration_tools SET policy=?, changed_at=NULL WHERE integration_id=? AND name=?", (policy, row["id"], tool)):
             raise NotFound(f"tool {tool}")
         return self.get(name)
 
@@ -242,7 +267,7 @@ class Integrations:
             token = self.vault.value_for_control(row["auth_secret"])
             if token is None:
                 raise UpstreamError(f"The secret {row['auth_secret']} isn't saved yet.")
-        return McpClient(row["url"], token, self.transport)
+        return McpClient(row["url"], token, self.transport or PinnedTransport(bool(row["allow_private"])))
 
     def sync(self, name: str, quiet: bool = False) -> dict:
         """List the upstream's tools. New tools get the default policy; existing policies are kept."""
@@ -265,10 +290,20 @@ class Integrations:
                 seen.add(tname)
                 ro = bool((t.get("annotations") or {}).get("readOnlyHint"))
                 schema = t.get("inputSchema") if isinstance(t.get("inputSchema"), dict) else {"type": "object"}
-                db.ex("INSERT INTO integration_tools(integration_id, name, description, input_schema_json, read_only, policy) VALUES(?,?,?,?,?,?) "
-                      "ON CONFLICT(integration_id, name) DO UPDATE SET description=excluded.description, input_schema_json=excluded.input_schema_json, "
-                      "read_only=excluded.read_only, present=1",
-                      (row["id"], tname, str(t.get("description") or "")[:2000], json.dumps(schema), int(ro), "allowed" if ro else "ask"))
+                desc = str(t.get("description") or "")[:2000]
+                digest = spec_hash(desc, schema)
+                vetted = tname in (PRESETS.get(row["preset"] or "") or {}).get("read_only_tools", ())
+                old = db.q1("SELECT policy, spec_hash FROM integration_tools WHERE integration_id=? AND name=?", (row["id"], tname))
+                if old is None:
+                    db.ex("INSERT INTO integration_tools(integration_id, name, description, input_schema_json, read_only, policy, spec_hash) VALUES(?,?,?,?,?,?,?)",
+                          (row["id"], tname, desc, json.dumps(schema), int(ro), "allowed" if vetted else "ask", digest))
+                    continue
+                # A changed description or schema is a different tool: back to ask until the owner decides again.
+                changed = old["spec_hash"] is not None and old["spec_hash"] != digest
+                reset = changed and old["policy"] == "allowed"
+                db.ex("UPDATE integration_tools SET description=?, input_schema_json=?, read_only=?, present=1, spec_hash=?, "
+                      "policy=CASE WHEN ? THEN 'ask' ELSE policy END, changed_at=CASE WHEN ? THEN ? ELSE changed_at END WHERE integration_id=? AND name=?",
+                      (desc, json.dumps(schema), int(ro), digest, int(reset), int(changed), now, row["id"], tname))
             db.ex(f"UPDATE integration_tools SET present=0 WHERE integration_id=? AND name NOT IN ({','.join('?' * len(seen)) or 'NULL'})", (row["id"], *seen))
             db.ex("UPDATE integrations SET status='ok', last_error=NULL, synced_at=?, updated_at=? WHERE id=?", (now, now, row["id"]))
         return self.get(name)
@@ -361,7 +396,7 @@ class Integrations:
     def apply_always(self, payload: dict) -> dict:
         """An 'always' approval: the tool becomes allowed."""
         row = self._row(payload["integration"])
-        self.db.ex("UPDATE integration_tools SET policy='allowed' WHERE integration_id=? AND name=?", (row["id"], payload["tool"]))
+        self.db.ex("UPDATE integration_tools SET policy='allowed', changed_at=NULL WHERE integration_id=? AND name=?", (row["id"], payload["tool"]))
         return {"policy": "allowed"}
 
     def check_action(self, a: dict) -> tuple[str, dict]:
@@ -372,10 +407,11 @@ class Integrations:
         return "mcp_call", {"integration": row["name"], "title": row["title"], "tool": tool, "args": shown, "hash": args_hash(tool, args)}
 
 
-def _check_url(url: str) -> str:
+def _check_url(url: str, allow_private: bool = False) -> str:
     url = (url or "").strip()
     if not re.match(r"^https?://[^\s/]+(/\S*)?$", url):
         raise BadRequest("bad_url", "The server's URL starts with https:// (or http:// on your own network).")
+    vet_url(url, allow_private)
     return url
 
 

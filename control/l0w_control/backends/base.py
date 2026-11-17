@@ -9,7 +9,7 @@ app turns into 501, so the contract can run ahead of the implementation.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 
 from ..api import schemas as s
 
@@ -66,7 +66,7 @@ class Backend:
     def revoke_session(self, session_id: str) -> None: raise NotImplementedError
     def change_password(self, req: s.PasswordChange, current_cookie: str | None, current_bearer: str | None) -> None: raise NotImplementedError
     def totp_setup(self) -> s.TotpSetup: raise NotImplementedError
-    def totp_enable(self, req: s.TotpEnable) -> s.Owner: raise NotImplementedError
+    def totp_enable(self, req: s.TotpEnable) -> s.TotpEnabled: raise NotImplementedError
     def totp_disable(self, req: s.TotpDisable) -> s.Owner: raise NotImplementedError
 
     # projects and threads
@@ -194,10 +194,12 @@ class Backend:
     def set_notification_settings(self, req: s.NotificationSettings) -> s.NotificationSettings: raise NotImplementedError
     def push_test(self) -> s.PushTestResult: raise NotImplementedError
     def check_update(self) -> s.UpdateInfo: raise NotImplementedError
+    def cancel_update(self) -> s.UpdateInfo: raise NotImplementedError
 
     # files
     def list_dir(self, volume: str, path: str) -> s.Listing: raise NotImplementedError
     def read_file(self, volume: str, path: str) -> tuple[bytes, str]: raise NotImplementedError
+    def stream_file(self, volume: str, path: str) -> tuple[Iterator[bytes], int, str]: raise NotImplementedError
     def file_history(self, volume: str, path: str) -> list[s.FileHistoryEntry]: raise NotImplementedError
     def file_diff(self, volume: str, path: str, rev: str) -> s.FileDiff: raise NotImplementedError
     def zip_dir(self, volume: str, path: str): raise NotImplementedError

@@ -127,8 +127,9 @@ export function Run() {
     ['Why it woke', `${whyLabel(r)}${r.why_detail ? ` · ${r.why_detail}` : ''}`], ['Level', d.level ? cap(d.level) : '–'], ['Reviewer', cap(d.reviewer_mode)],
     ['Model', r.tier ? r.tier.split('/').map(cap).join(' · ') : '–'], ['Spends', r.bucket === 'reply' ? 'Reply budget' : r.bucket === 'sweep' ? 'Sweep' : 'Allowance'],
   ]
-  const elapsed = (Date.parse(r.ended_at ?? new Date().toISOString()) - Date.parse(r.started_at)) / 1000
-  const total = r.deadline ? (Date.parse(r.deadline) - Date.parse(r.started_at)) / 1000 : 0
+  const t0 = r.started_at ? Date.parse(r.started_at) : NaN
+  const elapsed = Date.parse(r.ended_at ?? new Date().toISOString()) - t0
+  const total = r.deadline ? Date.parse(r.deadline) - t0 : 0
   return (
     <div className="page run-page">
       <div className="run-head">
@@ -145,7 +146,7 @@ export function Run() {
             <div className="row-between"><span>Budget</span><span className="v">{pts(r.used)} of {pts(r.budget)} pts</span></div>
             <div className="bar big">
               <div style={{ width: `${Math.min(100, (r.used / (r.budget || 1)) * 100)}%` }} />
-              {live && total > 0 && <span className="time-mark" style={{ left: `${Math.min(100, (elapsed / total) * 100)}%` }} title="Time used" />}
+              {live && total > 0 && Number.isFinite(elapsed) && <span className="time-mark" style={{ left: `${Math.min(100, (elapsed / total) * 100)}%` }} title="Time used" />}
             </div>
             <div className="row-between"><span>{duration(r.started_at, r.ended_at)}{live ? ' elapsed' : ''}</span><span>{r.deadline ? `deadline ${clock(r.deadline)}` : ''}</span></div>
           </div>

@@ -170,7 +170,7 @@ Every item has a deep link.
 - Later: **Hub**: membership, address, published services, peer policies and spend-breaker limits.
 
 ## Login and setup
-- **Login**: username + password, then a 2FA code if enabled. Rate-limit and lockout messages, and a "new device" notice to your other devices.
+- **Login**: username + password, then a 2FA code if enabled. Rate-limit messages, and a "new device" notice to your other devices.
 - **First-run wizard**: create the owner, timezone, connect a provider (the login flow runs through the server), pick a level, optionally join a hub (later). It ends with the self-test result.
 - **Update available** banner, with release notes and "update after the current run".
 

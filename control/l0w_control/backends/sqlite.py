@@ -15,7 +15,7 @@ import hashlib
 import json
 import mimetypes
 import os
-from collections.abc import AsyncIterator, Coroutine
+from collections.abc import AsyncIterator, Coroutine, Iterator
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, TypeVar
@@ -29,6 +29,7 @@ from ..config import Env, Settings
 from ..connector import Connector
 from ..conv import Conversations
 from ..db import Database
+from ..diskusage import DiskUsage
 from ..files import Storage, guess_mime
 from ..files_origin import Signer
 from ..files_origin import make_app as files_app
@@ -36,10 +37,11 @@ from ..integrations import Integrations
 from ..jobs import Jobs
 from ..live import Live
 from ..notify import Notifier
+from ..retention import run_retention
 from ..reviewer import Reviewer
 from ..routines import Routines
 from ..runs.clients import EgressClient, RunnerClient, RunnerError
-from ..runs.manager import RunManager, run_model
+from ..runs.manager import BRIEF_LIST_CAP, RunManager, run_model
 from ..runs.usage import Usage
 from ..scheduler import Scheduler, wakeup_model
 from ..shelf import Shelf
@@ -63,11 +65,12 @@ class SqliteBackend(Backend):
         self.db = Database(db_path)
         self.settings = Settings(self.db)
         self.live = Live(self.db)
-        self.auth = Auth(self.db, self.settings, on_new_session=self._new_session_alert, on_lockout=self._lockout_notice)
+        self.auth = Auth(self.db, self.settings, on_new_session=self._new_session_alert)
         self.usage = Usage(self.env, self.db, self.settings)
         self.runner = runner or RunnerClient(self.env)
         self.egress = egress or EgressClient(self.env)
         self.vault = Vault(self.db, self.env.data_dir)
+        self.auth.fernet = self.vault.fernet
         self.conv = Conversations(self.db, self.live, self.vault, self.settings)
         self.conv.add_egress_rule = lambda pattern, mode, note: self._await(self.egress.add_rule(pattern, mode, note))
         self.conv.delete_egress_rule = lambda rule_id: self._await(self.egress.delete_rule(rule_id))
@@ -91,10 +94,12 @@ class SqliteBackend(Backend):
         self._last_jobs_check = 0.0
         self.inbox_dir = os.environ.get("L0W_INBOX_DIR", "/work/_inbox")
         self.storage = Storage({"workspace": Path(os.environ.get("L0W_WORKSPACE_DIR", "/workspace")), "work": Path(os.environ.get("L0W_WORK_DIR", "/work"))})
+        self.disk = DiskUsage(self.env.data_dir, self.db.path, {"workspace": self.storage.roots["workspace"], "work": self.storage.roots["work"]})
         self.shelf_ = Shelf(self.db, self.live, self.storage, self.env.data_dir / "shelf")
         self.jobs_ = Jobs(self.db, self.live, self.storage, self.vault.redact)
         self.updates = Updates(self.db)
         self.notifier = Notifier(self.db, self.env.data_dir)
+        self.notifier.vault = self.vault
         self.conv.notify = self.notifier.notify
         self.chats_ = Chats(self.db, self, self.live, self.budgets, self.vault)
         self.connector = Connector(self.db, self)
@@ -229,16 +234,6 @@ class SqliteBackend(Backend):
         self.notifier.notify("new_device", text, "If this wasn't you, revoke it from your Inbox.", "/inbox", "security_alert", str(aid))
         self.live.changed("security_alert", aid)
         self.live.emit("inbox_counts")
-
-    def _lockout_notice(self, ip: str, seconds: int) -> None:
-        from datetime import timedelta
-
-        from ..auth import iso
-
-        recent = self.db.q1("SELECT id FROM notifications WHERE kind='lockout' AND created_at >= ?", (iso(utcnow() - timedelta(minutes=15)),))
-        if not recent:
-            self.db.ex("INSERT INTO notifications(kind, title, created_at) VALUES('lockout',?,?)",
-                       (f"Sign-in locked for {seconds // 60 + 1} min after repeated failures (last from {ip})", self.db.now()))
 
     # ── inbox ──────────────────────────────────────────────────────────────
     def _alert(self, aid: int) -> s.SecurityAlert:
@@ -466,6 +461,10 @@ class SqliteBackend(Backend):
     def read_file(self, volume: str, path: str) -> tuple[bytes, str]:
         return self.storage.read(volume, path, 200 * 1024 * 1024), guess_mime(path)
 
+    def stream_file(self, volume: str, path: str) -> tuple[Iterator[bytes], int, str]:
+        body, size = self.storage.iter_file(volume, path)
+        return body, size, guess_mime(path)
+
     def file_history(self, volume: str, path: str) -> list[s.FileHistoryEntry]:
         return [s.FileHistoryEntry(rev=h["rev"], run_id=h["run_id"] or self._run_at(h["time"]), at=h["at"], added=h["added"], removed=h["removed"], message=h["message"])
                 for h in self.storage.history(volume, path)]
@@ -599,7 +598,7 @@ class SqliteBackend(Backend):
 
     def create_integration(self, req: s.IntegrationCreate) -> s.Integration:
         def make() -> s.Integration:
-            return self._integration(self.integrations.create(req.name or "", req.title, req.preset, req.url, req.auth_secret))
+            return self._integration(self.integrations.create(req.name or "", req.title, req.preset, req.url, req.auth_secret, req.allow_private))
         return self.conv.once(req.idempotency_key, "integration", s.Integration, make)
 
     def get_integration(self, name: str) -> s.Integration:
@@ -734,20 +733,42 @@ class SqliteBackend(Backend):
             parts.append("## Long jobs still running\n\n" + jobs)
         routines = self.routines.occurrences_text(self.budgets.now())
         if routines:
-            parts.append("## Routines\n\n" + routines)
+            lines = routines.splitlines()
+            if len(lines) > BRIEF_LIST_CAP:
+                lines = lines[:BRIEF_LIST_CAP] + [f"- {len(lines) - BRIEF_LIST_CAP} more routines: `assistant routine list`"]
+            parts.append("## Routines\n\n" + "\n".join(lines))
         projects = [p for p in self.conv.projects(None) if p.status != "archived"]
         if projects:
-            parts.append("## Projects\n\n" + "\n".join(f"- {p.slug}: {p.name} ({p.status})" + (f" · {p.summary}" if p.summary else "") for p in projects))
+            lines = [f"- {p.slug}: {p.name} ({p.status})" + (f" · {p.summary}" if p.summary else "") for p in projects]
+            if len(lines) > BRIEF_LIST_CAP:
+                lines = lines[:BRIEF_LIST_CAP] + [f"- {len(lines) - BRIEF_LIST_CAP} more projects: `assistant project list`"]
+            parts.append("## Projects\n\n" + "\n".join(lines))
         return "\n\n".join(parts)
+
+    async def _check_disk(self, now) -> None:
+        if self.disk.refresh_due():
+            await asyncio.to_thread(self.disk.refresh)
+        st = self.disk.status(self.settings.get("DISK_WARN_FREE_GB"))
+        if not st.low:
+            return
+        day = now.strftime("%Y-%m-%d")
+        row = self.db.q1("SELECT value FROM kv WHERE key='disk_low_notified'")
+        if row and row["value"] == day:
+            return
+        self.db.ex("INSERT INTO kv(key, value, updated_at) VALUES('disk_low_notified', ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+                   (day, self.db.now()))
+        self.notifier.notify("disk_low", "Server disk space is low", f"{st.disk_free_bytes / 1024**3:.1f} GB free (warning below {st.warn_free_gb:g} GB).", "/settings/system", "disk", day)
 
     async def _housekeeping(self, now) -> None:
         from datetime import timedelta
+        await self._check_disk(now)
         if self.settings.get("UPDATE_CHECK"):
             before = self.updates.info().available
             await self.updates.check()
             if self.updates.info().available and not before:
                 self.live.emit("status")
         self.conv.expire_promotes(older_than=iso(now - timedelta(minutes=self.settings.get("PROMOTE_WAIT_MINUTES"))))
+        run_retention(self.db, self.settings, now)
         pids = self.jobs_.running_pids()
         if pids and now.timestamp() - self._last_jobs_check >= 60:
             self._last_jobs_check = now.timestamp()
@@ -821,6 +842,9 @@ class SqliteBackend(Backend):
     def check_update(self) -> s.UpdateInfo:
         self._await(self.updates.check(force=True))
         return self.updates.info()
+
+    def cancel_update(self) -> s.UpdateInfo:
+        return self.updates.cancel()
 
     # ── budgets and providers ──────────────────────────────────────────────
     def budget_overview(self) -> s.BudgetOverview:
@@ -1041,7 +1065,10 @@ class SqliteBackend(Backend):
         gate = s.GateState(open=g.open, reason=g.reason)
         if self.runs_mgr.active_run_id() is not None:
             gate = s.GateState(open=False, reason="A run is in progress.")
-        return s.SystemStatus(server_version=__version__, runner=runner, egress=egress, usage=reading, gate=gate)
+        problems = [s.SchedulerProblem(step=p["step"], error=p["error"], count=p["count"], last_at=parse(p["last_at"]))  # type: ignore[arg-type]
+                    for p in self.scheduler.problems_raw().values()]
+        return s.SystemStatus(server_version=__version__, runner=runner, egress=egress, usage=reading, gate=gate, scheduler_problems=problems,
+                              storage=self.disk.status(self.settings.get("DISK_WARN_FREE_GB")))
 
     def system_status(self) -> s.SystemStatus:
         return self._await(self._system())

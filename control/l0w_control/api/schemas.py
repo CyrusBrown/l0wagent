@@ -111,7 +111,7 @@ class LoginRequest(Model):
 
 class TotpRequest(Model):
     challenge: str
-    code: str = Field(min_length=6, max_length=8)
+    code: str = Field(min_length=6, max_length=16, description="The 6-digit code, or a one-time recovery code.")
 
 
 class LoginResult(Model):
@@ -148,10 +148,11 @@ class SetupOwnerRequest(Model):
     password: str = Field(min_length=12)
     display_name: str | None = None
     timezone: str
+    setup_code: str | None = Field(None, description="The one-time code ./l0w install prints; required when the server has one.")
 
 
 class PasswordProblem(Model):
-    error: Literal["too_short", "breached", "already_set_up", "wrong_password"]
+    error: Literal["too_short", "breached", "already_set_up", "wrong_password", "setup_code"]
     detail: str
 
 
@@ -169,8 +170,12 @@ class TotpSetup(Model):
 
 
 class TotpEnable(Model):
-    secret: str
+    secret: str | None = Field(None, description="Ignored: control verifies against the secret it issued in setup.")
     code: str = Field(min_length=6, max_length=8)
+
+
+class TotpEnabled(Owner):
+    recovery_codes: list[str] = Field(description="One-time codes for signing in without the authenticator. Shown once.")
 
 
 class TotpDisable(Model):
@@ -1054,6 +1059,7 @@ class IntegrationTool(Model):
     read_only: bool = Field(description="The server says this tool only reads.")
     policy: ToolPolicy = Field(description="allowed runs at once, ask needs your approval, blocked never runs.")
     present: bool = Field(description="False when the server no longer lists the tool.")
+    changed_since_allowed: bool = Field(False, description="The server changed this tool's description or schema after you set its policy; it went back to ask.")
 
 
 class IntegrationCall(Model):
@@ -1072,6 +1078,7 @@ class Integration(Model):
     url: str
     auth_secret: str | None = Field(description="Name of the saved secret sent as the bearer token.")
     secret_saved: bool = Field(description="The named secret has a value.")
+    allow_private: bool = Field(False, description="You said this server is on your own network (http and private addresses allowed).")
     enabled: bool
     status: Literal["new", "ok", "error"]
     last_error: str | None
@@ -1099,6 +1106,7 @@ class IntegrationCreate(Model):
     preset: str | None = None
     url: str | None = Field(None, max_length=500)
     auth_secret: str | None = Field(None, max_length=64)
+    allow_private: bool = Field(False, description="This server is on my own network.")
     idempotency_key: str | None = None
 
 
@@ -1107,6 +1115,7 @@ class IntegrationPatch(Model):
     url: str | None = Field(None, max_length=500)
     auth_secret: str | None = Field(None, max_length=64, description="Empty clears it.")
     enabled: bool | None = None
+    allow_private: bool | None = None
 
 
 class ToolPolicySet(Model):
@@ -1197,12 +1206,37 @@ class GateState(Model):
     reason: str | None = Field(None, description="Why runs can't start right now.")
 
 
+class SchedulerProblem(Model):
+    step: str = Field(description="Which part of the scheduler keeps failing (routines, fallback, sweep, start_due, housekeeping).")
+    error: str
+    count: int = Field(description="How many ticks in a row it has failed.")
+    last_at: datetime
+
+
+class VolumeUsage(Model):
+    name: str
+    bytes: int | None = Field(None, description="Size in bytes; null when control can't see this volume.")
+    note: str | None = None
+
+
+class StorageStatus(Model):
+    disk_free_bytes: int
+    disk_total_bytes: int
+    warn_free_gb: float = Field(description="The DISK_WARN_FREE_GB setting.")
+    low: bool = Field(description="Free space is below the warning threshold.")
+    db_bytes: int | None = Field(None, description="The SQLite file plus its write-ahead log.")
+    volumes: list[VolumeUsage] = Field(default_factory=list)
+    measured_at: datetime | None = Field(None, description="When the volume sizes were last measured (they're refreshed every 10 minutes).")
+
+
 class SystemStatus(Model):
     server_version: str
+    storage: StorageStatus | None = None
     runner: RunnerHealth
     egress: EgressHealth
     usage: UsageReading | None
     gate: GateState
+    scheduler_problems: list[SchedulerProblem] = Field(default_factory=list, description="Scheduler steps failing right now; wakeups may be late or missing.")
 
 
 class UpdateInfo(Model):
@@ -1259,6 +1293,9 @@ class NotificationSettings(Model):
 
     events: dict[str, bool]
     ntfy_url: str | None = Field(None, max_length=500, description="Optional: an ntfy topic URL, for installs without HTTPS.")
+    ntfy_token: str | None = Field(None, max_length=300, description="Write-only: an ntfy access token, sent as a bearer token. Omit to keep it, empty to remove it. Never returned.")
+    ntfy_token_saved: bool = Field(False, description="An ntfy access token is saved (read-only).")
+    ntfy_previews: bool = Field(False, description="Send message previews to ntfy; off sends only the title.")
     quiet_start: str | None = Field(None, pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$")
     quiet_end: str | None = Field(None, pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$")
     event_labels: dict[str, str] = {}

@@ -41,6 +41,10 @@ services:
       L0W_INSTANCE_NAME: ${L0W_INSTANCE_NAME:-l0wagent}
       L0W_CHANNEL: ${L0W_CHANNEL:-stable}
       L0W_SECRET_KEY: ${L0W_SECRET_KEY:-}
+      # First-run setup code (./l0w install prints it), reverse-proxy addresses to trust, cookie Secure flag.
+      L0W_SETUP_CODE: ${L0W_SETUP_CODE:-}
+      L0W_TRUSTED_PROXIES: ${L0W_TRUSTED_PROXIES:-}
+      L0W_COOKIE_SECURE: ${L0W_COOKIE_SECURE:-auto}
       USAGE_UNKNOWN_POLICY: ${USAGE_UNKNOWN_POLICY:-refuse}
     ports:
       - "${L0W_BIND:-0.0.0.0}:${L0W_PORT:-8000}:8000"
@@ -87,6 +91,8 @@ services:
     hostname: sandbox
     environment:
       RUNNER_TOKEN: ${L0W_RUNNER_TOKEN}
+      # The runner answers only control (a host name; Docker resolves it on the sandbox network).
+      RUNNER_ALLOWED_FROM: control
       AGENT_API_TOKEN: ${L0W_AGENT_TOKEN}
       CONTROL_URL: http://control:8000
       FAKE_CLAUDE: "0"
@@ -105,6 +111,7 @@ services:
       TZ: ${TZ:-UTC}
     volumes:
       - agent-home:/home/agent
+      - agent-reviewer:/home/reviewer
       - agent-workspace:/workspace
       - agent-work:/work
       - agent-cache:/cache
@@ -172,6 +179,7 @@ volumes:
   control-data:
   egress-data:
   agent-home:
+  agent-reviewer:
   agent-workspace:
   agent-work:
   agent-cache:

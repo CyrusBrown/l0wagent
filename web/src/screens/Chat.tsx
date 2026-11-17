@@ -6,6 +6,7 @@ import {
   problem, useChat, useChatMessages, useChatPull, useDecideChatCard, useDelivery, usePatchChat, useProviderCatalog, useProviders,
   uploadChatFile, useReplyNow, useSendChat, useStopChat, useThreads,
 } from '../api/queries'
+import { useOnline } from '../components/online'
 import { useTimeFormat } from '../app/timeFormat'
 import { bytes, stamp } from '../components/format'
 import { Markdown } from '../components/Markdown'
@@ -26,6 +27,7 @@ export function Chat() {
   const msgs = useChatMessages(id)
   const draft = useDraft(id)
   const send = useSendChat(id)
+  const online = useOnline()
   const stop = useStopChat(id)
   const [text, setText] = useState('')
   const [files, setFiles] = useState<S['ChatFile'][]>([])
@@ -46,16 +48,16 @@ export function Chat() {
   if (!c) return null
   const submit = () => {
     const body = text.trim() || (files.length ? 'See the attached files.' : '')
-    if (!body || c.busy || uploading) return
+    if (!body || c.busy || uploading || !online) return
     send.mutate({ body, upload_ids: files.map((f) => f.id) }, { onSuccess: () => { setText(''); setFiles([]) } })
   }
   return (
     <div className="thread">
       <ChatHeader chat={c} />
       <div className="thread-scroll" ref={scroller}>
-        <div className="thread-items">
+        <div className="thread-items" role="log" aria-live="polite" aria-relevant="additions">
           <Items chatId={id} items={msgs.data ?? []} />
-          {c.busy && (draft ? <div className="theirs"><Markdown>{draft}</Markdown></div> : <div className="tool-line">Thinking…</div>)}
+          {c.busy && (draft ? <div className="theirs" aria-busy="true"><Markdown>{draft}</Markdown></div> : <div className="tool-line" role="status">Thinking…</div>)}
         </div>
       </div>
       <div className="composer-wrap">
@@ -80,9 +82,10 @@ export function Chat() {
               <span style={{ flex: 1 }} />
               {c.busy
                 ? <button className="btn small" onClick={() => stop.mutate()}>Stop</button>
-                : <button className="send" onClick={submit} disabled={(!text.trim() && !files.length) || send.isPending || uploading > 0} title="Send (↵)">↑</button>}
+                : <button className="send" onClick={submit} disabled={(!text.trim() && !files.length) || send.isPending || uploading > 0 || !online} title="Send (↵)">↑</button>}
             </div>
           </div>
+          {!online && <div className="sub" role="status">Chat needs a connection; thread messages can be queued.</div>}
           {(send.error || upErr) && <div className="error">{upErr ?? problem(send.error)}</div>}
         </div>
       </div>

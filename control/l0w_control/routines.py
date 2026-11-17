@@ -1,8 +1,8 @@
 """Routines: scheduled prompts with their own tier and budget.
 
-- **Built in**: the weekly review, a few hours before a Claude subscription's weekly reset. It
-  exists from the start and is on only while the subscription is set up (the only provider
-  with a weekly reset).
+- **Built in**: the review, a few hours before the worker provider's budget period resets (the
+  subscription's week, or a month on a provider that has one). It exists from the start and
+  follows the worker role's provider.
 - **The owner** creates, edits, pauses and deletes routines (Settings or the Calendar).
 - **The agent proposes** one with `assistant routine propose`: that files a permission card
   whose action is the routine. Approving it makes the routine active (control applies it),
@@ -70,16 +70,20 @@ class Routines:
         if self.db.q1("SELECT 1 FROM routines WHERE builtin=?", (WEEKLY_REVIEW,)):
             return
         now = self.db.now()
+        worker = self.budgets.role("worker")   # the review follows the worker's provider (and its reset)
+        provider = worker.provider
+        tier = "opus/medium" if provider == SUBSCRIPTION else worker.tier
         prompt = (PROMPTS / "routines" / "weekly_review.md").read_text()
         self.db.ex("INSERT INTO routines(name, prompt, schedule_json, provider, tier, budget, enabled, builtin, status, created_by, created_at, updated_at) "
                    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                   ("Weekly review", prompt, json.dumps({"kind": "before_reset", "hours": 6}), SUBSCRIPTION, "opus/medium", 40.0, 1, WEEKLY_REVIEW, "active", "control", now, now))
+                   ("Weekly review", prompt, json.dumps({"kind": "before_reset", "hours": 6}), provider, tier, 40.0, 1, WEEKLY_REVIEW, "active", "control", now, now))
 
     def model(self, r: dict) -> s.Routine:
         nxt = self.db.q1("SELECT at FROM wakeups WHERE routine_id=? AND status='planned' ORDER BY at LIMIT 1", (r["id"],))
         sch = json.loads(r["schedule_json"])
         from .scheduler import schedule_text
-        return s.Routine(id=r["id"], name=r["name"], prompt=r["prompt"], schedule=sch, schedule_text=schedule_text(sch), provider=r["provider"], tier=r["tier"],
+        unit = self.budgets.period_unit(r["provider"])
+        return s.Routine(id=r["id"], name=r["name"], prompt=r["prompt"], schedule=sch, schedule_text=schedule_text(sch, unit), provider=r["provider"], tier=r["tier"],
                          budget=r["budget"], enabled=bool(r["enabled"]), builtin=r["builtin"], status=r["status"], created_by=r["created_by"],  # type: ignore[arg-type]
                          next_at=parse(nxt["at"]) if nxt else None, last_run_at=parse(r["last_run_at"]))
 
@@ -148,7 +152,7 @@ class Routines:
         self._check(req.tier, provider)
         sch = check_schedule(req.schedule)
         from .scheduler import schedule_text
-        return {"name": req.name.strip(), "prompt": req.prompt.strip(), "schedule": sch, "schedule_text": schedule_text(sch), "tier": req.tier,
+        return {"name": req.name.strip(), "prompt": req.prompt.strip(), "schedule": sch, "schedule_text": schedule_text(sch, self.budgets.period_unit(provider)), "tier": req.tier,
                 "budget": req.budget, "provider": provider}
 
     def apply(self, payload: dict, run_id: int | None) -> dict:

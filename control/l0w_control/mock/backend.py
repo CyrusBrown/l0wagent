@@ -154,11 +154,11 @@ class MockBackend(Backend):
         return s.TotpSetup(secret=secret, otpauth_uri=f"otpauth://totp/l0wagent:{self.owner.username}?secret={secret}&issuer=l0wagent",
                            qr_svg='<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120"><rect width="120" height="120" fill="#eee"/></svg>')
 
-    def totp_enable(self, req: s.TotpEnable) -> s.Owner:
+    def totp_enable(self, req: s.TotpEnable) -> s.TotpEnabled:
         if req.code != MOCK_TOTP:
             raise BadRequest("invalid_code", "The mock's code is 123456.")
         self.owner = self.owner.model_copy(update={"totp_enabled": True})
-        return self.owner
+        return s.TotpEnabled(**self.owner.model_dump(), recovery_codes=[f"mock{i}-codes" for i in range(10)])
 
     def totp_disable(self, req: s.TotpDisable) -> s.Owner:
         if req.password != MOCK_PASSWORD:
@@ -499,6 +499,9 @@ class MockBackend(Backend):
     def check_update(self) -> s.UpdateInfo:
         return self.update_info()
 
+    def cancel_update(self) -> s.UpdateInfo:
+        return self.update_info()
+
     def claude_login_start(self) -> s.ClaudeLoginStart:
         return s.ClaudeLoginStart(url="https://claude.ai/oauth/authorize?code=true&client_id=mock")
 
@@ -832,7 +835,7 @@ class MockBackend(Backend):
         return sorted(self.w.integrations.values(), key=lambda i: i.title)
 
     def integration_presets(self) -> list[s.IntegrationPreset]:
-        return [s.IntegrationPreset(id=k, **v) for k, v in PRESETS.items()]
+        return [s.IntegrationPreset(id=k, **{f: x for f, x in v.items() if f in s.IntegrationPreset.model_fields}) for k, v in PRESETS.items()]
 
     def create_integration(self, req: s.IntegrationCreate) -> s.Integration:
         def make() -> s.Integration:
@@ -1018,7 +1021,10 @@ class MockBackend(Backend):
 
     def system_status(self) -> s.SystemStatus:
         return s.SystemStatus(server_version=__version__, runner=s.RunnerHealth(reachable=True, busy=False, runtime_version="2.9.0 (Claude Code)", logged_in=True),
-                              egress=s.EgressHealth(reachable=True, lease_active=False), usage=self._usage(), gate=s.GateState(open=True))
+                              egress=s.EgressHealth(reachable=True, lease_active=False), usage=self._usage(), gate=s.GateState(open=True),
+                              storage=s.StorageStatus(disk_free_bytes=212 * 1024**3, disk_total_bytes=500 * 1024**3, warn_free_gb=5, low=False, db_bytes=18 * 1024**2, measured_at=_now(),
+                                                      volumes=[s.VolumeUsage(name="workspace", bytes=42 * 1024**2), s.VolumeUsage(name="work", bytes=3 * 1024**3),
+                                                               s.VolumeUsage(name="cache", note="Not visible to control (it belongs to the agent computer).")]))
 
     def selftest(self) -> s.SelfTestResult:
         rows = [("database", "Database and storage", "ok", "schema v2"), ("runner", "Agent computer reachable", "ok", "2.9.0 (Claude Code)"),
@@ -1042,6 +1048,10 @@ class MockBackend(Backend):
                                        last_run_id=None if is_dir else child["run"], from_owner=False if is_dir else child["owner"]))
         entries.sort(key=lambda e: (not e.dir, e.name.lower()))
         return s.Listing(volume=volume, path=path.strip("/"), git=git, entries=entries)  # type: ignore[arg-type]
+
+    def stream_file(self, volume: str, path: str):
+        data, mime = self.read_file(volume, path)
+        return iter([data]), len(data), mime
 
     def read_file(self, volume: str, path: str) -> tuple[bytes, str]:
         node, _ = self._node(volume, path)

@@ -49,8 +49,9 @@ export function clockIn(iso: string, tz: string): string {
   return timeText(Number(p.hour), Number(p.minute))
 }
 
-export function duration(startIso: string, endIso?: string | null): string {
-  const m = Math.round(((endIso ? new Date(endIso).getTime() : Date.now()) - new Date(startIso).getTime()) / 60000)
+export function duration(startIso: string | null | undefined, endIso?: string | null): string {
+  if (!startIso || Number.isNaN(Date.parse(startIso))) return '—'
+  const m =Math.round(((endIso ? new Date(endIso).getTime() : Date.now()) - new Date(startIso).getTime()) / 60000)
   return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`
 }
 

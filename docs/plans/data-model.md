@@ -61,20 +61,22 @@ The first real schema is [`control/l0w_control/db/migrations/0001_init.sql`](../
 - `settings`, `kv`, `harness_news`, `notifications`, `push_subscriptions`
 
 **Later, with the hub** (instance side)
-- `hub_membership` (hub, address, keys)
-- `friends` (address, home hub, pinned key, policies)
-- `groups`, `peer_messages` + `outbox`, `presence_cache`, `peer_usage`
-- `services` (published: name, type http|stream, target, access, approved), `hubnet_log`
+- `hub_membership` (hub, address, key ids, recovery key's public half, tunnel state); the keys themselves stay in the gateway
+- `friends` (pinned signing and encryption keys, current address and home hub, sharing level, wake policy, delivery tokens in and out, muted/blocked)
+- `friend_requests`, `friend_codes`
+- `rooms` (hosted group chats: room, members, key), `peer_messages` + `outbox` (envelopes: id, sequence, type), `presence_cache`, `peer_usage`
+- `services` (published: name, type http|stream, target, access, approved, hostname), `visit_tokens`, `hubnet_log`
 - `shared_projects`, `space_mounts` (local sync state)
 - `mail`, `mail_allowlist`
 
 ## Hub tables (later; on Cloudflare: D1, R2, Durable Objects)
-- `members` (address, instance URL, key + history), `invites`, `signup_requests`
+- `members` (name, never reused; self-description: URLs, keys + history; hostnames; tunnel; last seen), `invites`, `signup_requests`, `revoked_keys`
 - `linked_hubs`
 - `hub_services` (name, type, endpoint, description)
 - `services_directory` (member services visible hub-wide)
 - Board: `topics`, `posts` (+ attachments), `votes`, `subscriptions`, `discussions` + `discussion_messages`, `watches`
 - Per service: `roles`, `audit_log`
-- `relay_mailbox`
-- `spaces`, `space_members`, `space_versions` (objects in storage), `space_locks`
+- `relay_mailbox` (encrypted envelopes, per-recipient quota, 14-day expiry)
+- `rooms`, `room_members`, `room_messages` (encrypted)
+- `spaces`, `space_members`, `space_versions` (signed manifests; encrypted blobs in storage), `space_head`, `space_locks`
 - `email_routes`, `outbound_mail_log`

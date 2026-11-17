@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, time, timedelta
+from datetime import UTC, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -172,15 +172,19 @@ def in_hours(windows: list[dict], local: datetime) -> bool:
 
 
 def next_in_hours(windows: list[dict], after_local: datetime, step_minutes: int = 15) -> datetime | None:
-    """The first time at or after `after_local` (rounded up to the step) inside the windows."""
+    """The first time at or after `after_local` (rounded up to the step) inside the windows.
+    Steps through real time, so a skipped hour (spring forward) is never offered and a
+    repeated hour (fall back) is offered once per pass."""
     if not windows:
         return None
-    t = after_local.replace(second=0, microsecond=0)
+    tz = after_local.tzinfo
+    t = after_local.astimezone(UTC).replace(second=0, microsecond=0)
     if t.minute % step_minutes:
         t += timedelta(minutes=step_minutes - t.minute % step_minutes)
     for _ in range(PLAN_HORIZON_DAYS * 24 * 60 // step_minutes):
-        if in_hours(windows, t):
-            return t
+        loc = t.astimezone(tz)
+        if in_hours(windows, loc):
+            return loc
         t += timedelta(minutes=step_minutes)
     return None
 
@@ -349,7 +353,7 @@ class Budgets:
             if start > loc:
                 start = (start.replace(day=1) - timedelta(days=1)).replace(day=day)
             nxt = (start.replace(day=1) + timedelta(days=32)).replace(day=day)
-            return start, nxt
+            return start.astimezone(UTC), nxt.astimezone(UTC)   # in UTC so a period's length counts DST shifts
         if pid == SUBSCRIPTION:
             u = self.usage.cached()
             if u and u.seven_day_resets_at:
@@ -359,7 +363,7 @@ class Budgets:
                 return end - timedelta(days=7), end
         loc = self.local(now)
         start = (loc - timedelta(days=loc.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-        return start, start + timedelta(days=7)
+        return start.astimezone(UTC), (start + timedelta(days=7)).astimezone(UTC)
 
     # ── levels ─────────────────────────────────────────────────────────────
     def effective(self, pid: str, now: datetime | None = None) -> Effective:
@@ -522,7 +526,15 @@ class Budgets:
         self._seen.pop(session_id, None)
 
     def run_pts(self, run_id: int) -> float:
-        return float(self.db.q1("SELECT COALESCE(SUM(pts), 0) AS p FROM usage_ledger WHERE run_id=?", (run_id,))["p"])
+        """The run's total in its own provider's points (the unit of its budget): rows on
+        another provider (the reviewer's) are converted through their dollars."""
+        run = self.db.q1("SELECT provider FROM runs WHERE id=?", (run_id,))
+        pid = run["provider"] if run else None
+        rows = self.db.q("SELECT provider, SUM(pts) AS p, SUM(cost_usd) AS c FROM usage_ledger WHERE run_id=? GROUP BY provider", (run_id,))
+        total = 0.0
+        for r in rows:
+            total += float(r["p"] or 0) if pid is None or r["provider"] == pid else float(r["c"] or 0) * self.pts_per_usd(pid)
+        return total
 
     def run_cost(self, run_id: int) -> float:
         return float(self.db.q1("SELECT COALESCE(SUM(cost_usd), 0) AS c FROM usage_ledger WHERE run_id=?", (run_id,))["c"])
@@ -604,7 +616,7 @@ class Budgets:
     # ── validating a planned wakeup ────────────────────────────────────────
     def validate(self, pid: str, at: datetime, budget: float, tier: str, *, exclude_id: int | None = None, by: str = "assistant") -> str | None:
         """Why a wakeup can't be planned, or None. The owner's own additions skip the
-        assistant's limits (hours, count, gap, tiers) but not the arithmetic."""
+        assistant's limits (hours, count, gap, tiers) but not the arithmetic (what's left)."""
         now = self.now()
         eff = self.effective(pid, now)
         lim = eff.limits
@@ -624,8 +636,8 @@ class Budgets:
             if not in_hours(lim.allowed_hours, self.local(at)):
                 return f"{self.local(at):%a %H:%M} is outside the allowed hours ({hours_text(lim.allowed_hours)})."
             day = self.local(at).date()
-            same_day = [r for r in self.db.q("SELECT at FROM wakeups WHERE provider=? AND status IN ('planned','running','done') AND kind IN ('planned','fallback','owner') AND id IS NOT ?",
-                                             (pid, exclude_id)) if self.local(parse(r["at"])).date() == day]  # type: ignore[arg-type]
+            same_day = [r for r in self.db.q("SELECT at FROM wakeups WHERE provider=? AND status IN ('planned','running','done') "
+                                             "AND kind IN ('planned','fallback','owner','routine') AND id IS NOT ?", (pid, exclude_id)) if self.local(parse(r["at"])).date() == day]  # type: ignore[arg-type]
             if len(same_day) >= lim.max_per_day:
                 return f"Already {len(same_day)} wakeup(s) on {day:%a %b %d}; the limit is {lim.max_per_day} a day."
             gap = timedelta(minutes=lim.min_gap_minutes)
@@ -633,8 +645,8 @@ class Budgets:
                               (pid, iso(at - gap), iso(at + gap), exclude_id))
             if near:
                 return f"Too close to the wakeup at {self.local(parse(near['at'])):%a %H:%M}: keep {lim.min_gap_minutes} min between wakeups."  # type: ignore[arg-type]
-        if by != "assistant":
-            return None  # the owner's own wakeups run with the budget the owner gives them
+        elif lim.allowance <= 0:
+            return None  # Dormant: the owner's own wakeups still run, with the budget the owner gives them
         start, end = self.week(pid, at)
         this_week = start <= now < end
         room = self.summary(pid, now).left if this_week else lim.allowance

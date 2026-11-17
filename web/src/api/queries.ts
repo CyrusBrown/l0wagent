@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError, CLIENT_HEADERS, newKey, ok, type S } from './client'
-import { clearOffline, enqueue, isNetworkError, type OutboxItem } from './offline'
+import { clearOffline, enqueue, flushOutbox, isNetworkError, type OutboxItem } from './offline'
 
 /** Send now, or queue on this device when offline (only messages, new threads, answers and
  * finished tasks: never approvals, secrets, settings or budgets). Returns null when queued. */
@@ -118,12 +118,12 @@ export const useLogin = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (b: S['LoginRequest']) => ok(api.POST('/api/auth/login', { body: b })),
-    onSuccess: (r) => r.status === 'ok' && qc.invalidateQueries(),
+    onSuccess: (r) => { if (r.status === 'ok') { void qc.invalidateQueries(); void flushOutbox(qc) } },
   })
 }
 export const useTotp = () => {
   const qc = useQueryClient()
-  return useMutation({ mutationFn: (b: S['TotpRequest']) => ok(api.POST('/api/auth/totp', { body: b })), onSuccess: () => qc.invalidateQueries() })
+  return useMutation({ mutationFn: (b: S['TotpRequest']) => ok(api.POST('/api/auth/totp', { body: b })), onSuccess: () => { void qc.invalidateQueries(); void flushOutbox(qc) } })
 }
 
 export const useRecent = (sender?: S['Message']['sender']) =>
@@ -297,6 +297,7 @@ export const useDeleteRoutine = () => useInvalidating((id: number) => ok(api.DEL
 
 // ── M5: updates, notifications, logging the agent in ───────────────────────
 export const useUpdateInfo = () => useQuery({ queryKey: ['system', 'update'], queryFn: () => ok(api.GET('/api/system/update')), refetchInterval: 30 * 60_000 })
+export const useCancelUpdate = () => useInvalidating(() => ok(api.POST('/api/system/update/cancel')), [['system'], ['status']])
 export const useCheckUpdate = () => useInvalidating(() => ok(api.POST('/api/system/update/check')), [['system']])
 export const useNotificationSettings = () => useQuery({ queryKey: ['notifications'], queryFn: () => ok(api.GET('/api/notifications/settings')) })
 export const useSetNotificationSettings = () =>
