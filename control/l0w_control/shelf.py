@@ -24,14 +24,18 @@ from .live import Live
 
 log = logging.getLogger("l0w.shelf")
 POLL_S = 2.0
-SHELF_MAX_BYTES = 500 * 1024 * 1024
 
 
 class Shelf:
     def __init__(self, db: Database, live: Live, storage: Storage, blob_dir: Path):
         self.db, self.live, self.storage, self.blob_dir = db, live, storage, blob_dir
+        self.app_settings = None  # set by the backend: the owner's tunables
         self.fire = lambda event, data: None  # extensions' event hooks (set by the backend)
         live.getters["shelf_item"] = lambda i: self.item(int(i))
+
+    @property
+    def max_bytes(self) -> int:
+        return (self.app_settings.get("SHELF_SNAPSHOT_MAX_MB") if self.app_settings else 500) * 1024 * 1024
 
     # ── reading ────────────────────────────────────────────────────────────
     def _row(self, item_id: int) -> dict:
@@ -69,7 +73,7 @@ class Shelf:
         r = self._row(item_id)
         name = os.path.basename(r["path"])
         if version is None and r["mode"] == "live":
-            return self.storage.read(r["volume"], r["path"], SHELF_MAX_BYTES), guess_mime(name), name
+            return self.storage.read(r["volume"], r["path"], self.max_bytes), guess_mime(name), name
         q = "SELECT * FROM shelf_versions WHERE item_id=?" + (" AND n=?" if version is not None else " ORDER BY n DESC LIMIT 1")
         v = self.db.q1(q, (item_id, version) if version is not None else (item_id,))
         if not v:
@@ -79,7 +83,7 @@ class Shelf:
     # ── writing ────────────────────────────────────────────────────────────
     def add(self, project_id: int, volume: str, path: str, label: str | None, mode: str, keep: int, by: str, run_id: int | None) -> s.ShelfItem:
         info = self.storage.stat(volume, path)  # exists, is a regular file, no symlinks
-        if mode == "snapshot" and info.st_size > SHELF_MAX_BYTES:
+        if mode == "snapshot" and info.st_size > self.max_bytes:
             raise BadRequest("too_large", "Too big to snapshot; shelve it live instead.")
         dup = self.db.q1("SELECT id FROM shelf_items WHERE project_id=? AND volume=? AND path=? AND mode=? AND removed_at IS NULL", (project_id, volume, path, mode))
         if dup and mode == "live":
@@ -91,10 +95,10 @@ class Shelf:
             (project_id, (label or os.path.basename(path))[:200], volume, path, mode, keep if mode == "live" else 0, by, run_id, now, now, info.st_mtime, info.st_size),
         )
         if mode == "snapshot" or keep > 0:
-            data = self.storage.read(volume, path, SHELF_MAX_BYTES)
+            data = self.storage.read(volume, path, self.max_bytes)
             self._store_version(iid, data, run_id)
             self.db.ex("UPDATE shelf_items SET last_sha256=? WHERE id=?", (hashlib.sha256(data).hexdigest(), iid))
-        elif info.st_size <= SHELF_MAX_BYTES:
+        elif info.st_size <= self.max_bytes:
             self.db.ex("UPDATE shelf_items SET last_sha256=? WHERE id=?", (hashlib.sha256(self.storage.read(volume, path)).hexdigest(), iid))
         self._changed(iid)
         slug = self.db.q1("SELECT slug FROM projects WHERE id=?", (project_id,))
@@ -141,7 +145,7 @@ class Shelf:
             if not r["missing"] and info.st_mtime == r["last_mtime"] and info.st_size == r["last_size"]:
                 continue
             sha = None
-            if info.st_size <= SHELF_MAX_BYTES:
+            if info.st_size <= self.max_bytes:
                 data = self.storage.read(r["volume"], r["path"])
                 sha = hashlib.sha256(data).hexdigest()
             self.db.ex("UPDATE shelf_items SET last_mtime=?, last_size=?, missing=0 WHERE id=?", (info.st_mtime, info.st_size, r["id"]))

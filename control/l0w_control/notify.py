@@ -45,7 +45,6 @@ EVENTS = {
     "disk_low": ("Low disk space", "The server's free disk space dropped below your warning level", True),
 }
 ASKS = ("approval", "question", "task")  # what an agent can raise; capped per hour so a loop can't flood the owner
-MAX_ASK_NOTIFICATIONS_PER_HOUR = 10
 NTFY_TOKEN = "NTFY_TOKEN"
 ALWAYS = ("approval", "new_device")  # not held back by quiet hours
 
@@ -58,6 +57,7 @@ class Notifier:
         self._vapid = None
         self.ntfy_transport: httpx.AsyncBaseTransport | None = None  # tests
         self.vault = None  # set by the backend: holds the ntfy token
+        self.app_settings = None  # set by the backend: the owner's tunables
 
     # ── keys and settings ──────────────────────────────────────────────────
     def vapid(self):
@@ -136,9 +136,10 @@ class Notifier:
             since = (datetime.now(UTC) - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
             marks = ",".join("?" * len(ASKS))
             n = self.db.q1(f"SELECT COUNT(*) AS n FROM notifications WHERE kind IN ({marks}) AND created_at>=?", (*ASKS, since))["n"]
-            if n > MAX_ASK_NOTIFICATIONS_PER_HOUR + 1:
+            cap = self.app_settings.get("MAX_ASK_NOTIFICATIONS_PER_HOUR") if self.app_settings else 10
+            if n > cap + 1:
                 return  # already folded into the one below
-            if n == MAX_ASK_NOTIFICATIONS_PER_HOUR + 1:
+            if n == cap + 1:
                 kind, title, body, url, ref_kind, ref_id = "approval", "More waiting for you", "More asks are waiting; the rest are in your inbox.", "/inbox", "folded", "asks"
         tz = (self.db.q1("SELECT timezone FROM users WHERE id=1") or {}).get("timezone") or "UTC"
         if kind not in ALWAYS and self._quiet(tz):

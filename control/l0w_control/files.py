@@ -184,7 +184,7 @@ class Storage:
 
         return gen(), size
 
-    def zip(self, volume: str, rel: str) -> tempfile.SpooledTemporaryFile:
+    def zip(self, volume: str, rel: str, max_bytes: int = ZIP_MAX_BYTES, max_files: int = ZIP_MAX_FILES) -> tempfile.SpooledTemporaryFile:
         """A zip of a folder (symlinks and special files skipped), spooled to disk if big."""
         out = tempfile.SpooledTemporaryFile(max_size=32 * 1024 * 1024)
         total = files = 0
@@ -200,7 +200,7 @@ class Storage:
                         continue
                     files += 1
                     total += e.size or 0
-                    if files > ZIP_MAX_FILES or total > ZIP_MAX_BYTES:
+                    if files > max_files or total > max_bytes:
                         raise BadRequest("too_large", "That folder is too big to zip here.")
                     try:
                         fd = self.open(volume, "/".join(sub))

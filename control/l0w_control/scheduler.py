@@ -29,7 +29,7 @@ from . import pause as pausing
 from .api import schemas as s
 from .auth import iso, parse
 from .backends.base import Conflict
-from .budgets import PLAN_HORIZON_DAYS, SUBSCRIPTION, Budgets, in_hours, next_in_hours
+from .budgets import SUBSCRIPTION, Budgets, in_hours, next_in_hours
 from .config import Settings
 from .db import Database
 from .live import Live
@@ -39,7 +39,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("l0w.scheduler")
 TICK_S = 15
-FALLBACK_HOUR = 3
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
@@ -218,9 +217,12 @@ class Scheduler:
             return end - timedelta(hours=float(sch.get("hours", 6)))
         return None
 
+    def _horizon_days(self) -> int:
+        return self.settings.get("PLAN_HORIZON_DAYS")
+
     def routines_to_plan(self, now: datetime) -> None:
         enabled = set(self.budgets.provider_ids())
-        horizon = now + timedelta(days=PLAN_HORIZON_DAYS)
+        horizon = now + timedelta(days=self._horizon_days())
         for r in self.db.q("SELECT * FROM routines WHERE status='active' AND enabled=1"):
             if r["builtin"]:
                 r = self._follow_worker(r)
@@ -276,12 +278,14 @@ class Scheduler:
 
     # ── fallback ───────────────────────────────────────────────────────────
     def fallback(self, now: datetime) -> None:
+        nights = int(self.settings.get("FALLBACK_NIGHTS"))
+        span = "the next night" if nights == 1 else f"the next {nights} nights"
         for pid in self._worker_providers():
             eff = self.budgets.effective(pid, now)
             if not eff.limits.fallback or eff.limits.allowance <= 0:
                 continue
             soon = self.db.q1("SELECT 1 FROM wakeups WHERE provider=? AND status IN ('planned','running') AND kind != 'sweep' AND at<? LIMIT 1",
-                              (pid, iso(now + timedelta(hours=48))))
+                              (pid, iso(now + timedelta(hours=24 * nights))))
             if soon:
                 continue
             budget = min(self.budgets.fallback_pts(pid, now), self.budgets.left(pid, now))
@@ -291,22 +295,23 @@ class Scheduler:
             if not at:
                 continue
             self._insert(pid, at, budget, self._worker_tier(pid, eff, 0),
-                         "Fallback: nothing was planned for the next two nights", "fallback", "control")
+                         f"Fallback: nothing was planned for {span}", "fallback", "control")
             key = f"fallback_noted:{pid}:{iso(self.budgets.week(pid, now)[1])}"
             if not self.db.q1("SELECT 1 FROM kv WHERE key=?", (key,)):   # once per period, however often it's replanned
                 self.db.ex("INSERT INTO kv(key, value, updated_at) VALUES(?, '1', ?)", (key, self.db.now()))
-                self._note(f"Nothing was planned for the next two nights, so control planned a fallback wakeup at {self.budgets.local(at):%a %H:%M}. "
+                self._note(f"Nothing was planned for {span}, so control planned a fallback wakeup at {self.budgets.local(at):%a %H:%M}. "
                            "Plan your own wakeups with `assistant wake at …` (see `assistant budget`).")
 
     def _night_slot(self, windows: list[dict], now: datetime) -> datetime | None:
         tz = self.budgets.tz()
         loc = now.astimezone(tz)
-        target = datetime.combine(loc.date(), time(FALLBACK_HOUR), tz)
+        target = datetime.combine(loc.date(), time(self.settings.get("FALLBACK_HOUR")), tz)
         while target < now + timedelta(hours=1):
             target += timedelta(days=1)
         if in_hours(windows, target):
             return target
-        return next_in_hours(windows, target) or next_in_hours(windows, loc + timedelta(hours=1))
+        h = self._horizon_days()
+        return next_in_hours(windows, target, horizon_days=h) or next_in_hours(windows, loc + timedelta(hours=1), horizon_days=h)
 
     def _worker_providers(self) -> list[str]:
         worker = self.budgets.role("worker").provider
@@ -340,7 +345,7 @@ class Scheduler:
             return
         if self.db.q1("SELECT 1 FROM wakeups WHERE provider=? AND kind='sweep' AND status IN ('planned','running') LIMIT 1", (pid,)):
             return
-        at = now if in_hours(eff.limits.allowed_hours, self.budgets.local(now)) else next_in_hours(eff.limits.allowed_hours, self.budgets.local(now))
+        at = now if in_hours(eff.limits.allowed_hours, self.budgets.local(now)) else next_in_hours(eff.limits.allowed_hours, self.budgets.local(now), horizon_days=self._horizon_days())
         if not at or at >= win[1]:
             return
         room = (ceiling - u.seven_day_pct) * 10

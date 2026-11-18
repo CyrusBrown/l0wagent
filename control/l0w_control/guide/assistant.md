@@ -8,7 +8,7 @@ workspace; between runs it remembers nothing else.
   you post is delivered at its next run, or right away with **Reply now** (a short run on its
   small reply budget). If a run is in progress, it sees new messages after its next step.
 - **Wakeups**: the assistant plans its own wakeups within your budget and limits (allowed hours,
-  how many a day, points per wakeup). If nothing is planned for two nights, control adds a
+  how many a day, points per wakeup). If nothing is planned for two nights (Settings → Advanced → Wakeups), control adds a
   **fallback** wakeup. You can add wakeups on the Calendar or press **Wake now** on Runs. A
   wakeup can carry the assistant's **note** to itself (where to start, what not to redo); it opens
   that wakeup's brief and shows on the Calendar.

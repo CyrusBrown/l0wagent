@@ -171,7 +171,7 @@ def in_hours(windows: list[dict], local: datetime) -> bool:
     return False
 
 
-def next_in_hours(windows: list[dict], after_local: datetime, step_minutes: int = 15) -> datetime | None:
+def next_in_hours(windows: list[dict], after_local: datetime, step_minutes: int = 15, horizon_days: int = PLAN_HORIZON_DAYS) -> datetime | None:
     """The first time at or after `after_local` (rounded up to the step) inside the windows.
     Steps through real time, so a skipped hour (spring forward) is never offered and a
     repeated hour (fall back) is offered once per pass."""
@@ -181,7 +181,7 @@ def next_in_hours(windows: list[dict], after_local: datetime, step_minutes: int 
     t = after_local.astimezone(UTC).replace(second=0, microsecond=0)
     if t.minute % step_minutes:
         t += timedelta(minutes=step_minutes - t.minute % step_minutes)
-    for _ in range(PLAN_HORIZON_DAYS * 24 * 60 // step_minutes):
+    for _ in range(horizon_days * 24 * 60 // step_minutes):
         loc = t.astimezone(tz)
         if in_hours(windows, loc):
             return loc
@@ -622,8 +622,9 @@ class Budgets:
         lim = eff.limits
         if at < now + timedelta(minutes=1):
             return "That time has passed: plan wakeups at least a minute ahead."
-        if at > now + timedelta(days=PLAN_HORIZON_DAYS):
-            return f"Plan at most {PLAN_HORIZON_DAYS} days ahead."
+        horizon = self.settings.get("PLAN_HORIZON_DAYS")
+        if at > now + timedelta(days=horizon):
+            return f"Plan at most {horizon} days ahead."
         if budget <= 0:
             return "The budget must be more than 0 pts."
         if by == "assistant":

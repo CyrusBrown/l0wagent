@@ -32,7 +32,6 @@ from .vault import Vault
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 PREVIEW = 90
-MAX_OPEN_ASKS_PER_RUN = 20
 SUGGESTION_KINDS = {
     "thread_archive": "thread", "thread_rename": "thread", "thread_move": "thread", "thread_split": "thread", "thread_merge": "thread",
     "project_split": "project", "project_merge": "project", "project_stale": "project", "project_archive": "project",
@@ -444,7 +443,7 @@ class Conversations:
         if run_id is None:
             return
         n = sum(self.db.q1(f"SELECT COUNT(*) AS n FROM {t} WHERE run_id=? AND status='open'", (run_id,))["n"] for t in ("questions", "permissions", "tasks"))
-        if n >= MAX_OPEN_ASKS_PER_RUN:
+        if n >= self.settings.get("MAX_OPEN_ASKS_PER_RUN"):
             raise BadRequest("too_many_asks", f"This run already has {n} asks waiting for the owner. Wait for answers, or withdraw some, before asking more.")
 
     def file_question(self, run_id: int | None, thread_id: int | None, kind: str, text: str, options: list[str], default: Any, scale_labels: list[str] | None) -> s.Question:

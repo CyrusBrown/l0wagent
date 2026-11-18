@@ -21,6 +21,14 @@ Each release's section becomes its GitHub release notes, which the app shows in 
 - The reviewer orients itself at the start of each conversation (the assistant's workspace, your recent
   messages, open claims) and hands the assistant concrete next tasks; the assistant must tell it when it
   starts and finishes each piece of work.
+- More settings in Settings → Advanced (and through the 1:1 chat): the reviewer's Gate rounds, the
+  fallback wakeup's hour and how many empty nights trigger it, how far ahead wakeups may be planned,
+  brief list sizes, open asks per run, ask notifications per hour, upload, snapshot and folder-download
+  limits, chat steps and reply length, the integration timeout, the lost-contact timeout and sign-in
+  history retention.
+- Budgets → level limits: changes are a draft with Save and Discard, the "You customized…" banner is
+  gone (a "Modified from <level>'s defaults · Reset to default" line replaces it), and the sweep
+  window can be changed.
 - Enter sends in every message box, phones included; Shift+Enter is a new line.
 - Long jobs past their estimate say so, instead of "expected in 1 minute".
 

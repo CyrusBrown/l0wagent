@@ -13,7 +13,6 @@ from .db import Database
 log = logging.getLogger("l0w.retention")
 EVERY = timedelta(hours=24)
 KEYS_DAYS = 7
-LOGIN_DAYS = 30
 
 
 def run_retention(db: Database, settings: Settings, now: datetime, force: bool = False) -> dict[str, int]:
@@ -27,7 +26,7 @@ def run_retention(db: Database, settings: Settings, now: datetime, force: bool =
         "idempotency_keys": db.ex("DELETE FROM idempotency_keys WHERE created_at<?", (iso(now - timedelta(days=KEYS_DAYS)),)),
         # keep each address's latest successful login: auth exempts known addresses from the global slow-down
         "login_attempts": db.ex("DELETE FROM login_attempts WHERE at<? AND id NOT IN (SELECT MAX(id) FROM login_attempts WHERE ok=1 GROUP BY ip)",
-                                (iso(now - timedelta(days=LOGIN_DAYS)),)),
+                                (iso(now - timedelta(days=settings.get("LOGIN_HISTORY_DAYS"))),)),
         "oauth_codes": db.ex("DELETE FROM oauth_codes WHERE expires_at<?", (ts,)),
         "oauth_tokens": db.ex("DELETE FROM oauth_tokens WHERE expires_at<?", (ts,)),
         # never a run that's still going: its log is what re-attaching after a restart reads

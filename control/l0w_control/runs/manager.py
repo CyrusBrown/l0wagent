@@ -54,12 +54,10 @@ LEASE_TTL = 240
 LEASE_RENEW_S = 30
 MONITOR_S = 5
 USAGE_CHECK_S = 120
-LOST_CONTACT_GIVE_UP_S = 600
 MAX_EVENT_BYTES = 200_000
+BRIEF_LIST_CAP = 15      # the default of the BRIEF_LIST_CAP setting (items per list section of the brief)
 PROMPTS = Path(__file__).parent.parent / "prompts"
 ACTIVE = ("starting", "running")
-BRIEF_LIST_CAP = 15      # items per list section of the brief; a line points to the command for the rest
-NEWS_CAP = 6
 CLAIM_UNCLOSED = "The run ended before this was closed."
 NUDGE_MARK = "Nudged to carry on"
 
@@ -302,7 +300,7 @@ class RunManager:
         "manual": "the owner started this run (Wake now)",
         "owner_message": "the owner pressed Reply now",
         "planned": "your planned wakeup: {detail}",
-        "fallback": "a fallback wakeup: nothing was planned for the next two nights. Plan your wakeups before you finish",
+        "fallback": "a fallback wakeup: nothing was planned for the coming nights. Plan your wakeups before you finish",
         "sweep": "a sweep wakeup: {detail}. Spend it on the most valuable backlog work, or end with IDLE if nothing is worth it",
         "routine": "a routine: {detail}",
         "owner": "a wakeup the owner added: {detail}",
@@ -353,16 +351,17 @@ class RunManager:
         brief += "\n\n## Inbox\n\n" + (inbox or "Nothing new.")
         if counts:
             self.timeline(run_id, Item("control", "Delivered in the brief: " + _counts_text(counts), True, {"counts": counts}))
+        cap = int(self.settings.get("BRIEF_LIST_CAP"))
         claims = self.conv.claims(active=True)
         if claims:
-            brief += "\n\n## Claims still open from earlier runs\n\n" + "\n".join(f"- thread #{c.thread_id} “{c.thread_title}”: {c.plan}" for c in claims[:BRIEF_LIST_CAP])
-            if len(claims) > BRIEF_LIST_CAP:
-                brief += f"\n- {len(claims) - BRIEF_LIST_CAP} more open claims: close the finished ones with `assistant claim done N \"result\"` and they'll show here"
+            brief += "\n\n## Claims still open from earlier runs\n\n" + "\n".join(f"- thread #{c.thread_id} “{c.thread_title}”: {c.plan}" for c in claims[:cap])
+            if len(claims) > cap:
+                brief += f"\n- {len(claims) - cap} more open claims: close the finished ones with `assistant claim done N \"result\"` and they'll show here"
         waiting = self.conv.inbox_entries(True, [])
         if waiting:
-            brief += "\n\n## Waiting on the owner\n\n" + "\n".join(self._waiting_line(e) for e in waiting[:BRIEF_LIST_CAP])
-            if len(waiting) > BRIEF_LIST_CAP:
-                brief += f"\n- {len(waiting) - BRIEF_LIST_CAP} more: `assistant asks --status open`"
+            brief += "\n\n## Waiting on the owner\n\n" + "\n".join(self._waiting_line(e) for e in waiting[:cap])
+            if len(waiting) > cap:
+                brief += f"\n- {len(waiting) - cap} more: `assistant asks --status open`"
         if run["kind"] != "reply":
             brief += "\n\n## Budget and your wakeup plan\n\n" + self.budgets.check_text(run["provider"] or SUBSCRIPTION)
             if self.brief_extra:
@@ -373,7 +372,7 @@ class RunManager:
             brief += self.ext_prompt("wakeup")
         news = self.db.q("SELECT id, date, title, body FROM harness_news WHERE shown_in_run_id IS NULL ORDER BY date, id")
         if news:
-            shown = news[-NEWS_CAP:]  # the newest; all count as shown, and `assistant news` has the rest
+            shown = news[-int(self.settings.get("NEWS_CAP")):]  # the newest; all count as shown, and `assistant news` has the rest
             brief += "\n\n## Harness news (shown once; `assistant news` lists all)\n\n"
             if len(news) > len(shown):
                 brief += f"{len(news) - len(shown)} older entries not shown here: `assistant news`\n\n"
@@ -536,11 +535,12 @@ class RunManager:
                     self.timeline(run_id, Item("error", "The agent computer no longer has this session's log", True))
                     return "lost", result
                 now = utcnow()
+                give_up_min = self.settings.get("LOST_CONTACT_GIVE_UP_MINUTES")
                 if out_of_touch_since is None:
                     out_of_touch_since = now
                     self.timeline(run_id, Item("control", "Lost touch with the agent computer; retrying", True, {"error": str(e)}))
-                elif (now - out_of_touch_since).total_seconds() > LOST_CONTACT_GIVE_UP_S:
-                    self.timeline(run_id, Item("error", "Gave up after 10 minutes without the agent computer", True))
+                elif (now - out_of_touch_since).total_seconds() > give_up_min * 60:
+                    self.timeline(run_id, Item("error", f"Gave up after {give_up_min:g} minutes without the agent computer", True))
                     return "unreachable", result
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 15)
@@ -607,15 +607,13 @@ class RunManager:
     async def _gate(self, run_id: int, sess: Session, result: dict | None) -> bool:
         """Gate mode: the reviewer must agree before a session that ends cleanly ends the run
         (whether or not it wrote `IDLE:`). If it doesn't, resume the conversation with its reply
-        (at most GATE_MAX_ROUNDS times)."""
-        from ..reviewer import GATE_MAX_ROUNDS
-
+        (at most REVIEWER_GATE_MAX_ROUNDS times)."""
         run = self.db.q1("SELECT * FROM runs WHERE id=?", (run_id,))
         assert run
         text = ((result or {}).get("text") or "").strip()
         if run["reviewer_mode"] != "gate" or not self.reviewer or run["stop_requested_at"] or not sess.runtime_session:
             return False
-        if run["gate_rounds"] >= GATE_MAX_ROUNDS:
+        if run["gate_rounds"] >= self.settings.get("REVIEWER_GATE_MAX_ROUNDS"):
             self.timeline(run_id, Item("control", f"The reviewer gate already sent it back {run['gate_rounds']} times; letting the run end", True))
             return False
         if run["deadline"] and parse(run["deadline"]) <= utcnow() + timedelta(minutes=3):  # type: ignore[operator]

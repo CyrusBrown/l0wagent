@@ -44,6 +44,14 @@ function parseHours(text: string): S['AllowedWindow'][] | null {
   return out
 }
 
+// The level's limits are edited as a draft and saved together. A limit set to null goes back to the level's value.
+type Draft = {
+  allowance?: number | null; allowed_hours?: S['AllowedWindow'][] | null; max_per_day?: number | null; min_gap_minutes?: number | null
+  max_wakeup?: number | null; tiers?: string[] | null; sweep?: boolean | null; fallback?: boolean | null
+  fallback_pts?: number; sweep_ceiling_pct?: number; sweep_window_hours?: number
+}
+const LIMIT_KEYS = ['allowance', 'allowed_hours', 'max_per_day', 'min_gap_minutes', 'max_wakeup', 'tiers', 'sweep', 'fallback'] as const
+
 export function Budgets() {
   useTimeFormat()
   const budget = useBudget()
@@ -53,6 +61,7 @@ export function Budgets() {
   const endBoost = useClearBoost()
   const [err, setErr] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState(0)
+  const [draft, setDraft] = useState<Draft>({})
   const providers = useProviders()
   const o = budget.data
   if (budget.isError) return <div className="error">Couldn't load budgets.</div>
@@ -60,7 +69,6 @@ export function Budgets() {
   const b = o.providers[0]  // the worker's provider
   const lim = b.limits
   const done = { onError: (x: unknown) => setErr(problem(x)), onSuccess: () => { setErr(null); setSavedAt(Date.now()) } }
-  const override = (ov: S['BudgetLimitsPatch']) => patch.mutate({ provider: b.provider, overrides: ov }, done)
   const isCustom = (k: string) => b.custom.includes(k)
   const next = LEVEL_ORDER[Math.min(LEVEL_ORDER.length - 1, LEVEL_ORDER.indexOf(b.level) + 1)]
   const preset = o.levels.find((l) => l.name === b.level)!.limits
@@ -70,6 +78,42 @@ export function Budgets() {
   const per = b.period === 'month' ? 'month' : 'week'
   const ptsPer = (weekly: number) => `${Math.round(weekly * scale)} pts / ${per}`
   const L = cap(b.level)
+  const presetFor = (k: (typeof LIMIT_KEYS)[number]) => (k === 'allowance' ? Math.round(preset.allowance * scale) : preset[k])
+  const same = (x: unknown, y: unknown) => JSON.stringify(x) === JSON.stringify(y)
+  // What the form shows: the draft where there is one, else what's saved.
+  const val = <K extends (typeof LIMIT_KEYS)[number]>(k: K): S['BudgetLimits'][K] =>
+    (k in draft ? (draft[k] === null ? presetFor(k) : draft[k]) : lim[k]) as S['BudgetLimits'][K]
+  const setLim = <K extends (typeof LIMIT_KEYS)[number]>(k: K, v: Draft[K]) => setDraft((d) => {
+    const n = { ...d }
+    if (v === null ? !isCustom(k) : same(v, lim[k])) delete n[k]
+    else (n as Record<string, unknown>)[k] = v
+    return n
+  })
+  const setRes = (k: 'fallback_pts' | 'sweep_ceiling_pct' | 'sweep_window_hours', v: number, saved: number) => setDraft((d) => {
+    const n = { ...d }
+    if (v === saved) delete n[k]; else n[k] = v
+    return n
+  })
+  const fallbackPts = draft.fallback_pts ?? b.fallback_pts
+  const sweepCeiling = draft.sweep_ceiling_pct ?? o.sweep_ceiling_pct
+  const sweepWindow = draft.sweep_window_hours ?? o.sweep_window_hours
+  const dirty = Object.keys(draft).length > 0
+  const wasShown = (k: (typeof LIMIT_KEYS)[number]) => (k in draft ? draft[k] !== null : isCustom(k))
+  const discard = () => { setDraft({}); setErr(null) }
+  const save = () => {
+    const overrides: Record<string, unknown> = {}
+    for (const k of LIMIT_KEYS) if (k in draft) overrides[k] = draft[k]
+    const res: S['ReserveSettings'] = {}
+    if (draft.sweep_ceiling_pct !== undefined) res.sweep_ceiling_pct = draft.sweep_ceiling_pct
+    if (draft.sweep_window_hours !== undefined) res.sweep_window_hours = draft.sweep_window_hours
+    const finish = { onError: done.onError, onSuccess: () => { done.onSuccess(); setDraft({}) } }
+    const sendRes = () => (Object.keys(res).length ? reserve.mutate(res, finish) : finish.onSuccess())
+    const body: S['BudgetPatch'] = {}
+    if (Object.keys(overrides).length) body.overrides = overrides as S['BudgetLimitsPatch']
+    if (draft.fallback_pts !== undefined) body.fallback_pts = draft.fallback_pts
+    if (Object.keys(body).length) patch.mutate({ provider: b.provider, ...body }, { onError: done.onError, onSuccess: sendRes })
+    else sendRes()
+  }
   const changed: string[] = []
   if (isCustom('allowance')) changed.push(`allowance ${lim.allowance} (${L}: ${Math.round(preset.allowance * scale)})`)
   if (isCustom('allowed_hours')) changed.push('allowed hours')
@@ -77,8 +121,8 @@ export function Budgets() {
   if (isCustom('tiers')) changed.push('models')
   if (isCustom('fallback')) changed.push('fallback')
   if (isCustom('sweep')) changed.push('sweep')
-  const resetAll = () => patch.mutate({ provider: b.provider, level: b.level }, done)  // choosing the level clears overrides
-  const was = (k: keyof S['BudgetLimits'], text: string) => (isCustom(k) ? `${L}: ${text}` : undefined)
+  const resetAll = () => patch.mutate({ provider: b.provider, level: b.level }, { onError: done.onError, onSuccess: () => { done.onSuccess(); setDraft({}) } })  // choosing the level clears overrides
+  const was = (k: (typeof LIMIT_KEYS)[number], text: string) => (wasShown(k) ? `${L}: ${text}` : undefined)
   return (
     <div className="stack" style={{ gap: 28 }}>
       {err && <div className="error" role="alert">{err}</div>}
@@ -93,12 +137,6 @@ export function Budgets() {
           ))}
         </div>
         <div className="level-text">{levelText}</div>
-        {changed.length > 0 && (
-          <div className="custom-banner">
-            <span>You customized {L}: {changed.join(', ')}.</span>
-            <button className="link-btn accent" onClick={resetAll}>Back to {L}'s settings</button>
-          </div>
-        )}
         <div className="sub" style={{ fontSize: 12.5 }}>
           1 pt is 0.1% of your Claude subscription's week (1,000 pts a week), or $0.10 on an API key or opencode Go.
         </div>
@@ -132,38 +170,55 @@ export function Budgets() {
 
       <section className="set-section">
         <div className="set-head"><div className="set-title">{L}'s limits</div><Saved token={savedAt} /></div>
-        <div className="sub" style={{ fontSize: 12.5, marginTop: -4 }}>{b.custom.length ? `You changed ${changed.length}; each shows ${L}'s own value and a Reset.` : `Change any of them; they save as you go. Picking a level again resets them.`}</div>
+        <div className="sub" style={{ fontSize: 12.5, marginTop: -4 }}>Change any of them, then save. Picking a level again resets them.</div>
         <div className="set-rows">
-          <Row label="Allowance" hint="what the assistant may plan with" was={was('allowance', ptsPer(preset.allowance))} onReset={() => override({ allowance: null })}>
-            <NumberField label="Allowance" value={lim.allowance} suffix={`pts / ${per}`} onCommit={(v) => override({ allowance: v })} />
+          <Row label="Allowance" hint="what the assistant may plan with" was={was('allowance', ptsPer(preset.allowance))} onReset={() => setLim('allowance', null)}>
+            <NumberField label="Allowance" value={val('allowance')} suffix={`pts / ${per}`} onCommit={(v) => setLim('allowance', v)} />
           </Row>
-          <Row label="Allowed hours" hint="when wakeups may run (the rest is yours)" was={was('allowed_hours', hoursText(preset.allowed_hours))} onReset={() => override({ allowed_hours: null })}>
-            <TextField label="Allowed hours" value={lim.allowed_hours} format={hoursText} parse={parseHours} placeholder="22:00 – 08:00" onCommit={(v) => override({ allowed_hours: v })} width={180} />
+          <Row label="Allowed hours" hint="when wakeups may run (the rest is yours)" was={was('allowed_hours', hoursText(preset.allowed_hours))} onReset={() => setLim('allowed_hours', null)}>
+            <TextField label="Allowed hours" value={val('allowed_hours')} format={hoursText} parse={parseHours} placeholder="22:00 – 08:00" onCommit={(v) => setLim('allowed_hours', v)} width={180} />
           </Row>
-          <Row label="Wakeups a day" hint="at most" was={was('max_per_day', String(preset.max_per_day))} onReset={() => override({ max_per_day: null })}>
-            <NumberField label="Wakeups a day" value={lim.max_per_day} onCommit={(v) => override({ max_per_day: v })} />
+          <Row label="Wakeups a day" hint="at most" was={was('max_per_day', String(preset.max_per_day))} onReset={() => setLim('max_per_day', null)}>
+            <NumberField label="Wakeups a day" value={val('max_per_day')} onCommit={(v) => setLim('max_per_day', v)} />
           </Row>
-          <Row label="Gap between wakeups" hint="at least" was={was('min_gap_minutes', `${preset.min_gap_minutes} min`)} onReset={() => override({ min_gap_minutes: null })}>
-            <NumberField label="Gap between wakeups" value={lim.min_gap_minutes} suffix="min" onCommit={(v) => override({ min_gap_minutes: v })} />
+          <Row label="Gap between wakeups" hint="at least" was={was('min_gap_minutes', `${preset.min_gap_minutes} min`)} onReset={() => setLim('min_gap_minutes', null)}>
+            <NumberField label="Gap between wakeups" value={val('min_gap_minutes')} suffix="min" onCommit={(v) => setLim('min_gap_minutes', v)} />
           </Row>
-          <Row label="Per wakeup" hint="the most one wakeup may spend" was={was('max_wakeup', `${preset.max_wakeup} pts`)} onReset={() => override({ max_wakeup: null })}>
-            <NumberField label="Per wakeup" value={lim.max_wakeup} min={1} suffix="pts" onCommit={(v) => override({ max_wakeup: v })} />
+          <Row label="Per wakeup" hint="the most one wakeup may spend" was={was('max_wakeup', `${preset.max_wakeup} pts`)} onReset={() => setLim('max_wakeup', null)}>
+            <NumberField label="Per wakeup" value={val('max_wakeup')} min={1} suffix="pts" onCommit={(v) => setLim('max_wakeup', v)} />
           </Row>
-          <Row label="Fallback" hint="a wakeup if nothing is planned for 2 nights" was={was('fallback', preset.fallback ? 'on' : 'off')} onReset={() => override({ fallback: null })}>
-            {lim.fallback && <NumberField label="Fallback budget" value={b.fallback_pts} suffix="pts" onCommit={(v) => patch.mutate({ provider: b.provider, fallback_pts: v }, done)} width={64} />}
-            <Switch label="Fallback" on={lim.fallback} onChange={(v) => override({ fallback: v })} />
+          <Row label="Fallback" hint="a wakeup if nothing is planned for the next nights (how many: Advanced)" was={was('fallback', preset.fallback ? 'on' : 'off')} onReset={() => setLim('fallback', null)}>
+            {val('fallback') && <NumberField label="Fallback budget" value={fallbackPts} suffix="pts" onCommit={(v) => setRes('fallback_pts', v, b.fallback_pts)} width={64} />}
+            <Switch label="Fallback" on={val('fallback')} onChange={(v) => setLim('fallback', v)} />
           </Row>
-          <Row label="Models" hint="what the worker may plan with" wide was={was('tiers', preset.tiers.join(', '))} onReset={() => override({ tiers: null })}>
-            <Chips label="Models the worker may use" value={lim.tiers} onChange={(v) => override({ tiers: v })}
+          <Row label="Models" hint="what the worker may plan with" wide was={was('tiers', preset.tiers.join(', '))} onReset={() => setLim('tiers', null)}>
+            <Chips label="Models the worker may use" value={val('tiers')} onChange={(v) => setLim('tiers', v)}
               options={(b.model_options?.length ? b.model_options : o.tiers).map((t) => ({ id: t, label: tierLabel(t, providers.data?.find((p) => p.id === b.provider)) }))} />
           </Row>
           {b.kind === 'claude-subscription' && (
-            <Row label="Sweep" hint={`in the last ${o.sweep_window_hours} h before the reset, spend what you didn't use, up to a ceiling`} wide was={was('sweep', preset.sweep ? 'on' : 'off')} onReset={() => override({ sweep: null })}>
-              {lim.sweep && <NumberField label="Sweep ceiling" value={o.sweep_ceiling_pct} max={100} suffix="% of the week" onCommit={(v) => reserve.mutate({ sweep_ceiling_pct: v }, done)} width={64} />}
-              <Switch label="Sweep" on={lim.sweep} onChange={(v) => override({ sweep: v })} />
+            <Row label="Sweep" hint={`in the last ${sweepWindow} h before the reset, spend what you didn't use, up to a ceiling`} wide was={was('sweep', preset.sweep ? 'on' : 'off')} onReset={() => setLim('sweep', null)}>
+              {val('sweep') && <>
+                <NumberField label="Sweep window" value={sweepWindow} min={0.5} max={48} step={0.5} suffix="h before" onCommit={(v) => setRes('sweep_window_hours', v, o.sweep_window_hours)} width={64} />
+                <NumberField label="Sweep ceiling" value={sweepCeiling} max={100} suffix="% of the week" onCommit={(v) => setRes('sweep_ceiling_pct', v, o.sweep_ceiling_pct)} width={64} />
+              </>}
+              <Switch label="Sweep" on={val('sweep')} onChange={(v) => setLim('sweep', v)} />
             </Row>
           )}
         </div>
+        {dirty && (
+          <div className="save-bar" role="group" aria-label="Unsaved changes">
+            <span>Unsaved changes</span>
+            <div className="btns">
+              <button className="btn" onClick={discard} disabled={patch.isPending || reserve.isPending}>Discard</button>
+              <button className="btn primary" onClick={save} disabled={patch.isPending || reserve.isPending}>Save</button>
+            </div>
+          </div>
+        )}
+        {changed.length > 0 && (
+          <div className="sub modified-line">
+            Modified from {L}'s defaults: {changed.join(', ')}. <button className="link-btn accent" onClick={resetAll}>Reset to default</button>
+          </div>
+        )}
       </section>
 
       <section className="set-section">

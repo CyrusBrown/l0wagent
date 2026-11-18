@@ -6,7 +6,7 @@ Modes (Settings → Reviewer; on by default in Monitor):
   (only when something new happened) and may interject; it answers `QUIET` otherwise.
 - **Gate**: also approves the end of the run (a session ending `IDLE:`) and finished claims
   (`assistant claim done`). If it doesn't agree, control resumes the session with its reply,
-  at most GATE_MAX_ROUNDS times.
+  at most REVIEWER_GATE_MAX_ROUNDS times.
 
 Each turn runs in the agent container through the runner's `/consult`: a second `claude -p`,
 read-only, with no hook, secrets or agent token. Its usage goes into the ledger as 'reviewer'
@@ -43,7 +43,6 @@ if TYPE_CHECKING:
 log = logging.getLogger("l0w.reviewer")
 PROMPTS = Path(__file__).parent / "prompts"
 LOOP_S = 20
-GATE_MAX_ROUNDS = 3
 MODE_TEXT = {
     "advisor": "**Advisor.** You answer when the assistant asks you something. You don't get watch updates.",
     "monitor": "**Monitor.** You answer its questions and get watch updates of its notes, so you can interject when needed.",

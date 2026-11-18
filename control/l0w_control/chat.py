@@ -49,7 +49,6 @@ from .db import Database
 
 log = logging.getLogger("l0w.chat")
 PROMPT = Path(__file__).parent / "prompts" / "chat.md"
-MAX_STEPS = 12
 MAX_TOKENS = 32_000
 DELTA_EVERY_S = 0.06
 ANTHROPIC_MODELS = {"haiku": "claude-haiku-5-5", "sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5"}
@@ -100,8 +99,10 @@ def _strip(prompt: str) -> str:
 class AnthropicClient:
     """Messages API through the SDK: a manual streaming tool loop, one call per step."""
 
-    def __init__(self, key: str, family: str, effort: str | None):
+    def __init__(self, key: str, family: str, effort: str | None, max_tokens: int = MAX_TOKENS):
         import anthropic
+
+        self.max_tokens = max_tokens
 
         self.anthropic = anthropic
         self.client = anthropic.AsyncAnthropic(api_key=key, max_retries=2)
@@ -152,7 +153,7 @@ class AnthropicClient:
 
     async def turn(self, system: str, rows: list[dict], on_text) -> Turn:
         tools = [{"name": t.name, "description": t.description, "input_schema": t.schema(), "eager_input_streaming": True} for t in T.TOOLS]
-        kwargs: dict[str, Any] = dict(model=self.model, max_tokens=MAX_TOKENS, system=system, messages=self.history(rows), tools=tools,
+        kwargs: dict[str, Any] = dict(model=self.model, max_tokens=self.max_tokens, system=system, messages=self.history(rows), tools=tools,
                                       output_config={"effort": self.effort})
         if self.model in FALLBACK_MODELS:
             kwargs.update(betas=["server-side-fallback-2026-07-01"], fallbacks="default")
@@ -593,7 +594,7 @@ class Chats:
         key = self.budgets.credential(provider) or ""
         if kind == API:
             fam, _, effort = tier.partition("/")
-            return AnthropicClient(key, fam or "sonnet", effort or None), provider
+            return AnthropicClient(key, fam or "sonnet", effort or None, int(self.budgets.settings.get("CHAT_MAX_TOKENS"))), provider
         if kind == OPENCODE_GO:
             return OpenAICompatClient(key, spec["model"], spec["effort"], self._go_prices(spec["model"]), self._session_id(row["id"])), provider
         if kind == SUBSCRIPTION and not self.available(provider):
@@ -733,7 +734,7 @@ class Chats:
             row = self._row(chat_id)
             client, provider = self._client(row)
             system = self._system(row)
-            for _ in range(MAX_STEPS):
+            for _ in range(self.budgets.settings.get("CHAT_MAX_STEPS")):
                 cap = self._over_cap(provider)
                 if cap:
                     self._add(chat_id, "system", cap)

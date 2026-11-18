@@ -46,7 +46,7 @@ runs. You work across many runs, so you only remember what you write down.
   sonnet/medium --reason "…"`, or replace the whole plan with `assistant wake plan --replace FILE`
   (`-` reads stdin; one wakeup per line: `TIME BUDGET TIER REASON…`, e.g. `2026-11-20T02:00 20
   sonnet/medium Check the export`; all-or-nothing). Control checks each one against the owner's limits and tells you why if it can't. If nothing is planned
-  for two nights, control adds a fallback wakeup.
+  for the next two nights (the owner can change how many), control adds a fallback wakeup.
 - When a wakeup continues something specific, leave it a note: `--note FILE` on `wake at` (or
   `assistant wake note ID FILE` later). It opens that wakeup's brief: where to start, what not to redo.
 - A Reply-now run is short and spends the small reply budget. If the request needs real work, ask

@@ -76,12 +76,12 @@ def args_hash(tool: str, args: dict) -> str:
 class McpClient:
     """A minimal streamable-HTTP MCP client: one short session per use (initialize, then calls)."""
 
-    def __init__(self, url: str, token: str | None, transport: httpx.BaseTransport | None = None):
+    def __init__(self, url: str, token: str | None, transport: httpx.BaseTransport | None = None, timeout: float = TIMEOUT):
         headers = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json",
                    "User-Agent": f"l0wagent/{__version__}"}
         if token:
             headers["Authorization"] = f"Bearer {token}"
-        self.url, self.http = url, httpx.Client(headers=headers, timeout=TIMEOUT, transport=transport, follow_redirects=False)
+        self.url, self.http = url, httpx.Client(headers=headers, timeout=timeout, transport=transport, follow_redirects=False)
         self.session: str | None = None
         self.n = 0
 
@@ -174,6 +174,7 @@ class Integrations:
     def __init__(self, db: Database, vault, file_permission: Callable[..., Any], transport: httpx.BaseTransport | None = None):
         self.db, self.vault, self.file_permission, self.transport = db, vault, file_permission, transport
         self.extra_presets: Callable[[], dict[str, dict[str, Any]]] = dict  # enabled extensions' presets
+        self.timeout: Callable[[], float] = lambda: TIMEOUT                    # INTEGRATION_TIMEOUT_S, set by the backend
 
     def all_presets(self) -> dict[str, dict[str, Any]]:
         return {**self.extra_presets(), **PRESETS}
@@ -271,7 +272,7 @@ class Integrations:
             token = self.vault.value_for_control(row["auth_secret"])
             if token is None:
                 raise UpstreamError(f"The secret {row['auth_secret']} isn't saved yet.")
-        return McpClient(row["url"], token, self.transport or PinnedTransport(bool(row["allow_private"])))
+        return McpClient(row["url"], token, self.transport or PinnedTransport(bool(row["allow_private"])), float(self.timeout()))
 
     def sync(self, name: str, quiet: bool = False) -> dict:
         """List the upstream's tools. New tools get the default policy; existing policies are kept."""

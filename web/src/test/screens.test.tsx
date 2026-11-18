@@ -114,6 +114,65 @@ describe('screens render with mock data', () => {
     expect(screen.getByText('Always, whatever the level')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Boost for 24 h' })).toBeInTheDocument()
   })
+  describe('budget limits draft', () => {
+    type Call = { method: string; path: string; body: unknown }
+    function setup(custom: string[]) {
+      const b = structuredClone((table['/api/budget'] as { providers: Record<string, unknown>[] }))
+      b.providers[0].custom = custom
+      overrides['/api/budget'] = b
+      const calls: Call[] = []
+      const base = globalThis.fetch as unknown as (i: RequestInfo | URL) => Promise<Response>
+      vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const req = input instanceof Request ? input : null
+        const method = (req?.method ?? init?.method ?? 'GET').toUpperCase()
+        if (method !== 'GET') {
+          const path = new URL(req?.url ?? String(input), 'http://localhost').pathname
+          calls.push({ method, path, body: JSON.parse((await req?.clone().text()) || String(init?.body ?? 'null')) })
+          return Response.json({})
+        }
+        return base(input)
+      }))
+      return calls
+    }
+    it('edits are held until Save, which sends one PATCH; reserve fields go to /api/budget', async () => {
+      const calls = setup([])
+      renderAt('/settings/budgets')
+      const gap = await screen.findByLabelText('Wakeups a day')
+      expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument()
+      fireEvent.change(gap, { target: { value: '5' } }); fireEvent.blur(gap)
+      fireEvent.click(screen.getByRole('switch', { name: 'Sweep' }))
+      fireEvent.change(await screen.findByLabelText('Sweep window'), { target: { value: '6.5' } }); fireEvent.blur(screen.getByLabelText('Sweep window'))
+      expect(await screen.findByText('Unsaved changes')).toBeInTheDocument()
+      expect(screen.getByText(/in the last 6.5 h before the reset/)).toBeInTheDocument()
+      expect(calls).toEqual([])
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+      await waitFor(() => expect(calls.length).toBe(2))
+      expect(calls[0]).toMatchObject({ method: 'PATCH', body: { overrides: { max_per_day: 5, sweep: true } } })
+      expect(calls[1]).toMatchObject({ method: 'PATCH', path: '/api/budget', body: { sweep_window_hours: 6.5 } })
+      await waitFor(() => expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument())
+    })
+    it('Discard restores the saved values', async () => {
+      const calls = setup([])
+      renderAt('/settings/budgets')
+      const f = await screen.findByLabelText('Wakeups a day') as HTMLInputElement
+      const before = f.value
+      fireEvent.change(f, { target: { value: '9' } }); fireEvent.blur(f)
+      fireEvent.click(await screen.findByRole('button', { name: 'Discard' }))
+      await waitFor(() => expect((screen.getByLabelText('Wakeups a day') as HTMLInputElement).value).toBe(before))
+      expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument()
+      expect(calls).toEqual([])
+    })
+    it('no banner; a Modified line with Reset to default when limits are customized', async () => {
+      setup(['max_per_day'])
+      renderAt('/settings/budgets')
+      expect(await screen.findByText(/Modified from Steady's defaults: wakeup limits\./)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Reset to default' })).toBeInTheDocument()
+      expect(screen.queryByText(/You customized/)).not.toBeInTheDocument()
+      // a row's Reset changes the draft only
+      fireEvent.click(screen.getAllByRole('button', { name: 'Reset' })[0])
+      expect(await screen.findByText('Unsaved changes')).toBeInTheDocument()
+    })
+  })
   it('Calendar: planned wakeups, routines and the budget', async () => {
     renderAt('/calendar')
     expect(await screen.findByRole('heading', { name: 'Calendar' })).toBeInTheDocument()

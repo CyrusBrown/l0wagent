@@ -42,7 +42,7 @@ from ..retention import run_retention
 from ..reviewer import Reviewer
 from ..routines import Routines
 from ..runs.clients import EgressClient, RunnerClient, RunnerError
-from ..runs.manager import BRIEF_LIST_CAP, RunManager, run_model
+from ..runs.manager import RunManager, run_model
 from ..runs.usage import Usage
 from ..scheduler import Scheduler, wakeup_model
 from ..shelf import Shelf
@@ -51,7 +51,6 @@ from ..vault import Vault
 from .base import Backend, BadRequest, Conflict, NotFound
 
 T = TypeVar("T")
-UPLOAD_MAX = 200 * 1024 * 1024
 API_VERSION = "0"
 SELFTEST_NOTE = ("The network probes run inside the agent's computer, so they catch a misconfigured setup "
                  "(common on Docker Desktop), not deliberate tampering. Enforcement lives in control and egress.")
@@ -101,6 +100,8 @@ class SqliteBackend(Backend):
         self.updates = Updates(self.db)
         self.notifier = Notifier(self.db, self.env.data_dir)
         self.notifier.vault = self.vault
+        self.notifier.app_settings = self.settings
+        self.shelf_.app_settings = self.settings
         self.conv.notify = self.notifier.notify
         self.chats_ = Chats(self.db, self, self.live, self.budgets, self.vault)
         self.connector = Connector(self.db, self)
@@ -110,6 +111,7 @@ class SqliteBackend(Backend):
         ext_dir = os.environ.get("L0W_EXTENSIONS_DIR", "/app/extensions")
         self.ext = Extensions(self, Path(ext_dir) if ext_dir else None)
         self.integrations.extra_presets = self.ext.presets
+        self.integrations.timeout = lambda: self.settings.get("INTEGRATION_TIMEOUT_S")
         fire = self.ext.fire
         self.conv.fire = fire
         self.shelf_.fire = fire
@@ -390,8 +392,9 @@ class SqliteBackend(Backend):
     # ── uploads (control's only write into the agent's storage) ────────────
     def upload(self, project: str | None, name: str, data: bytes, mime: str | None, idempotency_key: str | None) -> s.Upload:
         def make() -> s.Upload:
-            if len(data) > UPLOAD_MAX:
-                raise BadRequest("too_large", f"Uploads are limited to {UPLOAD_MAX // 1024 // 1024} MB.")
+            limit_mb = self.settings.get("UPLOAD_MAX_MB")
+            if len(data) > limit_mb * 1024 * 1024:
+                raise BadRequest("too_large", f"Uploads are limited to {limit_mb} MB.")
             pid = self.conv._project_row(project)["id"] if project else None
             sub = project or "general"
             base = os.path.basename(name.replace("\\", "/")).strip().lstrip(".") or "upload"
@@ -535,7 +538,7 @@ class SqliteBackend(Backend):
                           added=d["added"], removed=d["removed"], patch=d["patch"])
 
     def zip_dir(self, volume: str, path: str):
-        return self.storage.zip(volume, path)
+        return self.storage.zip(volume, path, int(self.settings.get("ZIP_MAX_MB")) * 1024 * 1024, int(self.settings.get("ZIP_MAX_FILES")))
 
     def _signed(self, scope: dict, name: str, origin: str) -> s.PreviewUrl:
         from datetime import UTC, datetime, timedelta
@@ -790,6 +793,7 @@ class SqliteBackend(Backend):
         return self.jobs_.list(include_done)
 
     def _brief_extra(self, run: dict) -> str:
+        cap = int(self.settings.get("BRIEF_LIST_CAP"))
         parts = []
         jobs = self.jobs_.brief_text()
         if jobs:
@@ -797,14 +801,14 @@ class SqliteBackend(Backend):
         routines = self.routines.occurrences_text(self.budgets.now())
         if routines:
             lines = routines.splitlines()
-            if len(lines) > BRIEF_LIST_CAP:
-                lines = lines[:BRIEF_LIST_CAP] + [f"- {len(lines) - BRIEF_LIST_CAP} more routines: `assistant routine list`"]
+            if len(lines) > cap:
+                lines = lines[:cap] + [f"- {len(lines) - cap} more routines: `assistant routine list`"]
             parts.append("## Routines\n\n" + "\n".join(lines))
         projects = [p for p in self.conv.projects(None) if p.status != "archived"]
         if projects:
             lines = [f"- {p.slug}: {p.name} ({p.status})" + (f" · {p.summary}" if p.summary else "") for p in projects]
-            if len(lines) > BRIEF_LIST_CAP:
-                lines = lines[:BRIEF_LIST_CAP] + [f"- {len(lines) - BRIEF_LIST_CAP} more projects: `assistant project list`"]
+            if len(lines) > cap:
+                lines = lines[:cap] + [f"- {len(lines) - cap} more projects: `assistant project list`"]
             parts.append("## Projects\n\n" + "\n".join(lines))
         return "\n\n".join(parts)
 
