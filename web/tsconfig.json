@@ -28,6 +28,6 @@
     "src",
     "e2e",
     "vite.config.ts",
-    "playwright.config.ts"
+    "playwright.config.ts", "playwright.hub.config.ts"
   ]
 }

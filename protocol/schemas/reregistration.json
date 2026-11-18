@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.l0wagent.invalid/0.1/reregistration.json",
+  "title": "reregistration",
+  "description": "Payload of a reregistration document (signed by the hub)",
+  "type": "object",
+  "required": [
+    "v",
+    "type",
+    "iat",
+    "address",
+    "old_keys",
+    "new_keys"
+  ],
+  "properties": {
+    "v": {
+      "const": "l0w/0.1"
+    },
+    "type": {
+      "const": "reregistration"
+    },
+    "iat": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+      "description": "RFC 3339 UTC, whole seconds"
+    },
+    "exp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+      "description": "RFC 3339 UTC, whole seconds"
+    },
+    "address": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*@[a-z0-9][a-z0-9.-]*(:[0-9]+)?$"
+    },
+    "old_keys": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^k1\\.[A-Za-z0-9_-]{22}$"
+      }
+    },
+    "new_keys": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^k1\\.[A-Za-z0-9_-]{22}$"
+      }
+    }
+  },
+  "additionalProperties": true
+}

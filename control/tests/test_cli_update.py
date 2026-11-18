@@ -95,6 +95,7 @@ def setup_update(l0w, monkeypatch, calls):
     monkeypatch.setattr(l0w, "need_docker", lambda: None)
     monkeypatch.setattr(l0w, "env_file", lambda: {"L0W_PORT": "8000"})
     monkeypatch.setattr(l0w, "add_chat_settings", lambda env: False)
+    monkeypatch.setattr(l0w, "add_hub_settings", lambda env: False)
     monkeypatch.setattr(l0w, "check_checkout", lambda v: None)
     monkeypatch.setattr(l0w, "pull_images", lambda: None)
     monkeypatch.setattr(l0w, "wait_healthy", lambda port: True)
@@ -150,3 +151,32 @@ def test_drain_off_command(l0w, monkeypatch):
     monkeypatch.setattr(l0w, "need_docker", lambda: None)
     l0w.cmd_drain(None)
     assert calls == [("drain", "off")]
+
+
+def test_update_removes_orphaned_containers(l0w, monkeypatch):
+    """Services dropped from the compose file (agent-web) are removed on existing installs."""
+    calls = drain_calls(l0w, monkeypatch, lambda: {"idle": True, "waiting_for": []})
+    setup_update(l0w, monkeypatch, calls)
+    seen = []
+    monkeypatch.setattr(l0w, "compose", lambda *a, **k: seen.append(a) or subprocess.CompletedProcess(a, 0, "1.0.0", ""))
+    l0w.cmd_update(update_args(l0w))
+    assert ("up", "-d", "--remove-orphans") in seen
+
+
+def test_add_hub_settings_fills_a_pre_hub_env(l0w, monkeypatch):
+    taken = []
+    monkeypatch.setattr(l0w, "pick_subnet", lambda name, t=(): taken.append(t) or "172.31.220.0/24")
+    env = {"SANDBOX_SUBNET": "172.31.240.0/24", "CHAT_SUBNET": "172.31.230.0/24"}
+    assert l0w.add_hub_settings(env) is True
+    assert env["TUNNEL_SUBNET"] == "172.31.220.0/24"
+    assert taken == [("172.31.240.0/24", "172.31.230.0/24")]
+    a, b = env["L0W_GATEWAY_TOKEN"], env["L0W_GATEWAY_TUNNEL_TOKEN"]
+    assert len(a) >= 32 and len(b) >= 32 and a != b
+
+
+def test_add_hub_settings_keeps_what_is_there(l0w, monkeypatch):
+    monkeypatch.setattr(l0w, "pick_subnet", lambda *a, **k: pytest.fail("must not pick again"))
+    env = {"L0W_GATEWAY_TOKEN": "a", "L0W_GATEWAY_TUNNEL_TOKEN": "b", "TUNNEL_SUBNET": "10.231.3.0/24"}
+    before = dict(env)
+    assert l0w.add_hub_settings(env) is False
+    assert env == before

@@ -9,17 +9,19 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import re
 from typing import Annotated, Literal
 from urllib.parse import quote, urlsplit
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import APIKeyCookie, HTTPAuthorizationCredentials, HTTPBearer
 from starlette.background import BackgroundTask
 
-from ..auth import SECURE_SESSION_COOKIE, SESSION_COOKIE, SESSION_DAYS_DEFAULT  # noqa: F401
+from ..auth import SECURE_SESSION_COOKIE, SESSION_COOKIE, SESSION_DAYS_DEFAULT, scope_allows  # noqa: F401
 from ..backends.base import Backend
-from ..netaddr import client_ip, is_local_or_private, request_scheme
+from ..membership import hub_origins
+from ..netaddr import client_ip, is_lan_caller, request_scheme
 from . import schemas as s
 
 
@@ -42,14 +44,29 @@ Be = Annotated[Backend, Depends(backend)]
 
 
 def owner(
+    request: Request,
     be: Be,
     cookie: Annotated[str | None, Depends(cookie_scheme)],
     bearer: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
 ) -> s.Owner:
-    return be.authenticate(cookie, bearer.credentials if bearer else None)
+    o = be.authenticate(cookie, bearer.credentials if bearer else None)
+    if bearer and not scope_allows(be.token_scope(bearer.credentials), request.method, request.url.path):
+        raise HTTPException(403, "This device token's scope doesn't allow that. Use the web app or a full-access token.")
+    return o
 
 
 public = APIRouter(prefix="/api")
+# Unauthenticated documents at fixed paths (the hub protocol's self-description).
+wellknown = APIRouter(include_in_schema=False)
+
+
+@wellknown.get("/.well-known/l0wagent/self")
+def self_description(be: Be) -> Response:
+    """The current signed self-description (protocol/identity.md), once this instance is a member of a hub."""
+    doc = be.self_description()
+    if doc is None:
+        return JSONResponse({"v": "l0w/0.1", "error": "not_a_member", "detail": "This instance isn't a member of a hub."}, status_code=404)
+    return JSONResponse(doc, headers={"Cache-Control": "no-cache"})
 api = APIRouter(prefix="/api", dependencies=[Depends(owner)])
 
 
@@ -115,7 +132,7 @@ def setup_owner(req: s.SetupOwnerRequest, request: Request, be: Be) -> s.Owner:
     if code:
         if not hmac.compare_digest((req.setup_code or "").encode(), code.encode()):
             raise HTTPException(403, "That setup code is wrong. ./l0w install printed it (it's L0W_SETUP_CODE in .env).")
-    elif not is_local_or_private(client_ip(request)):
+    elif not is_lan_caller(request):
         raise HTTPException(403, "Set L0W_SETUP_CODE (./l0w install does) to set up from outside your network.")
     return be.setup_owner(req)
 
@@ -133,6 +150,12 @@ def list_sessions(
     bearer: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
 ) -> list[s.AuthSession]:
     return be.auth_sessions(cookie, bearer.credentials if bearer else None)
+
+
+@api.post("/account/devices", tags=["auth"], status_code=201)
+def create_device(req: s.DeviceCreate, request: Request, be: Be) -> s.DeviceCreated:
+    """A new device token (for the `l0w` CLI, a script, another app), shown once; revoke it under sessions."""
+    return be.create_device(req, client_ip(request), request.headers.get("user-agent", ""))
 
 
 @api.delete("/account/sessions/{session_id}", tags=["auth"])
@@ -779,6 +802,48 @@ def update_info(be: Be) -> s.UpdateInfo:
     return be.update_info()
 
 
+@api.get("/membership", tags=["hub"])
+def membership(be: Be) -> s.Membership:
+    """This instance's hub membership: none (standalone), joined, or left."""
+    return be.membership()
+
+
+@api.post("/membership/preview", tags=["hub"])
+def membership_preview(req: s.InvitePreviewRequest, be: Be) -> s.InvitePreview:
+    """Online only. Reads an invite: fetches and verifies the hub's capabilities, checks the invite, and lists what would stop a join."""
+    return be.membership_preview(req)
+
+
+@api.post("/membership/join", tags=["hub"])
+def membership_join(req: s.JoinRequest, be: Be) -> s.JoinResult:
+    """Online only. Joins the hub (needs two-step sign-in). The gateway makes fresh keys; the recovery key is in the answer, once."""
+    return be.membership_join(req)
+
+
+@api.post("/membership/check", tags=["hub"])
+def membership_check(be: Be) -> s.MembershipCheck:
+    """Runs the self-check now (it also runs daily)."""
+    return be.membership_check()
+
+
+@api.post("/membership/rotate", tags=["hub"])
+def membership_rotate(be: Be) -> s.Membership:
+    """Replaces the signing key (the old key signs the rotation) and publishes a new self-description."""
+    return be.membership_rotate()
+
+
+@api.post("/membership/recover", tags=["hub"])
+def membership_recover(req: s.RecoverRequest, be: Be) -> s.Membership:
+    """Replaces the signing key with a rotation signed by the recovery key (when the signing key is lost or stolen)."""
+    return be.membership_recover(req)
+
+
+@api.post("/membership/leave", tags=["hub"])
+def membership_leave(req: s.LeaveRequest, be: Be) -> s.Membership:
+    """Leaves the hub. The name is never given to anyone else, and can't be had back."""
+    return be.membership_leave(req)
+
+
 @api.post("/system/update/check", tags=["system"])
 def check_update(be: Be) -> s.UpdateInfo:
     return be.check_update()
@@ -817,11 +882,34 @@ def list_dir(be: Be, volume: s.Volume, path: str = "") -> s.Listing:
 PAGE_TYPES = ("text/html", "image/svg+xml", "application/xhtml+xml", "text/xml", "application/xml")
 
 
+RANGE_MAX = 8 * 1024 * 1024
+
+
+def _range(header: str | None, size: int) -> tuple[int, int] | None:
+    """One `bytes=a-b`, `a-` or `-n` range as inclusive (start, end), capped at 8 MiB; None if
+    there's no usable header (serve it whole); 416 if it lies outside the file."""
+    m = re.match(r"bytes=(\d*)-(\d*)$", (header or "").strip())
+    if not m or not (m.group(1) or m.group(2)):
+        return None
+    if m.group(1):
+        start = int(m.group(1))
+        end = int(m.group(2)) if m.group(2) else size - 1
+    else:
+        n = int(m.group(2))
+        start, end = max(0, size - n), size - 1
+        if n == 0:
+            start = size
+    if start >= size or end < start:
+        raise HTTPException(416, headers={"Content-Range": f"bytes */{size}"})
+    return start, min(end, start + RANGE_MAX - 1, size - 1)
+
+
 def _raw(data, mime: str, name: str, download: bool, size: int | None = None) -> Response:
     """Bytes from the agent's storage on the main origin, never rendered as a page here:
-    HTML, SVG and XML go out as text/plain (sandboxed and nosniff besides). They're shown
-    only from the files origin (preview-url) in a sandboxed frame."""
-    headers = {"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox", "Cache-Control": "private, no-cache"}
+    HTML, SVG and XML go out as text/plain (sandboxed and nosniff besides). HTML is shown
+    only from the files origin (preview-url) in a sandboxed frame; images, SVG (as an <img>),
+    media and PDFs (drawn client-side) are used from here and stay inert."""
+    headers = {"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox", "Cache-Control": "private, no-cache", "Accept-Ranges": "bytes"}
     if download:
         headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(name)}"
         mime = "application/octet-stream"
@@ -832,8 +920,19 @@ def _raw(data, mime: str, name: str, download: bool, size: int | None = None) ->
     return StreamingResponse(data, media_type=mime, headers={**headers, "Content-Length": str(size)})
 
 
+def _raw_range(data: bytes, mime: str, name: str, download: bool, rng: tuple[int, int], size: int) -> Response:
+    r = _raw(data, mime, name, download)
+    r.status_code = 206
+    r.headers["Content-Range"] = f"bytes {rng[0]}-{rng[0] + len(r.body) - 1}/{size}"
+    return r
+
+
 def _origin(request: Request, env_name: str, port_env: str, default_port: int) -> str:
     """Where the browser reaches another of the server's ports: the host of this request."""
+    if env_name == "L0W_FILES_ORIGIN":  # reached through a hub: the files hostname it assigned
+        hub_files = hub_origins(request)[1]
+        if hub_files:
+            return hub_files
     override = os.environ.get(env_name, "").rstrip("/")
     if override:
         return override
@@ -846,8 +945,13 @@ def _origin(request: Request, env_name: str, port_env: str, default_port: int) -
 
 
 @api.get("/files/raw", tags=["files"], response_class=Response, responses={200: {"content": {"application/octet-stream": {}}}})
-def read_file(be: Be, volume: s.Volume, path: str, download: bool = False) -> Response:
-    """File bytes, for downloads and client-side previewers (text, CSV, notebooks, 3D)."""
+def read_file(request: Request, be: Be, volume: s.Volume, path: str, download: bool = False) -> Response:
+    """File bytes, for downloads, media elements (Range supported) and client-side previewers."""
+    if request.headers.get("range"):
+        size, mime = be.file_stat(volume, path)
+        rng = _range(request.headers["range"], size)
+        if rng:
+            return _raw_range(be.file_range(volume, path, *rng), mime, path.rsplit("/", 1)[-1], download, rng, size)
     body, size, mime = be.stream_file(volume, path)
     return _raw(body, mime, path.rsplit("/", 1)[-1], download, size)
 
@@ -900,21 +1004,18 @@ def shelf_versions(item_id: int, be: Be) -> list[s.ShelfVersion]:
 
 
 @api.get("/shelf/{item_id}/raw", tags=["files"], response_class=Response, responses={200: {"content": {"application/octet-stream": {}}}})
-def shelf_raw(item_id: int, be: Be, version: int | None = None, download: bool = False) -> Response:
-    """A shelf item's bytes: a kept version, the snapshot, or the live file."""
+def shelf_raw(item_id: int, request: Request, be: Be, version: int | None = None, download: bool = False) -> Response:
+    """A shelf item's bytes: a kept version, the snapshot, or the live file (Range supported)."""
     data, mime, name = be.shelf_raw(item_id, version)
+    rng = _range(request.headers.get("range"), len(data))
+    if rng:
+        return _raw_range(data[rng[0]:rng[1] + 1], mime, name, download, rng, len(data))
     return _raw(data, mime, name, download)
 
 
 @api.get("/shelf/{item_id}/preview-url", tags=["files"])
 def shelf_preview_url(item_id: int, request: Request, be: Be, version: int | None = None) -> s.PreviewUrl:
     return be.shelf_preview_url(item_id, version, _origin(request, "L0W_FILES_ORIGIN", "L0W_FILES_PUBLIC_PORT", 8001))
-
-
-@api.get("/web", tags=["files"])
-def web_page(request: Request, be: Be) -> s.WebPage:
-    """The assistant's web page (its port 8787, through agent-web)."""
-    return be.web_page(_origin(request, "L0W_AGENT_WEB_URL", "L0W_AGENT_WEB_PORT", 8787) + "/")
 
 
 @api.post("/uploads", tags=["files"], status_code=201)

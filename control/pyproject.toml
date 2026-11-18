@@ -15,7 +15,12 @@ dependencies = [
   "dulwich>=1.2.21",
   "pywebpush>=2.5.0",
   "anthropic>=2.8.0",
+  "l0wproto",
 ]
+
+[tool.uv.sources]
+# The hub protocol's reference library (protocol/py): the instance depends on protocol/, never on hub/.
+l0wproto = { path = "../protocol/py", editable = true }
 
 [dependency-groups]
 dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.6"]

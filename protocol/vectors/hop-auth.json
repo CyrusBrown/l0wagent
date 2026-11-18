@@ -1,0 +1,52 @@
+{
+  "now": "2026-11-17T21:30:00Z",
+  "created": 1794951000,
+  "expires": 1794951300,
+  "signer": "mara@hub.example",
+  "key": {
+    "seed": "abeacd3acf50be3a55c0724f1100d5777c6a51713232ba57857f6a097d32064b",
+    "key": {
+      "kid": "k1.Q2PclzZc3ev9K7FdvRWPQg",
+      "alg": "Ed25519",
+      "use": "sign",
+      "pub": "ij-KEpfTjJ25zelkoIDsCk0BCq4cXazcW9j16G4jrNA",
+      "created": "2026-11-17T21:30:00Z"
+    }
+  },
+  "nonce": "LRrO08tiRl5BrVVBIfUMGw",
+  "cases": [
+    {
+      "description": "POST with a JSON body",
+      "request": {
+        "method": "POST",
+        "target_uri": "https://hub.example/v0/members/mara/leave",
+        "body": "{\"hello\":\"world\"}",
+        "content_type": "application/json"
+      },
+      "signature_base": "\"@method\": POST\n\"@target-uri\": https://hub.example/v0/members/mara/leave\n\"content-digest\": sha-256=:k6I5cakU5erL8KjSUVTNownDwccvu5kU1Hxg88toFYg=:\n\"content-type\": application/json\n\"@signature-params\": (\"@method\" \"@target-uri\" \"content-digest\" \"content-type\");created=1794951000;expires=1794951300;nonce=\"LRrO08tiRl5BrVVBIfUMGw\";keyid=\"k1.Q2PclzZc3ev9K7FdvRWPQg\";alg=\"ed25519\";tag=\"l0w/0.1\"",
+      "signature_params": "(\"@method\" \"@target-uri\" \"content-digest\" \"content-type\");created=1794951000;expires=1794951300;nonce=\"LRrO08tiRl5BrVVBIfUMGw\";keyid=\"k1.Q2PclzZc3ev9K7FdvRWPQg\";alg=\"ed25519\";tag=\"l0w/0.1\"",
+      "headers": {
+        "Signature-Input": "l0w=(\"@method\" \"@target-uri\" \"content-digest\" \"content-type\");created=1794951000;expires=1794951300;nonce=\"LRrO08tiRl5BrVVBIfUMGw\";keyid=\"k1.Q2PclzZc3ev9K7FdvRWPQg\";alg=\"ed25519\";tag=\"l0w/0.1\"",
+        "Signature": "l0w=:b7ITROaW3Ci6RSQiwN5HfMANUmSDyrRxlnlZMz+ctNnuCwAAVyk3H5UMuQR1/K/+mQ/Slbcyo7JdKstYs9ioDQ==:",
+        "L0W-Signer": "mara@hub.example",
+        "Content-Digest": "sha-256=:k6I5cakU5erL8KjSUVTNownDwccvu5kU1Hxg88toFYg=:"
+      }
+    },
+    {
+      "description": "GET without a body",
+      "request": {
+        "method": "GET",
+        "target_uri": "https://hub.example/.well-known/l0wagent/members/mara?x=1",
+        "body": "",
+        "content_type": null
+      },
+      "signature_base": "\"@method\": GET\n\"@target-uri\": https://hub.example/.well-known/l0wagent/members/mara?x=1\n\"@signature-params\": (\"@method\" \"@target-uri\");created=1794951000;expires=1794951300;nonce=\"LRrO08tiRl5BrVVBIfUMGw\";keyid=\"k1.Q2PclzZc3ev9K7FdvRWPQg\";alg=\"ed25519\";tag=\"l0w/0.1\"",
+      "signature_params": "(\"@method\" \"@target-uri\");created=1794951000;expires=1794951300;nonce=\"LRrO08tiRl5BrVVBIfUMGw\";keyid=\"k1.Q2PclzZc3ev9K7FdvRWPQg\";alg=\"ed25519\";tag=\"l0w/0.1\"",
+      "headers": {
+        "Signature-Input": "l0w=(\"@method\" \"@target-uri\");created=1794951000;expires=1794951300;nonce=\"LRrO08tiRl5BrVVBIfUMGw\";keyid=\"k1.Q2PclzZc3ev9K7FdvRWPQg\";alg=\"ed25519\";tag=\"l0w/0.1\"",
+        "Signature": "l0w=:vvSp3z92JE9Mz3ggK6vrNEJzlLloZEySOTuSHFzaFt3DHPBXl4KQZzBE8swZKv+Fl6Eb93NJO3oendgKMV+rBw==:",
+        "L0W-Signer": "mara@hub.example"
+      }
+    }
+  ]
+}

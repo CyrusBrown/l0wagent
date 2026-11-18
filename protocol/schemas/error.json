@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.l0wagent.invalid/0.1/error.json",
+  "title": "error",
+  "description": "Error body (README: v, error, detail). identity.md's examples omit v and detail, so only `error` is required.",
+  "type": "object",
+  "required": [
+    "error"
+  ],
+  "properties": {
+    "v": {
+      "const": "l0w/0.1"
+    },
+    "error": {
+      "type": "string"
+    },
+    "detail": {
+      "type": "string"
+    },
+    "supported": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": true
+}

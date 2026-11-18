@@ -8,6 +8,9 @@
 - TOTP secrets are encrypted with the vault key; enabling 2FA issues one-time recovery codes.
 - Browser sessions are cookies that expire after SESSION_DAYS without use; device tokens
   (desktop app, `l0w` CLI) last until revoked. Only hashes of either are stored.
+- Device tokens have a scope (`SCOPES`): `full`, `cli` (everyday work; no account, security,
+  secret, connector or settings changes) or `read` (reads only). `scope_allows` is checked
+  for every owner route; browser sessions are always `full`.
 - Every new session or device raises a security alert (an Inbox card) through `on_new_session`.
 """
 
@@ -63,6 +66,23 @@ def utcnow() -> datetime:
     return datetime.now(UTC).replace(microsecond=0)
 
 
+SCOPES = ("full", "cli", "read")
+# What a `cli` token may not change (prefixes under /api; reads stay allowed).
+CLI_DENY = ("/api/account", "/api/secrets", "/api/security-alerts", "/api/connector", "/api/connected-apps", "/api/integrations",
+            "/api/settings", "/api/notifications/settings", "/api/extensions", "/api/hub", "/api/backups", "/api/membership")
+READ_ALLOW = ("/api/auth/logout",)  # the only write a read-only token may make
+
+
+def scope_allows(scope: str, method: str, path: str) -> bool:
+    """Whether a device token of this scope may make this owner-API request."""
+    if scope == "full" or method in ("GET", "HEAD", "OPTIONS"):
+        return True
+    under = lambda prefixes: any(path == p or path.startswith(p + "/") for p in prefixes)  # noqa: E731
+    if scope == "cli":
+        return not under(CLI_DENY)
+    return under(READ_ALLOW)
+
+
 def sha256(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
@@ -108,6 +128,7 @@ class _Challenge:
     want: str
     label: str | None
     expires: float
+    scope: str = "full"
     tries: int = 0
 
 
@@ -197,10 +218,10 @@ class Auth:
         if u["totp_secret"]:
             challenge = secrets.token_urlsafe(24)
             self._challenges = {k: c for k, c in self._challenges.items() if c.expires > time.time()}
-            self._challenges[challenge] = _Challenge(req.want, req.device_label, time.time() + CHALLENGE_TTL)
+            self._challenges[challenge] = _Challenge(req.want, req.device_label, time.time() + CHALLENGE_TTL, scope=req.scope)
             return s.LoginResult(status="totp_required", challenge=challenge), None
         self._record(ip, u["username"], True)
-        return self._issue(req.want, req.device_label, ip, user_agent)
+        return self._issue(req.want, req.device_label, ip, user_agent, req.scope)
 
     def login_totp(self, req: s.TotpRequest, ip: str, user_agent: str) -> tuple[s.LoginResult, str | None]:
         self._throttle(ip)
@@ -225,22 +246,24 @@ class Auth:
             self._kv("totp_last_step", str(step))
         self._challenges.pop(req.challenge, None)
         self._record(ip, u["username"], True)
-        return self._issue(c.want, c.label, ip, user_agent)
+        return self._issue(c.want, c.label, ip, user_agent, c.scope)
 
     def _kv(self, key: str, value: str) -> None:
         self.db.ex("INSERT INTO kv(key, value, updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
                    (key, value, self.db.now()))
 
-    def _issue(self, want: str, label: str | None, ip: str, user_agent: str) -> tuple[s.LoginResult, str | None]:
+    def _issue(self, want: str, label: str | None, ip: str, user_agent: str, scope: str = "full") -> tuple[s.LoginResult, str | None]:
         token = secrets.token_urlsafe(32)
         sid = secrets.token_urlsafe(9)
         kind = "device" if want == "device_token" else "session"
+        if kind == "session" or scope not in SCOPES:
+            scope = "full"
         now = utcnow()
         expires = None if kind == "device" else iso(now + timedelta(days=self.settings.get("SESSION_DAYS")))
         name = (label or "").strip()[:80] or device_label(user_agent, "App" if kind == "device" else "Browser")
         self.db.ex(
-            "INSERT INTO auth_sessions(id, kind, token_hash, label, ip, user_agent, created_at, last_seen_at, expires_at) VALUES(?,?,?,?,?,?,?,?,?)",
-            (sid, kind, sha256(token), name, ip, user_agent[:300], iso(now), iso(now), expires),
+            "INSERT INTO auth_sessions(id, kind, token_hash, label, ip, user_agent, created_at, last_seen_at, expires_at, scope) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (sid, kind, sha256(token), name, ip, user_agent[:300], iso(now), iso(now), expires, scope),
         )
         self.on_new_session(sid, name, ip)
         if kind == "device":
@@ -268,6 +291,18 @@ class Auth:
             self.db.ex("UPDATE auth_sessions SET last_seen_at=?, expires_at=? WHERE id=?", (iso(now), expires, row["id"]))
         return owner
 
+    def scope(self, cookie: str | None, bearer: str | None) -> str:
+        """The scope of the credential that authenticated this request (call after `authenticate`)."""
+        row = self._session_row(cookie, bearer)
+        return (row["scope"] or "full") if row else "full"
+
+    def create_device(self, label: str, scope: str, ip: str, user_agent: str) -> str:
+        """A new device token from a signed-in session (Settings → Devices); shown once."""
+        if scope not in SCOPES:
+            raise BadRequest("bad_scope", f"Scope must be one of {', '.join(SCOPES)}.")
+        result, _ = self._issue("device_token", label, ip, user_agent, scope)
+        return result.device_token  # type: ignore[return-value]
+
     def current_session_id(self, cookie: str | None, bearer: str | None) -> str | None:
         row = self._session_row(cookie, bearer)
         return row["id"] if row else None
@@ -284,7 +319,8 @@ class Auth:
             (self.db.now(),),
         )
         return [
-            s.AuthSession(id=r["id"], kind=r["kind"], label=r["label"], ip=r["ip"], created_at=r["created_at"], last_seen_at=r["last_seen_at"], current=r["id"] == current)
+            s.AuthSession(id=r["id"], kind=r["kind"], label=r["label"], ip=r["ip"], created_at=r["created_at"], last_seen_at=r["last_seen_at"], current=r["id"] == current,
+                          scope=r["scope"] or "full")
             for r in rows
         ]
 

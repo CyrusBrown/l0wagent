@@ -1,0 +1,50 @@
+{
+  "valid": [
+    "mara",
+    "a1b",
+    "my-name",
+    "abc",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ],
+  "invalid": [
+    "ab",
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "-abc",
+    "abc-",
+    "a--b",
+    "Mara",
+    "ma_ra",
+    "mara!",
+    "ma ra",
+    "mará"
+  ],
+  "reserved": [
+    "admin",
+    "api",
+    "files",
+    "well-known",
+    "tunnel"
+  ],
+  "lookalike": [
+    {
+      "candidate": "adm-in",
+      "existing_or_reserved": "admin"
+    },
+    {
+      "candidate": "ma-ra",
+      "existing_or_reserved": "mara"
+    },
+    {
+      "candidate": "m4ra",
+      "existing_or_reserved": null
+    },
+    {
+      "candidate": "5tatus",
+      "existing_or_reserved": "status"
+    },
+    {
+      "candidate": "mari",
+      "existing_or_reserved": "marl"
+    }
+  ]
+}

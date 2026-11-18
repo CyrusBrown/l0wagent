@@ -4,7 +4,7 @@ Packaging, install, updates, login, extensions and the security invariants. Part
 
 ## Packaging
 
-- **Prebuilt multi-arch images on GHCR**, built by GitHub Actions on each tag: control, agent, egress, agent-web, chat-runtime. With the hub, two more: **tunnel** (always in the stack; it waits for a token from control and then runs `cloudflared`, so joining a hub needs no host step) and **gateway** (holds the instance's keys; see [hub.md](hub.md#the-gateway)). Channels: `stable` and `edge`.
+- **Prebuilt multi-arch images on GHCR**, built by GitHub Actions on each tag: control, agent, egress, chat-runtime. With the hub, two more: **gateway** (holds the instance's keys; see [hub.md](hub.md#the-gateway)) and **tunnel** (the spec tunnel client: it dials out to the hub over a WebSocket and signs the hub's challenge; it does nothing in own-URL mode). Channels: `stable` and `edge`.
 - `compose.yaml` references the images. `compose.dev.yaml` builds from source, for development and forks.
 - **Host resources are per user**: GPU, memory, CPU and host folders go in `compose.override.yaml`.
   - The installer asks the basics and detects `nvidia-container-toolkit`.
@@ -29,7 +29,7 @@ Packaging, install, updates, login, extensions and the security invariants. Part
 - Control checks the registry and shows "Update available" with release notes.
 - Applying it:
   - `./l0w update` on the host (the default)
-  - or an opt-in `updater` sidecar with the Docker socket. It accepts exactly one authenticated command from control ("pull and recreate to tag X"), and it's root-equivalent on the host, so it stays tiny and auditable.
+  - or the opt-in **ops** container (H6), which does installing and updating from the UI. Docker access goes through a socket proxy limited to this compose project; without it, ops handles extensions only and updates stay on the host.
 - **Updates wait for idle**: no new wakeups start, the current run finishes (or reaches a timeout), and long jobs marked "don't interrupt" are waited for.
 - **Runs survive a control restart**:
   - The runner writes each session's events to an append-only log, and control re-attaches from its last offset instead of marking the run failed.
@@ -67,12 +67,12 @@ Packaging, install, updates, login, extensions and the security invariants. Part
 - Enabled and disabled in Settings. A broken or incompatible extension is disabled with its error shown, and never takes control down.
 
 ### Extensions are also how hub features reach the instance
-The instance-side parts of **hub services** (email, the board, shared spaces, and whatever services hubs add later) are built as **extensions**. They're first-party, bundled with the image, and enabled when a hub advertises the matching service. Core stays small, and a new kind of hub service can come with its own extension instead of a core change. So the SDK must be complete enough for them, which is why it's in the first version:
+The instance-side parts of **hub services** (email, the board, shared spaces, and whatever services hubs add later) are built as **extensions**, in the services repo. A hub's service extensions install at join (one screen lists them, on by default, each can be switched off); the hub's updates to them apply automatically with a log unless the owner sets that hub to ask first. Core stays small, and a new kind of hub service can come with its own extension instead of a core change. So the SDK must be complete enough for them, which is why it's in the first version:
 - **UI**: pages and sidebar sections (e.g. the board), thread types (an Email thread), Inbox card types (outbound mail awaiting approval), previewers, settings panels
 - **Agent commands and prompt fragments** (`assistant board …`, board-reading guidance)
 - **Calls to hub services through the gateway**, using the instance's identity and any service-role credentials. The extension never sees the instance key.
 - **Background jobs** (fetching held mail, syncing a shared space)
-- **Managed folders**: an area of the agent's storage the extension may write (`/work/_inbox/_ext/<name>/<folder>/` in SDK v1), with containment enforced by control
+- **Managed folders**: an area of the agent's storage the extension may write, stored at `/work/_inbox/_ext/<name>/<folder>/` in SDK v1 and appearing to the agent at `/external/<extension>/<folder>/` from H6, with containment enforced by control
 - **Events** in and out (a new mail arrives → a message in a thread)
 
 ### What an extension can add (SDK v1)
@@ -105,7 +105,7 @@ The instance-side parts of **hub services** (email, the board, shared spaces, an
 ## Security invariants
 
 Carried over from today, and still binding:
-- The agent container is on the sandbox network only: no Docker socket, no host mounts beyond explicit read-only grants, no `NET_ADMIN`/`NET_RAW`, no other networks. Port 8787 reaches the LAN only through the `agent-web` forwarder.
+- The agent container is on the sandbox network only: no Docker socket, no host mounts beyond explicit read-only grants, no `NET_ADMIN`/`NET_RAW`, no other networks.
 - Everything inside the agent container is untrusted. Enforcement lives in control and egress.
 - Sandbox clients may only call `/api/agent/*` with the agent token. Agent-facing endpoints never let the agent approve permissions, answer its own questions, finish user tasks, write secrets, change settings or start runs. The ops/owner API is refused from the sandbox.
 - Secret values are write-only for people and redacted from everything control stores or renders.
@@ -124,8 +124,10 @@ New with the overhaul:
 - **Outside callers authenticate per kind**: the owner (password + session or device token), outside chat services (OAuth scopes, never secrets or approvals), peers and hub services (signatures, later).
 - **Approvals stay online**: offline-queued actions never include approvals, secrets, settings or budget changes.
 
-With the hub (planned, 2026-11-16):
-- **Nothing agent-made is served from the instance's own hostname.** Files, the agent's page and published services each have a hostname on the content domain.
+With the hub (planned 2026-11-16; the gateway, the tunnel and joining built in H3, 2026-11-18):
+- **Agent-made content a browser runs loads only from the files hostname** (or the files port on the LAN). Nothing agent-made is served from the instance's own hostname.
 - **Callers are classed by where they arrive from**: the sandbox, the chat runtime, the tunnel, the local network. Each class has a list of paths it may reach, default deny. `/api/agent/*` is reachable from the sandbox only.
-- **The instance's keys live in the gateway**, not in control and never in the agent.
+- **The instance's keys live in the gateway**, not in control and never in the agent (built in H3). The gateway is on `hubnet` only (control and the tunnel service), never the sandbox network; it hands out no private key, and the recovery key only once, to the owner, without keeping it. Its two tokens split who may ask for what: control signs documents and sets the tunnel's settings; the tunnel only signs a `tunnel-hello` for the configured hub.
+- **The tunnel reaches control only on `hubnet`** (by the `control-hub` alias), so everything it forwards arrives from `L0W_TUNNEL_SUBNET` and gets the tunnel caller class. A name control has on several networks could resolve elsewhere and dodge the class.
+- **Joining a hub needs two-step sign-in** (TOTP or a passkey), and the hub's key is pinned at join: an unexplained change is an alarm for the owner, never accepted silently.
 - **Control and the gateway vet every address they call** (integrations, peers, hub services) the way egress does: no private or internal addresses, https, no redirects.

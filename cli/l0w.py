@@ -12,6 +12,9 @@ Install and update (run in the folder with compose.yaml):
   l0w claude-login       log the assistant's computer in to your Claude subscription (interactive)
   l0w migrate --from OLD_DIR [--old-project assistant] [--stop-old] [--force] [--no-claude-login]
                          move the old assistant into this instance (old volumes are never deleted)
+  l0w backup [-o FILE]   an encrypted backup of everything (database, keys, the assistant's storage,
+                         .env, extensions) in one file; asks for a passphrase. Keep the passphrase.
+  l0w restore FILE [--yes]   put a backup back (stops the stack, replaces what's there, starts it)
   l0w version
 
 Talk to it (log in once; the device token is kept in ~/.config/l0w/config.json, mode 600):
@@ -274,6 +277,17 @@ def add_chat_settings(env: dict[str, str]) -> bool:
     return env != before
 
 
+def add_hub_settings(env: dict[str, str]) -> bool:
+    """The hub gateway's two tokens and the hubnet subnet, for .env files that predate the hub. True if anything was added."""
+    before = dict(env)
+    for k in ("L0W_GATEWAY_TOKEN", "L0W_GATEWAY_TUNNEL_TOKEN"):
+        if not env.get(k):
+            env[k] = secrets.token_urlsafe(32)
+    if not env.get("TUNNEL_SUBNET"):
+        env["TUNNEL_SUBNET"] = pick_subnet("TUNNEL_SUBNET", (env.get("SANDBOX_SUBNET", ""), env.get("CHAT_SUBNET", "")))
+    return env != before
+
+
 def lan_ip() -> str:
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -324,6 +338,7 @@ def cmd_install(a) -> None:
             "SANDBOX_SUBNET": pick_subnet(),
         })
     add_chat_settings(env)
+    add_hub_settings(env)
     if "L0W_SETUP_CODE" not in env:
         env["L0W_SETUP_CODE"] = secrets.token_urlsafe(12)  # one-time: the first owner setup asks for it
     env.setdefault("L0W_CHANNEL", a.channel)
@@ -377,6 +392,9 @@ def cmd_update(a) -> None:
     if add_chat_settings(env):
         write_env(env)
         print("Added the chat runtime's token and network to .env.")
+    if add_hub_settings(env):
+        write_env(env)
+        print("Added the hub gateway's tokens and network to .env.")
     if a.version:
         env["L0W_VERSION"] = a.version.lstrip("v")
         write_env(env)
@@ -456,7 +474,7 @@ def _drain_and_restart(a, port: str) -> None:
             die(f"Still busy after {a.timeout} min. Run `./l0w update --force` to update anyway (a run in progress resumes after the restart).")
         time.sleep(10)
         renewed = _renew_drain(renewed)
-    compose("up", "-d")
+    compose("up", "-d", "--remove-orphans")  # also removes containers of services since dropped (agent-web)
     if not wait_healthy(port):
         die("Control didn't come back within 2 minutes: `./l0w logs control`. The previous images are still on disk.")
 
@@ -489,6 +507,74 @@ def cmd_compose(a) -> None:
     svc = getattr(a, "service", None)
     args = {"up": ["up", "-d"], "down": ["down"], "restart": ["restart"], "ps": ["ps"], "logs": ["logs", "--tail", "200", "-f", *([svc] if svc else [])]}[a.cmd]
     compose(*args, check=False)
+
+
+BACKUP_PLACEHOLDERS = {
+    "L0W_AGENT_TOKEN": "x", "L0W_RUNNER_TOKEN": "x", "L0W_EGRESS_TOKEN": "x", "L0W_CHAT_RUNTIME_TOKEN": "x",
+    "L0W_GATEWAY_TOKEN": "x", "L0W_GATEWAY_TUNNEL_TOKEN": "x",
+    "SANDBOX_SUBNET": "172.31.250.0/24", "CHAT_SUBNET": "172.31.251.0/24", "TUNNEL_SUBNET": "172.31.252.0/24",
+}
+
+
+def backup_env(passphrase: str) -> dict[str, str]:
+    """The environment for the backup container's compose call. compose.yaml interpolates required
+    variables for the whole file, so on a machine with no .env yet give it placeholders."""
+    env = dict(os.environ)
+    env["L0W_BACKUP_PASSPHRASE"] = passphrase
+    if not Path(".env").is_file():
+        for k, v in BACKUP_PLACEHOLDERS.items():
+            env.setdefault(k, v)
+    return env
+
+
+def backup_passphrase(confirm: bool) -> str:
+    pw = os.environ.get("L0W_BACKUP_PASSPHRASE")
+    if pw:
+        return pw
+    pw = getpass.getpass("Backup passphrase: ")
+    if not pw:
+        die("The passphrase can't be empty.")
+    if confirm and getpass.getpass("Again: ") != pw:
+        die("The passphrases differ.")
+    return pw
+
+
+BACKUP_RUN = ["docker", "compose", "run", "--rm", "-T", "-e", "L0W_BACKUP_PASSPHRASE", "backup"]
+
+
+def cmd_backup(a) -> None:
+    """`./l0w backup [-o FILE]`: one encrypted file with everything needed to rebuild this instance."""
+    need_docker()
+    out = Path(a.output or f"l0w-backup-{time.strftime('%Y-%m-%d')}.l0wbak")
+    if out.exists():
+        die(f"{out} already exists. Pick another name with -o.")
+    pw = backup_passphrase(confirm=True)
+    fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        rc = subprocess.run([*BACKUP_RUN, "create"], stdout=f, env=backup_env(pw)).returncode
+    if rc != 0:
+        out.unlink(missing_ok=True)
+        die("The backup failed (nothing was saved).", rc)
+    out.chmod(0o600)
+    print(f"Wrote {out}. Keep the passphrase: without it the file can't be opened.")
+
+
+def cmd_restore(a) -> None:
+    """`./l0w restore FILE [--yes]`: replace this instance's data with a backup, then start it."""
+    need_docker()
+    src = Path(a.file)
+    if not src.is_file():
+        die(f"{src} isn't a file.")
+    if not a.yes and input(f"This replaces the data on this machine with {src.name} (the stack is stopped meanwhile). Continue? [y/N] ").strip().lower() not in ("y", "yes"):
+        die("Cancelled.")
+    pw = backup_passphrase(confirm=False)
+    compose("stop", check=False)
+    with open(src, "rb") as f:
+        rc = subprocess.run([*BACKUP_RUN, "restore"], stdin=f, env=backup_env(pw)).returncode
+    if rc != 0:
+        die("The restore failed. If the passphrase was wrong or the file damaged, nothing was changed; the stack is still stopped (./l0w up starts it).", rc)
+    compose("up", "-d", check=False)
+    print("Restored and started.")
 
 
 def cmd_claude_login(a) -> None:
@@ -903,7 +989,7 @@ def cmd_version(a) -> None:
         print(f"server version {call('GET', '/meta', auth=False)['server_version']}")
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(prog="l0w", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     i = sub.add_parser("install")
@@ -923,6 +1009,11 @@ def main() -> None:
     lg = sub.add_parser("logs")
     lg.add_argument("service", nargs="?")
     sub.add_parser("claude-login")
+    bk = sub.add_parser("backup", help="an encrypted backup of everything, in one file")
+    bk.add_argument("-o", "--output", help="the file to write (default l0w-backup-DATE.l0wbak)")
+    rt = sub.add_parser("restore", help="put a backup back (replaces the data here)")
+    rt.add_argument("file")
+    rt.add_argument("--yes", "-y", action="store_true", help="don't ask for confirmation")
     sub.add_parser("version")
     mg = sub.add_parser("migrate", help="move the old assistant into this instance")
     mg.add_argument("--from", dest="old_dir", required=True, metavar="OLD_DIR", help="the old assistant's folder")
@@ -996,11 +1087,11 @@ def main() -> None:
     ex = sub.add_parser("extensions", help="the owner's extensions: list, enable, disable, rescan, sync (git sources from extensions.toml)")
     ex.add_argument("action", choices=["list", "enable", "disable", "rescan", "sync"])
     ex.add_argument("name", nargs="?")
-    a = p.parse_args()
+    a = p.parse_args(argv)
     {
         "install": cmd_install, "update": cmd_update, "drain": cmd_drain,
         "2fa-reset": cmd_2fa_reset, "up": cmd_compose, "down": cmd_compose, "restart": cmd_compose, "ps": cmd_compose, "logs": cmd_compose,
-        "claude-login": cmd_claude_login, "migrate": cmd_migrate, "version": cmd_version, "login": cmd_login, "logout": cmd_logout, "status": cmd_status, "inbox": cmd_inbox,
+        "claude-login": cmd_claude_login, "backup": cmd_backup, "restore": cmd_restore, "migrate": cmd_migrate, "version": cmd_version, "login": cmd_login, "logout": cmd_logout, "status": cmd_status, "inbox": cmd_inbox,
         "answer": cmd_answer, "approve": cmd_decide, "deny": cmd_decide, "done": cmd_task, "decline": cmd_task, "promote": cmd_promote,
         "threads": cmd_threads, "read": cmd_read, "send": cmd_send, "runs": cmd_runs, "run": cmd_run, "wake": cmd_wake, "stop": cmd_stop,
         "jobs": cmd_jobs, "budget": cmd_budget, "level": cmd_level, "boost": cmd_boost, "calendar": cmd_calendar, "secrets": cmd_secrets,

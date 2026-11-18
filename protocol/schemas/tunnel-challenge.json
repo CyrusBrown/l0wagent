@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.l0wagent.invalid/0.1/tunnel-challenge.json",
+  "title": "tunnel-challenge",
+  "type": "object",
+  "required": [
+    "t",
+    "nonce",
+    "hub"
+  ],
+  "properties": {
+    "t": {
+      "const": "challenge"
+    },
+    "nonce": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "description": "base64url, no padding"
+    },
+    "hub": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": true
+}

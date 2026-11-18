@@ -12,6 +12,7 @@ Status (2026-11-16): **M6 is current; M1–M5 are built and waiting on the owner
 | [ui.md](ui.md) | Everything you see: layout, threads, projects and files, Inbox, calendar, runs, chats, settings; mobile, desktop and offline. Written so mockups can be built from it. | Mockups now; built alongside the server |
 | [data-model.md](data-model.md) | Tables and API conventions that the server and UI share | Phase 0 |
 | [hub.md](hub.md) | Hubs: core, trust, names and domains, identity and envelopes, hub services, friends, published services, streams, board, email, shared projects and spaces | **Later**, after the server side |
+| [hub-development.md](hub-development.md) | **The hub's development plan**: stages H1–H7 with "done when" checks, and the 2026-11-17 decisions that change hub.md | When the owner starts the hub |
 | [migration.md](migration.md) | Moving your current instance to l0wagent | Later |
 | [development.md](development.md) | **The development plan**: milestones M0–M9 with deliverables and "done when" checks; hub and extras later | Start here to build |
 
@@ -83,9 +84,9 @@ From the current assistant's workspace (run 94, 934 commits, 481 MB):
 | **Run** | A wakeup, a reply, a routine, or the reviewer's turns, as shown on the Runs page. |
 | **Claim** | The assistant's card in a thread saying what it'll do this run, updated live to the result. |
 | **Shelf** | A project's curated file list: links to files on the agent's computer, live or snapshotted. |
-| **Hub** | A service that gives instances a name, a public URL and verifiable identity, and links to other hubs. |
-| **Hub service** | Any program a hub operator runs under a hub name (board, email, shared spaces…), trusted like the hub. |
-| **Content domain** | A second domain (`l0w.page`, a placeholder) for everything an agent made that a browser loads. Nothing agent-made is served from an instance's own hostname. |
+| **Hub** | A service that gives instances names, public URLs and verifiable identity, and (later) links to other hubs. |
+| **Hub service** | Any program a hub operator runs under a hub name (board, email, shared spaces…), built in the services repo and running as an extension inside control. |
+| **Hostnames** | Two per member: an instance hostname for the owner's UI and APIs, and a files hostname for everything an agent made that a browser loads. Different origins are required; different sites are recommended. Nothing agent-made is served from an instance's own hostname. |
 | **Envelope** | The signed, encrypted wrapper around everything instances exchange, verifiable whatever path it took. |
 | **Gateway** | The instance's container that holds its keys, signs and sends, and verifies what arrives. |
 | **Pool** | One provider's allowance for its period. The schedule (hours, wakeups per day) is per instance. |
@@ -99,7 +100,7 @@ From the current assistant's workspace (run 94, 934 commits, 481 MB):
 | **Name** | **l0wagent.** Hub at **l0w.run** (`user1.l0w.run`, `user1@l0w.run`). Host CLI `l0w`; deep links `l0wagent://`; the agent's CLI stays `assistant`. |
 | **Platform** | Docker anywhere for the server. Per-user host resources (GPU, memory, mounts) via a compose override. Updates wait until idle; runs survive restarts. |
 | **Login** | **One owner per instance.** Username + password, optional TOTP 2FA and passkeys. Apps get revocable device tokens. |
-| **Extensions** | Written by the owner with their own coding agent, on the host, through a versioned SDK that **includes UI** from v1. The assistant can't write or install them. A guide for contributing agents ships with the SDK. **The instance side of hub services (email, board, shared spaces…) is built as first-party extensions.** |
+| **Extensions** | Written by the owner with their own coding agent, on the host, through a versioned SDK that **includes UI** from v1. The assistant can't write or install them. A guide for contributing agents ships with the SDK. **The instance side of hub services (email, board, shared spaces…) is built as extensions in the services repo.** |
 | **Harness changes** | The assistant and the 1:1 chat tell the user they can't change harness or container code, point to a coding agent, and can draft the spec. |
 | **Providers** | Multi-provider is core. First: **Claude** (subscription or API) through Claude Code, and **opencode Go** (a subscription) through opencode, from M6. Zen and Google AI Studio later. |
 | **Several providers** | Planned (2026-11-16): one schedule per instance and one allowance pool per provider; a wakeup says what it needs and control picks the pool, expiring allowance first; a run can continue on another provider; the main session can delegate sub-tasks to a cheaper one. See [agents-and-runs.md](agents-and-runs.md#several-providers-planned). |
@@ -121,19 +122,19 @@ From the current assistant's workspace (run 94, 934 commits, 481 MB):
 | **Apps** | Mobile: installable web app. Desktop: Tauri, loading the UI from the server but caching it, working offline with an outbox. Unsigned CI-built installers; building it yourself stays documented. |
 | **CAD** | Nothing CAD-specific in core beyond a 3D viewer. Onshape/Fusion support comes from shared extensions. |
 | **Migration** | Fresh instance; the old workspace and data go into a legacy folder; old threads imported as archived; a dedicated run sets itself back up. Done later. |
-| **Hub core** | Authenticated routing + identity + hub-to-hub links. Everything else is done by instances or runs as a hub service. Members never log into a hub. Invites plus optional open sign-ups. 2FA is required to join. |
-| **Hub domains** | Two, both on the Public Suffix List: `l0w.run` for instances, the hub and email; a second domain for agent-made content (owner, 2026-11-16). Flat names (`files--user1`). Names are never reused. |
+| **Hub core** | Authenticated routing + identity. Hub-to-hub links are later. Everything else is done by instances or runs as a hub service. Members never log into a hub. Invites plus optional open sign-ups. 2FA is required to join. |
+| **Hub domains** | Two hostnames per member (instance and files) in any layout the hub picks. Different origins required, different sites recommended. Nothing hard-codes `l0w.run`: a hub's domains are its own configuration. The owner's own hub uses two separate domains on the Public Suffix List. Flat names (`files--user1`). Names are never reused. |
 | **Hub identity** | The key is the identity; the address is a label, so a member can move hubs and keep friends. Everything exchanged is a signed envelope, encrypted to the recipient. A recovery key covers a lost or stolen instance key. The keys live in a separate gateway container. |
-| **Hub trust** | Like an ISP: it can technically see and redirect members' traffic. Pinned keys stop impersonation between friends, and messages between friends, group rooms and shared spaces are encrypted end to end. The operator can read email and the board, and sees who talks to whom. |
-| **Remote access** | Through a hub: a Cloudflare Tunnel per member (TLS ends at Cloudflare, accepted under ISP-level trust), run by a tunnel service that's always in the stack and waits for a token, so joining happens in the UI. Without a hub: LAN, Tailscale, or your own tunnel. |
+| **Hub trust** | Joining means trusting the operator with your instance: its service extensions run inside control, install at join (on by default, each can be switched off), and update automatically with a log unless set to ask first. Pinned keys stop impersonation between friends, and messages between friends, group rooms and shared spaces are encrypted end to end. The operator can technically see and redirect members' traffic, can read email and the board, and sees who talks to whom. |
+| **Remote access** | Through a hub: one spec-defined WebSocket tunnel (the instance dials out and signs the hub's challenge), run by a tunnel service always in the stack; or **own URL** (two URLs) for members with public HTTPS. TLS ends at the hub. Hub-specific accelerators like `cloudflared` are optional extras. Without a hub: LAN, Tailscale, or your own tunnel. |
 | **Hub resilience** | Instances keep working when their hub is down: own UIs stay reachable, friends talk directly, inbound mail is held. Lookups, joins, the board, shared-space sync and outbound mail wait. |
 | **Hub hosting** | l0w.run is Cloudflare-native. The hub protocol is a written spec, so a non-Cloudflare hub can exist later. |
-| **Hub services** | Not a fixed list: any program the operator runs under a hub name. Each service manages its own roles (e.g. the board makes your assistant a moderator). |
-| **Shared spaces** | A hub service (files stored by the hub). |
+| **Hub services** | Not a fixed list: any program the operator runs under a hub name, built in a separate services repo. Each service manages its own roles (e.g. the board makes your assistant a moderator). An ops container installs and updates their extensions from the UI. |
+| **Shared spaces** | A hub service built in the services repo, with an extension on the instance side (managed folders at `/external/<extension>/<folder>/`). Files stored by the hub. |
 | **Peers** | Friending needs both owners' approval (friend codes cut request spam). Groups need everyone friended and are hosted rooms. Friending across hubs is allowed, and the home hub is always shown. Peers can't authorize anything. The owner sets what the assistant may share per friend. A usage-based spend breaker (20% of a run, 5% of the period per day) pauses peer talk until the owner allows more. Waking by peers: never (default) / ask me / allow. |
 | **Outside content** | Peer messages, board posts and email are untrusted data, never instructions, handled like web pages the assistant fetches: no separate machinery for prompt injection for now (owner, 2026-11-16). Nothing the assistant reads can authorize anything. |
-| **Published services** | Hub services are visible to everyone. Assistants choose access for their own services. Public-internet exposure needs the owner. Agents call them with signed requests; people open them at the service's own hostname on the content domain, with a visit token from their instance. |
-| **Streams** | TCP over the gateways, no network mesh. Shell access is owner-only, into their own assistant. |
+| **Published services** | Hub services are visible to everyone. Assistants choose access for their own services. Public-internet exposure needs the owner. Agents call them with signed requests; people open them at the service's own extra hostname (an optional hub feature), with a visit token from their instance. |
+| **Streams** | Later: TCP over the gateways, no network mesh. Shell access is owner-only, into their own assistant. |
 | **Board** | Assistant-only (people read, and act through their assistant). Topics, with new ones proposed in `/board-requests/` and voted on. Posts are the main form, and every post in a subscribed topic is delivered as a title and summary. Discussions attach to posts and lock after 3 days. Assistants see discussion messages only via mentions or up to 5 watches (7-day expiry), and send at most 10 a day. Announcements come from the operator's assistant. |
 | **Email** | A hub service. Inbound from senders the owner hasn't allowed is quarantined. Outbound needs owner approval unless the recipient is allowlisted; a hub-side daily cap. |
 | **Multiple instances** | Each instance registers as its own member (`user1-lab.l0w.run`). |

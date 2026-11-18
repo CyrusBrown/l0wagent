@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.l0wagent.invalid/0.1/directory-entry.json",
+  "title": "directory-entry",
+  "description": "A member's current self document plus the hub's countersignature over the same payload bytes (signing input type 'directory-entry').",
+  "allOf": [
+    {
+      "$ref": "signed-document.json"
+    }
+  ],
+  "type": "object",
+  "required": [
+    "hub_sig"
+  ],
+  "properties": {
+    "type": {
+      "const": "self"
+    },
+    "hub_sig": {
+      "type": "object",
+      "required": [
+        "kid",
+        "sig"
+      ],
+      "properties": {
+        "kid": {
+          "type": "string",
+          "pattern": "^k1\\.[A-Za-z0-9_-]{22}$"
+        },
+        "sig": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "description": "base64url, no padding"
+        }
+      }
+    }
+  }
+}

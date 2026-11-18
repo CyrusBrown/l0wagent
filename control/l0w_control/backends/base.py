@@ -64,6 +64,8 @@ class Backend:
     def setup_owner(self, req: s.SetupOwnerRequest) -> s.Owner: raise NotImplementedError
     def auth_sessions(self, current_cookie: str | None, current_bearer: str | None) -> list[s.AuthSession]: raise NotImplementedError
     def revoke_session(self, session_id: str) -> None: raise NotImplementedError
+    def token_scope(self, bearer: str) -> str: raise NotImplementedError  # a device token's scope (after authenticate)
+    def create_device(self, req: s.DeviceCreate, ip: str, user_agent: str) -> s.DeviceCreated: raise NotImplementedError
     def change_password(self, req: s.PasswordChange, current_cookie: str | None, current_bearer: str | None) -> None: raise NotImplementedError
     def totp_setup(self) -> s.TotpSetup: raise NotImplementedError
     def totp_enable(self, req: s.TotpEnable) -> s.TotpEnabled: raise NotImplementedError
@@ -210,17 +212,29 @@ class Backend:
     def pause(self, req: s.PauseRequest) -> s.PauseState: raise NotImplementedError
     def resume(self) -> s.PauseState: raise NotImplementedError
 
+    # hub membership (H3)
+    def membership(self) -> s.Membership: raise NotImplementedError
+    def membership_preview(self, req: s.InvitePreviewRequest) -> s.InvitePreview: raise NotImplementedError
+    def membership_join(self, req: s.JoinRequest) -> s.JoinResult: raise NotImplementedError
+    def membership_check(self) -> s.MembershipCheck: raise NotImplementedError
+    def membership_rotate(self) -> s.Membership: raise NotImplementedError
+    def membership_recover(self, req: s.RecoverRequest) -> s.Membership: raise NotImplementedError
+    def membership_leave(self, req: s.LeaveRequest) -> s.Membership: raise NotImplementedError
+    def self_description(self) -> dict | None: raise NotImplementedError
+    def public_origins(self) -> tuple[str | None, str | None]: raise NotImplementedError  # (instance, files) on a hub, else (None, None)
+
     # files
     def list_dir(self, volume: str, path: str) -> s.Listing: raise NotImplementedError
     def read_file(self, volume: str, path: str) -> tuple[bytes, str]: raise NotImplementedError
     def stream_file(self, volume: str, path: str) -> tuple[Iterator[bytes], int, str]: raise NotImplementedError
+    def file_stat(self, volume: str, path: str) -> tuple[int, str]: raise NotImplementedError
+    def file_range(self, volume: str, path: str, start: int, end: int) -> bytes: raise NotImplementedError
     def file_history(self, volume: str, path: str) -> list[s.FileHistoryEntry]: raise NotImplementedError
     def file_diff(self, volume: str, path: str, rev: str) -> s.FileDiff: raise NotImplementedError
     def zip_dir(self, volume: str, path: str): raise NotImplementedError
     def preview_url(self, volume: str, path: str, files_origin: str) -> s.PreviewUrl: raise NotImplementedError
     def shelf_raw(self, item_id: int, version: int | None) -> tuple[bytes, str, str]: raise NotImplementedError
     def shelf_preview_url(self, item_id: int, version: int | None, files_origin: str) -> s.PreviewUrl: raise NotImplementedError
-    def web_page(self, url: str) -> s.WebPage: raise NotImplementedError
     def shelf(self, project: str) -> list[s.ShelfItem]: raise NotImplementedError
     def add_to_shelf(self, project: str, req: s.ShelfCreate, by: str) -> s.ShelfItem: raise NotImplementedError
     def remove_from_shelf(self, item_id: int, by: str = "owner") -> None: raise NotImplementedError

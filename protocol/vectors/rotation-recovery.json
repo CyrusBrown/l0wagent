@@ -1,0 +1,37 @@
+{
+  "description": "Compromise rotation signed by the recovery key",
+  "type": "rotation",
+  "now": "2026-11-17T21:30:00Z",
+  "payload_json": "{\"v\":\"l0w/0.1\",\"type\":\"rotation\",\"iat\":\"2026-11-17T21:30:00Z\",\"address\":\"mara@hub.example\",\"old\":\"k1.7jjJipSU1jZBHvxMYWMDhA\",\"new\":{\"kid\":\"k1.3gjCDkYEoYDXYV1n-lILmg\",\"alg\":\"Ed25519\",\"use\":\"sign\",\"pub\":\"4Glb3WjQ0o2J8EPG8anG19FacWAGTRs6boiIkIj8G2I\",\"created\":\"2026-11-17T21:30:00Z\"},\"reason\":\"compromise\"}",
+  "payload_b64": "eyJ2IjoibDB3LzAuMSIsInR5cGUiOiJyb3RhdGlvbiIsImlhdCI6IjIwMjYtMTEtMTdUMjE6MzA6MDBaIiwiYWRkcmVzcyI6Im1hcmFAaHViLmV4YW1wbGUiLCJvbGQiOiJrMS43ampKaXBTVTFqWkJIdnhNWVdNRGhBIiwibmV3Ijp7ImtpZCI6ImsxLjNnakNEa1lFb1lEWFlWMW4tbElMbWciLCJhbGciOiJFZDI1NTE5IiwidXNlIjoic2lnbiIsInB1YiI6IjRHbGIzV2pRMG8ySjhFUEc4YW5HMTlGYWNXQUdUUnM2Ym9pSWtJajhHMkkiLCJjcmVhdGVkIjoiMjAyNi0xMS0xN1QyMTozMDowMFoifSwicmVhc29uIjoiY29tcHJvbWlzZSJ9",
+  "signing_input": "l0wagent-sig/1\nrotation\neyJ2IjoibDB3LzAuMSIsInR5cGUiOiJyb3RhdGlvbiIsImlhdCI6IjIwMjYtMTEtMTdUMjE6MzA6MDBaIiwiYWRkcmVzcyI6Im1hcmFAaHViLmV4YW1wbGUiLCJvbGQiOiJrMS43ampKaXBTVTFqWkJIdnhNWVdNRGhBIiwibmV3Ijp7ImtpZCI6ImsxLjNnakNEa1lFb1lEWFlWMW4tbElMbWciLCJhbGciOiJFZDI1NTE5IiwidXNlIjoic2lnbiIsInB1YiI6IjRHbGIzV2pRMG8ySjhFUEc4YW5HMTlGYWNXQUdUUnM2Ym9pSWtJajhHMkkiLCJjcmVhdGVkIjoiMjAyNi0xMS0xN1QyMTozMDowMFoifSwicmVhc29uIjoiY29tcHJvbWlzZSJ9",
+  "signatures": [
+    {
+      "kid": "k1.lFPm_Dsd-8gxz1QZeLWCLg",
+      "sig": "w5H_IBcB0ZDLu2JcGKMB5vNodKQZKK0C1VS_p4PFQMtNXMeB1084wutfkR1UXv2MHQEDeRZKuQfI0Fci4pL3Bw"
+    }
+  ],
+  "verify_keys": [
+    {
+      "kid": "k1.lFPm_Dsd-8gxz1QZeLWCLg",
+      "alg": "Ed25519",
+      "use": "recover",
+      "pub": "5YF4asiwt1BysW1UJ0jYR-l78k0zTY7S3FpQkAX3iK0",
+      "created": "2026-11-17T21:30:00Z"
+    }
+  ],
+  "required": [
+    "k1.lFPm_Dsd-8gxz1QZeLWCLg"
+  ],
+  "document": {
+    "v": "l0w/0.1",
+    "type": "rotation",
+    "payload": "eyJ2IjoibDB3LzAuMSIsInR5cGUiOiJyb3RhdGlvbiIsImlhdCI6IjIwMjYtMTEtMTdUMjE6MzA6MDBaIiwiYWRkcmVzcyI6Im1hcmFAaHViLmV4YW1wbGUiLCJvbGQiOiJrMS43ampKaXBTVTFqWkJIdnhNWVdNRGhBIiwibmV3Ijp7ImtpZCI6ImsxLjNnakNEa1lFb1lEWFlWMW4tbElMbWciLCJhbGciOiJFZDI1NTE5IiwidXNlIjoic2lnbiIsInB1YiI6IjRHbGIzV2pRMG8ySjhFUEc4YW5HMTlGYWNXQUdUUnM2Ym9pSWtJajhHMkkiLCJjcmVhdGVkIjoiMjAyNi0xMS0xN1QyMTozMDowMFoifSwicmVhc29uIjoiY29tcHJvbWlzZSJ9",
+    "sigs": [
+      {
+        "kid": "k1.lFPm_Dsd-8gxz1QZeLWCLg",
+        "sig": "w5H_IBcB0ZDLu2JcGKMB5vNodKQZKK0C1VS_p4PFQMtNXMeB1084wutfkR1UXv2MHQEDeRZKuQfI0Fci4pL3Bw"
+      }
+    ]
+  }
+}

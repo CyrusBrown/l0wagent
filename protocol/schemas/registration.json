@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.l0wagent.invalid/0.1/registration.json",
+  "title": "registration",
+  "description": "Payload of a registration document; signed by the new signing key AND the recovery key",
+  "type": "object",
+  "required": [
+    "v",
+    "type",
+    "iat",
+    "hub",
+    "name",
+    "invite",
+    "mode",
+    "keys",
+    "instance"
+  ],
+  "properties": {
+    "v": {
+      "const": "l0w/0.1"
+    },
+    "type": {
+      "const": "registration"
+    },
+    "iat": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+      "description": "RFC 3339 UTC, whole seconds"
+    },
+    "exp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+      "description": "RFC 3339 UTC, whole seconds"
+    },
+    "hub": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 32,
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "invite": {
+      "type": "string"
+    },
+    "mode": {
+      "enum": [
+        "tunnel",
+        "own-url"
+      ]
+    },
+    "own_urls": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "instance",
+            "files"
+          ],
+          "properties": {
+            "instance": {
+              "type": "string"
+            },
+            "files": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "keys": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "$ref": "key.json"
+      }
+    },
+    "reregister": {
+      "type": "boolean"
+    },
+    "instance": {
+      "type": "object",
+      "required": [
+        "release",
+        "protocols"
+      ],
+      "properties": {
+        "release": {
+          "type": "string"
+        },
+        "protocols": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

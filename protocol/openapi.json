@@ -1,0 +1,516 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "l0wagent hub protocol, core endpoints",
+    "version": "0.1.0",
+    "description": "Draft 0 of l0w/0.1. Documents are signed documents (signing.md); every body is application/json."
+  },
+  "servers": [
+    {
+      "url": "https://{hub}/v0",
+      "description": "The hub's `api` base (capabilities.md), without the trailing slash",
+      "variables": {
+        "hub": {
+          "default": "hub.example"
+        }
+      }
+    }
+  ],
+  "paths": {
+    "/.well-known/l0wagent/hub": {
+      "servers": [
+        {
+          "url": "https://{hub}",
+          "variables": {
+            "hub": {
+              "default": "hub.example",
+              "description": "The hub domain"
+            }
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getCapabilities",
+        "summary": "The hub's capabilities (signed document of type `hub`)",
+        "responses": {
+          "200": {
+            "description": "Signed `hub` document; the payload follows schemas/hub.json. `Cache-Control: max-age=300` is RECOMMENDED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/signed-document.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/l0wagent/members/{name}": {
+      "servers": [
+        {
+          "url": "https://{hub}",
+          "variables": {
+            "hub": {
+              "default": "hub.example",
+              "description": "The hub domain"
+            }
+          }
+        }
+      ],
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 32,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getDirectoryEntry",
+        "summary": "A member's directory entry",
+        "responses": {
+          "200": {
+            "description": "The member's current `self` document plus `hub_sig`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/directory-entry.json"
+                }
+              }
+            }
+          },
+          "301": {
+            "description": "The member left for another hub and published a `moved` document (served for at least a year).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/signed-document.json"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown name, or no `self` accepted yet. Codes: `no_such_member`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The member left; names are never reused. Codes: `left`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/l0wagent/members/{name}/revocations": {
+      "servers": [
+        {
+          "url": "https://{hub}",
+          "variables": {
+            "hub": {
+              "default": "hub.example",
+              "description": "The hub domain"
+            }
+          }
+        }
+      ],
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 32,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getRevocations",
+        "summary": "Revocations the hub has accepted for the member",
+        "responses": {
+          "200": {
+            "description": "An array of signed `revocation` documents.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "schemas/signed-document.json"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown name. Codes: `no_such_member`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/l0wagent/members/{name}/reregistrations": {
+      "servers": [
+        {
+          "url": "https://{hub}",
+          "variables": {
+            "hub": {
+              "default": "hub.example",
+              "description": "The hub domain"
+            }
+          }
+        }
+      ],
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 32,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getReregistrations",
+        "summary": "Re-registrations the hub has issued for the member",
+        "responses": {
+          "200": {
+            "description": "An array of signed `reregistration` documents.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "schemas/signed-document.json"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown name. Codes: `no_such_member`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/invites/{code}": {
+      "parameters": [
+        {
+          "name": "code",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "operationId": "getInvite",
+        "summary": "Check an invite without using it",
+        "responses": {
+          "200": {
+            "description": "The invite is valid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/invite-response.json"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such invite. Codes: `no_such_invite`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The invite was used or has expired. Codes: `invite_used`, `invite_expired`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/members": {
+      "post": {
+        "operationId": "register",
+        "summary": "Join the hub",
+        "description": "Body: a `registration` document signed by the new signing key and the recovery key.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "schemas/signed-document.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Joined. `hostnames` are authoritative.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/join-response.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad signature or fields, or an unsupported `v`. Codes: `bad_registration`, `unsupported_version`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "An invite is required. Codes: `needs_invite`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The name is taken or reserved. Codes: `name_taken`, `name_reserved`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The invite was used or has expired. Codes: `invite_used`, `invite_expired`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Own-URL mode: the URLs failed the hub's checks. Codes: `own_url_unreachable`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          },
+          "426": {
+            "description": "The instance release is older than `instance_releases.min`. Codes: `instance_too_old`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/members/{name}/self": {
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 32,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          }
+        }
+      ],
+      "put": {
+        "operationId": "putSelf",
+        "summary": "Publish a new self-description",
+        "description": "Body: a `self` document signed by the member's current signing key with a higher `seq`. The document is the authentication.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "schemas/signed-document.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Accepted; the countersigned directory entry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/directory-entry.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad signature or fields, records mismatch, or unsupported `v`. Codes: `bad_self`, `unsupported_version`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown name. Codes: `no_such_member`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`seq` is not higher than the hub's copy. Codes: `stale_seq`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The member left. Codes: `left`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/members/{name}/leave": {
+      "parameters": [
+        {
+          "name": "name",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 32,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          }
+        }
+      ],
+      "post": {
+        "operationId": "leave",
+        "summary": "Leave the hub",
+        "description": "Body: a `leave` document signed by the member's signing key. The name answers 410 (or 301 with the `moved` document) from then on and is never reused.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "schemas/signed-document.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Left; the hostnames and the tunnel are removed."
+          },
+          "400": {
+            "description": "Bad signature or fields, or unsupported `v`. Codes: `bad_leave`, `unsupported_version`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown name. Codes: `no_such_member`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Already left. Codes: `left`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "description": "Scheduled rotation of the signing key, signed by the old key",
+  "type": "rotation",
+  "now": "2026-11-17T21:30:00Z",
+  "payload_json": "{\"v\":\"l0w/0.1\",\"type\":\"rotation\",\"iat\":\"2026-11-17T21:30:00Z\",\"address\":\"mara@hub.example\",\"old\":\"k1.7jjJipSU1jZBHvxMYWMDhA\",\"new\":{\"kid\":\"k1.3gjCDkYEoYDXYV1n-lILmg\",\"alg\":\"Ed25519\",\"use\":\"sign\",\"pub\":\"4Glb3WjQ0o2J8EPG8anG19FacWAGTRs6boiIkIj8G2I\",\"created\":\"2026-11-17T21:30:00Z\"},\"reason\":\"scheduled\"}",
+  "payload_b64": "eyJ2IjoibDB3LzAuMSIsInR5cGUiOiJyb3RhdGlvbiIsImlhdCI6IjIwMjYtMTEtMTdUMjE6MzA6MDBaIiwiYWRkcmVzcyI6Im1hcmFAaHViLmV4YW1wbGUiLCJvbGQiOiJrMS43ampKaXBTVTFqWkJIdnhNWVdNRGhBIiwibmV3Ijp7ImtpZCI6ImsxLjNnakNEa1lFb1lEWFlWMW4tbElMbWciLCJhbGciOiJFZDI1NTE5IiwidXNlIjoic2lnbiIsInB1YiI6IjRHbGIzV2pRMG8ySjhFUEc4YW5HMTlGYWNXQUdUUnM2Ym9pSWtJajhHMkkiLCJjcmVhdGVkIjoiMjAyNi0xMS0xN1QyMTozMDowMFoifSwicmVhc29uIjoic2NoZWR1bGVkIn0",
+  "signing_input": "l0wagent-sig/1\nrotation\neyJ2IjoibDB3LzAuMSIsInR5cGUiOiJyb3RhdGlvbiIsImlhdCI6IjIwMjYtMTEtMTdUMjE6MzA6MDBaIiwiYWRkcmVzcyI6Im1hcmFAaHViLmV4YW1wbGUiLCJvbGQiOiJrMS43ampKaXBTVTFqWkJIdnhNWVdNRGhBIiwibmV3Ijp7ImtpZCI6ImsxLjNnakNEa1lFb1lEWFlWMW4tbElMbWciLCJhbGciOiJFZDI1NTE5IiwidXNlIjoic2lnbiIsInB1YiI6IjRHbGIzV2pRMG8ySjhFUEc4YW5HMTlGYWNXQUdUUnM2Ym9pSWtJajhHMkkiLCJjcmVhdGVkIjoiMjAyNi0xMS0xN1QyMTozMDowMFoifSwicmVhc29uIjoic2NoZWR1bGVkIn0",
+  "signatures": [
+    {
+      "kid": "k1.7jjJipSU1jZBHvxMYWMDhA",
+      "sig": "Yg6FlfQyipKiuH8crQqLqmfFXoqAXaHCAOSI2x_GW_e1-7zjzmffBXml23CAkapuZz8WGnw29xaMXd2TFDt2Bg"
+    }
+  ],
+  "verify_keys": [
+    {
+      "kid": "k1.7jjJipSU1jZBHvxMYWMDhA",
+      "alg": "Ed25519",
+      "use": "sign",
+      "pub": "_-2c7_nOJRpW5HfxP2irxtVfhWWwU-IqTcETdZVWCv4",
+      "created": "2026-11-17T21:30:00Z"
+    }
+  ],
+  "required": [
+    "k1.7jjJipSU1jZBHvxMYWMDhA"
+  ],
+  "document": {
+    "v": "l0w/0.1",
+    "type": "rotation",
+    "payload": "eyJ2IjoibDB3LzAuMSIsInR5cGUiOiJyb3RhdGlvbiIsImlhdCI6IjIwMjYtMTEtMTdUMjE6MzA6MDBaIiwiYWRkcmVzcyI6Im1hcmFAaHViLmV4YW1wbGUiLCJvbGQiOiJrMS43ampKaXBTVTFqWkJIdnhNWVdNRGhBIiwibmV3Ijp7ImtpZCI6ImsxLjNnakNEa1lFb1lEWFlWMW4tbElMbWciLCJhbGciOiJFZDI1NTE5IiwidXNlIjoic2lnbiIsInB1YiI6IjRHbGIzV2pRMG8ySjhFUEc4YW5HMTlGYWNXQUdUUnM2Ym9pSWtJajhHMkkiLCJjcmVhdGVkIjoiMjAyNi0xMS0xN1QyMTozMDowMFoifSwicmVhc29uIjoic2NoZWR1bGVkIn0",
+    "sigs": [
+      {
+        "kid": "k1.7jjJipSU1jZBHvxMYWMDhA",
+        "sig": "Yg6FlfQyipKiuH8crQqLqmfFXoqAXaHCAOSI2x_GW_e1-7zjzmffBXml23CAkapuZz8WGnw29xaMXd2TFDt2Bg"
+      }
+    ]
+  }
+}

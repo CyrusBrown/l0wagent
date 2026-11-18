@@ -1,6 +1,6 @@
 """Mock data for UI work, taken from the mockup (design/mockup/src/logic.js) and
 adjusted where design/mockup/REVIEW.md says the plan wins (workspace seed,
-_inbox/ folders, weekly review, port 8787).
+_inbox/ folders, weekly review).
 
 Times are relative to when the mock server starts, so the data always looks current.
 """

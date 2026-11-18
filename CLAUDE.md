@@ -2,7 +2,7 @@
 
 A long-running personal AI assistant on the owner's own server. **Start with [docs/plans/development.md](docs/plans/development.md)**: it says which milestone is current and what "done" means. Don't build ahead of the current milestone; ideas for later go in that file's "Later" list.
 
-Current milestone: **M9 (more opencode providers and the model registry)**, not started. M1–M8 are waiting on the owner's review; the desktop app is on the Later list.
+Current work: **the hub, stages H3 (joining) and H4 (your hub, live)**, per [docs/plans/hub-development.md](docs/plans/hub-development.md) (owner, 2026-11-17: start the hub; 2026-11-18: continue up to H4). H1 and H2 are built and waiting on the owner's checks and spec review. M9 (more opencode providers and the model registry) is not started. M1–M8 are waiting on the owner's review; the desktop app is on the Later list.
 
 ## Sources of truth
 - **UI and styling: the mockup** (`design/mockup/`; readable sources in `design/mockup/src/`). It outranks `docs/plans/ui.md`. Port screens from its markup and tokens; where ui.md disagrees, update ui.md. [design/mockup/REVIEW.md](design/mockup/REVIEW.md) lists every known difference and how it was settled.
@@ -25,11 +25,12 @@ control/   FastAPI app (Python 3.12, SQLite, no ORM). api/ = schemas + owner rou
            catalog.py (opencode model catalogs and prices); notify.py (web push, ntfy);
            integrations.py (brokered MCP servers); connector.py + api/connector_routes.py (/mcp, OAuth);
            updates.py (update check, draining); hostctl.py (host-side commands for ./l0w);
+           membership.py (hub membership: join, self-description, self-check, rotate, leave; keys stay in the gateway);
            extensions.py + sdk.py (the owner's extensions: loader, isolation, the SDK v1 contract);
            db/migrations/ = versioned SQL
 agent/     the agent image: runner/ (runner.py, fake_claude.py, fake_opencode.py, opencode-plugin.js, selftest.py),
            bin/ (assistant CLI, hook), seed/. Two runtimes: Claude Code and opencode (for opencode Go)
-egress/    the egress proxy (from the old assistant)      agent-web/  the LAN forwarder for port 8787
+egress/    the egress proxy (from the old assistant)
 web/       React + TypeScript + Vite. api/ = generated types, client, queries, live stream; app/ = shell;
            screens/; components/; styles/tokens.css = the mockup's theme tokens; e2e/ = Playwright
 dev/       isolation-test.sh and notes on the fake runtime
@@ -38,12 +39,18 @@ cli/       l0w.py, the host CLI (`./l0w`: install, update, ops parity); stdlib o
 deploy/    control.Dockerfile (control + built web app); compose.yaml at the root is the release stack
 chat-runtime/  the stateless sidecar for Claude-subscription chats (Claude Code, no tools of its own, its own network)
 extensions/    the owner's extensions (git-ignored) + AGENTS.md and examples/plantlog; the guide is docs/EXTENDING.md
+protocol/      the hub protocol spec (l0w/0.1): documents, schemas, test vectors, py/ = l0wproto (reference library), conformance/
+gateway/       the instance's key holder: makes and signs with the instance keys, never hands a private key out (hubnet only)
+tunnel/        the spec tunnel client: dials out to the hub, hands requests to control / the files app by Host (hubnet + outside)
+hub/           the generic hub core on Cloudflare (Workers, Durable Objects, D1); its own CLAUDE.md; depends only on protocol/
+dev/hub/       the fake hub (Python), for development and tests; dev/check-boundaries.py keeps instance and hub apart
 ```
 
 ## Commands
 ```
 cd control && uv sync                                  # once
 cd control && uv run python scripts/dev_stack.py --port 8000   # control + runner (fake claude) + egress, no Docker
+cd control && uv run python scripts/dev_stack.py --port 8000 --hub   # plus the fake hub (:8770), gateway and tunnel; prints an invite
 cd control && L0W_BACKEND=mock uv run uvicorn l0w_control.app:app --reload --port 8000   # the in-memory mock API
 cd web && pnpm install && pnpm dev                     # UI on :5173, proxies /api to :8000
 dev/ui-demo.sh                                         # the UI on fake data (mock API + Vite), nothing else needed
@@ -53,6 +60,10 @@ docker compose -f compose.dev.yaml up --build          # the whole stack in cont
 cd control && uv run pytest && uv run ruff check .     # includes the restart integration tests (no Docker)
 cd web && pnpm typecheck && pnpm test && pnpm e2e      # e2e starts its own stack on :8100/:5174
 dev/isolation-test.sh                                  # isolation probes against the running compose stack
+cd gateway && uv run pytest -q; cd tunnel && uv run pytest -q   # the instance's hub-side services
+cd dev/hub && uv run pytest -q                          # the fake hub + the conformance suite against it
+cd hub && pnpm test && ./scripts/conformance.sh         # the Cloudflare hub core, conformance against wrangler dev
+python3 dev/check-boundaries.py                        # instance and hub/ depend only on protocol/
 ```
 
 ## Changing the API
@@ -85,19 +96,27 @@ dev/isolation-test.sh                                  # isolation probes agains
   versions in `agent/Dockerfile`; the adapters read their headless event streams.
 
 ## Security invariants (from docs/plans/server-platform.md; binding)
-- The agent container is on the sandbox network only: no Docker socket, no host mounts beyond explicit read-only grants, no NET_ADMIN/NET_RAW. Port 8787 reaches the LAN only through `agent-web`.
+- The agent container is on the sandbox network only: no Docker socket, no host mounts beyond explicit read-only grants, no NET_ADMIN/NET_RAW. Nothing it serves is reachable from outside the sandbox.
 - Everything inside the agent container is untrusted; enforcement lives in control and egress.
 - Sandbox clients may only call `/api/agent/*` with the agent token. Agent endpoints never let the agent approve permissions, answer its own questions, finish owner tasks, write secrets, change settings, start runs, or change budgets.
 - Secret values are write-only for people and redacted from everything control stores or renders.
 - Model-provider calls from the sandbox need an egress lease. The usage gate fails closed.
 - Prompts are control-owned; archive old text before edits; harness news announces agent-facing changes.
 - Control writes into the agent's storage only for owner uploads into `_inbox/` and extensions' managed folders.
-- Files are served safely: symlink-safe containment; agent HTML/SVG only in a sandboxed frame on a separate origin; agent markdown sanitized.
+- Files are served safely: symlink-safe containment; agent HTML only in a sandboxed frame on a separate origin, SVG only as an image; agent markdown sanitized.
 - Offline-queued actions never include approvals, secrets, settings or budget changes.
 - `/api/peer/*` and `/api/hub/*` are reserved for the hub (later).
-- Browsers send a host's cookies to every port on it, including the agent's page (8787) and the
-  files origin. So agent-web strips `Cookie`, `Authorization` and `Set-Cookie`, and control refuses
-  cookie-authenticated writes without the `X-L0W-Client` header (the web client sends it).
+- Browsers send a host's cookies to every port on it, including the files origin. So control refuses
+  cookie-authenticated writes without the `X-L0W-Client` header (the web client sends it). Agent HTML
+  loads only from the files origin (its port, or its own hostname on a hub), with the sandbox CSP on
+  every response; images, media, SVG (as `<img>`) and PDFs (pdf.js) render inertly in the UI.
+- Requests through the hub tunnel (`L0W_TUNNEL_SUBNET`) are their own caller class: never
+  `/api/agent/*` or `/api/chat-runtime/*`, never "local", client address only from the tunnel's header.
+- Device tokens are scoped (`full`, `cli`, `read`; `auth.scope_allows`); browser sessions are full.
+- Only the gateway holds the instance's private keys (signing, sealing); the recovery key is shown to
+  the owner once and never stored. The gateway is on `hubnet` only (control and the tunnel), never the
+  sandbox network; the tunnel reaches control only by its `control-hub` alias on `hubnet`, so its
+  requests always fall in `L0W_TUNNEL_SUBNET`. Joining a hub needs TOTP or a passkey.
 
 ## Commits
 Authored by the owner only. **No AI co-author or "generated with" lines.** Commit only when the owner asks.

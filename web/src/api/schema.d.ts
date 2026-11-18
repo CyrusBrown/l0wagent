@@ -127,6 +127,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/account/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Device
+         * @description A new device token (for the `l0w` CLI, a script, another app), shown once; revoke it under sessions.
+         */
+        post: operations["create_device_api_account_devices_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/account/sessions/{session_id}": {
         parameters: {
             query?: never;
@@ -1695,6 +1715,146 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/membership": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Membership
+         * @description This instance's hub membership: none (standalone), joined, or left.
+         */
+        get: operations["membership_api_membership_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/membership/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Membership Preview
+         * @description Online only. Reads an invite: fetches and verifies the hub's capabilities, checks the invite, and lists what would stop a join.
+         */
+        post: operations["membership_preview_api_membership_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/membership/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Membership Join
+         * @description Online only. Joins the hub (needs two-step sign-in). The gateway makes fresh keys; the recovery key is in the answer, once.
+         */
+        post: operations["membership_join_api_membership_join_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/membership/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Membership Check
+         * @description Runs the self-check now (it also runs daily).
+         */
+        post: operations["membership_check_api_membership_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/membership/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Membership Rotate
+         * @description Replaces the signing key (the old key signs the rotation) and publishes a new self-description.
+         */
+        post: operations["membership_rotate_api_membership_rotate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/membership/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Membership Recover
+         * @description Replaces the signing key with a rotation signed by the recovery key (when the signing key is lost or stolen).
+         */
+        post: operations["membership_recover_api_membership_recover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/membership/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Membership Leave
+         * @description Leaves the hub. The name is never given to anyone else, and can't be had back.
+         */
+        post: operations["membership_leave_api_membership_leave_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/system/update/check": {
         parameters: {
             query?: never;
@@ -1784,7 +1944,7 @@ export interface paths {
         };
         /**
          * Read File
-         * @description File bytes, for downloads and client-side previewers (text, CSV, notebooks, 3D).
+         * @description File bytes, for downloads, media elements (Range supported) and client-side previewers.
          */
         get: operations["read_file_api_files_raw_get"];
         put?: never;
@@ -1931,7 +2091,7 @@ export interface paths {
         };
         /**
          * Shelf Raw
-         * @description A shelf item's bytes: a kept version, the snapshot, or the live file.
+         * @description A shelf item's bytes: a kept version, the snapshot, or the live file (Range supported).
          */
         get: operations["shelf_raw_api_shelf__item_id__raw_get"];
         put?: never;
@@ -1951,26 +2111,6 @@ export interface paths {
         };
         /** Shelf Preview Url */
         get: operations["shelf_preview_url_api_shelf__item_id__preview_url_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/web": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Web Page
-         * @description The assistant's web page (its port 8787, through agent-web).
-         */
-        get: operations["web_page_api_web_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2228,6 +2368,13 @@ export interface components {
             last_seen_at: string;
             /** Current */
             current: boolean;
+            /**
+             * Scope
+             * @description full: everything; cli: no account, security, secret or settings changes; read: reads only.
+             * @default full
+             * @enum {string}
+             */
+            scope?: "full" | "cli" | "read";
         };
         /** Body_upload_api_uploads_post */
         Body_upload_api_uploads_post: {
@@ -2463,9 +2610,16 @@ export interface components {
         Capabilities: {
             /**
              * Hub
+             * @description This instance is a member of a hub (hub features are on).
              * @default false
              */
             hub?: boolean;
+            /**
+             * Hub Join
+             * @description This install can join a hub (it has the gateway service).
+             * @default false
+             */
+            hub_join?: boolean;
             /**
              * Push
              * @default false
@@ -2849,6 +3003,25 @@ export interface components {
             reply_now_cost: number | null;
             /** Reply Budget Left */
             reply_budget_left: number | null;
+        };
+        /** DeviceCreate */
+        DeviceCreate: {
+            /** Label */
+            label: string;
+            /**
+             * Scope
+             * @default cli
+             * @enum {string}
+             */
+            scope?: "full" | "cli" | "read";
+        };
+        /** DeviceCreated */
+        DeviceCreated: {
+            /**
+             * Device Token
+             * @description Shown once.
+             */
+            device_token: string;
         };
         /** EgressHealth */
         EgressHealth: {
@@ -3253,6 +3426,22 @@ export interface components {
             /** Blocked */
             blocked: number;
         };
+        /** HubInfo */
+        HubInfo: {
+            /** Name */
+            name: string;
+            /** Domain */
+            domain: string;
+            /** Base Url */
+            base_url: string;
+            /**
+             * Policies
+             * @default {}
+             */
+            policies?: {
+                [key: string]: string;
+            };
+        };
         /** InboxCounts */
         InboxCounts: {
             /** Waiting */
@@ -3447,6 +3636,30 @@ export interface components {
              */
             changed_since_allowed?: boolean;
         };
+        /** InvitePreview */
+        InvitePreview: {
+            hub: components["schemas"]["HubInfo"];
+            /** Name Hint */
+            name_hint?: string | null;
+            /** Expires */
+            expires?: string | null;
+            /** Own Url Allowed */
+            own_url_allowed: boolean;
+            example?: components["schemas"]["MemberHostnames"] | null;
+            /** Two Factor Ready */
+            two_factor_ready: boolean;
+            /**
+             * Problems
+             * @description Reasons joining would be refused now (fix them first).
+             * @default []
+             */
+            problems?: string[];
+        };
+        /** InvitePreviewRequest */
+        InvitePreviewRequest: {
+            /** Invite */
+            invite: string;
+        };
         /** Job */
         Job: {
             /** Id */
@@ -3475,6 +3688,46 @@ export interface components {
             started_at: string;
             /** Log Tail */
             log_tail: string;
+        };
+        /** JoinRequest */
+        JoinRequest: {
+            /** Invite */
+            invite: string;
+            /** Name */
+            name: string;
+            /**
+             * Mode
+             * @default tunnel
+             * @enum {string}
+             */
+            mode?: "tunnel" | "own-url";
+            /** @description Own-URL mode: two https URLs on different origins. */
+            own_urls?: components["schemas"]["MemberHostnames"] | null;
+            /**
+             * Backup
+             * @description The owner made a backup first, or chose to skip it.
+             * @enum {string}
+             */
+            backup: "made" | "skipped";
+            /** Idempotency Key */
+            idempotency_key: string;
+        };
+        /** JoinResult */
+        JoinResult: {
+            membership: components["schemas"]["Membership"];
+            /**
+             * Recovery Key
+             * @description Shown once. The instance doesn't keep it.
+             */
+            recovery_key: string;
+        };
+        /** LeaveRequest */
+        LeaveRequest: {
+            /**
+             * Confirm
+             * @description The member's address, typed to confirm.
+             */
+            confirm: string;
         };
         /** LevelPreset */
         LevelPreset: {
@@ -3530,6 +3783,13 @@ export interface components {
              * @description For device tokens: 'Desktop app on mac-mini'.
              */
             device_label?: string | null;
+            /**
+             * Scope
+             * @description For device tokens: what the token may do. Browser sessions are always full.
+             * @default full
+             * @enum {string}
+             */
+            scope?: "full" | "cli" | "read";
         };
         /** LoginResult */
         LoginResult: {
@@ -3548,6 +3808,69 @@ export interface components {
              * @description Only when want=device_token and status=ok. Shown once.
              */
             device_token?: string | null;
+        };
+        /** MemberHostnames */
+        MemberHostnames: {
+            /** Instance */
+            instance: string;
+            /** Files */
+            files: string;
+        };
+        /** MemberKey */
+        MemberKey: {
+            /** Kid */
+            kid: string;
+            /**
+             * Created
+             * Format: date-time
+             */
+            created: string;
+        };
+        /** Membership */
+        Membership: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "standalone" | "joined" | "left";
+            /**
+             * Available
+             * @description This install has the gateway, so it can join a hub.
+             */
+            available: boolean;
+            /** Address */
+            address?: string | null;
+            /** Mode */
+            mode?: ("tunnel" | "own-url") | null;
+            hub?: components["schemas"]["HubInfo"] | null;
+            /** @description Exactly as the hub assigned them. */
+            hostnames?: components["schemas"]["MemberHostnames"] | null;
+            /** @description Where the instance and its files are reached through the hub. */
+            urls?: components["schemas"]["MemberHostnames"] | null;
+            /** Joined At */
+            joined_at?: string | null;
+            /** Left At */
+            left_at?: string | null;
+            tunnel?: components["schemas"]["TunnelStatus"] | null;
+            check?: components["schemas"]["MembershipCheck"] | null;
+            sign_key?: components["schemas"]["MemberKey"] | null;
+            /** Hub Key Alarm */
+            hub_key_alarm?: string | null;
+        };
+        /** MembershipCheck */
+        MembershipCheck: {
+            /** Ok */
+            ok: boolean;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Problems
+             * @default []
+             */
+            problems?: string[];
         };
         /** Message */
         Message: {
@@ -4301,6 +4624,11 @@ export interface components {
             thread_title: string;
             /** Project */
             project: string | null;
+        };
+        /** RecoverRequest */
+        RecoverRequest: {
+            /** Recovery Key */
+            recovery_key: string;
         };
         /** ReserveSettings */
         ReserveSettings: {
@@ -5312,6 +5640,18 @@ export interface components {
              */
             qr_svg: string;
         };
+        /** TunnelStatus */
+        TunnelStatus: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "idle" | "connecting" | "connected" | "offline" | "refused" | "unknown";
+            /** Since */
+            since?: string | null;
+            /** Error */
+            error?: string | null;
+        };
         /** UpdateInfo */
         UpdateInfo: {
             /** Current */
@@ -5511,19 +5851,6 @@ export interface components {
             /** Reason */
             reason?: string | null;
         };
-        /** WebPage */
-        WebPage: {
-            /**
-             * Url
-             * @description Where the browser reaches the assistant's port 8787 (through agent-web).
-             */
-            url: string;
-            /**
-             * Reachable
-             * @description Something is listening on the assistant's port.
-             */
-            reachable: boolean;
-        };
         /**
          * LiveEvent
          * @description One line of GET /api/events (newline-delimited JSON).
@@ -5533,7 +5860,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "hello" | "heartbeat" | "status" | "message" | "thread" | "project" | "card" | "claim" | "timeline" | "run" | "inbox_counts" | "unread" | "job" | "shelf" | "upload" | "question" | "permission" | "task" | "suggestion" | "promote" | "security" | "budget" | "calendar" | "chat" | "chat_delta" | "extension";
+            type: "hello" | "heartbeat" | "status" | "message" | "thread" | "project" | "card" | "claim" | "timeline" | "run" | "inbox_counts" | "unread" | "job" | "shelf" | "upload" | "question" | "permission" | "task" | "suggestion" | "promote" | "security" | "budget" | "calendar" | "chat" | "chat_delta" | "extension" | "membership";
             /**
              * Cursor
              * @description Sync cursor after this event, when it changed cached data.
@@ -5804,6 +6131,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthSession"][];
+                };
+            };
+        };
+    };
+    create_device_api_account_devices_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -9092,6 +9452,198 @@ export interface operations {
             };
         };
     };
+    membership_api_membership_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Membership"];
+                };
+            };
+        };
+    };
+    membership_preview_api_membership_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitePreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    membership_join_api_membership_join_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JoinResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    membership_check_api_membership_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MembershipCheck"];
+                };
+            };
+        };
+    };
+    membership_rotate_api_membership_rotate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Membership"];
+                };
+            };
+        };
+    };
+    membership_recover_api_membership_recover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoverRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Membership"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    membership_leave_api_membership_leave_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Membership"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     check_update_api_system_update_check_post: {
         parameters: {
             query?: never;
@@ -9590,26 +10142,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    web_page_api_web_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WebPage"];
                 };
             };
         };

@@ -1,0 +1,42 @@
+{
+  "description": "Answer to the hub's challenge",
+  "type": "tunnel-hello",
+  "now": "2026-11-17T21:30:00Z",
+  "payload_json": "{\"v\":\"l0w/0.1\",\"type\":\"tunnel-hello\",\"iat\":\"2026-11-17T21:30:00Z\",\"address\":\"mara@hub.example\",\"nonce\":\"r9wNQv6CyBuIGzg-JLQ20qUt5VxmImi14YumW6YHkwc\",\"hub\":\"hub.example\",\"release\":\"0.9.0\"}",
+  "payload_b64": "eyJ2IjoibDB3LzAuMSIsInR5cGUiOiJ0dW5uZWwtaGVsbG8iLCJpYXQiOiIyMDI2LTExLTE3VDIxOjMwOjAwWiIsImFkZHJlc3MiOiJtYXJhQGh1Yi5leGFtcGxlIiwibm9uY2UiOiJyOXdOUXY2Q3lCdUlHemctSkxRMjBxVXQ1VnhtSW1pMTRZdW1XNllIa3djIiwiaHViIjoiaHViLmV4YW1wbGUiLCJyZWxlYXNlIjoiMC45LjAifQ",
+  "signing_input": "l0wagent-sig/1\ntunnel-hello\neyJ2IjoibDB3LzAuMSIsInR5cGUiOiJ0dW5uZWwtaGVsbG8iLCJpYXQiOiIyMDI2LTExLTE3VDIxOjMwOjAwWiIsImFkZHJlc3MiOiJtYXJhQGh1Yi5leGFtcGxlIiwibm9uY2UiOiJyOXdOUXY2Q3lCdUlHemctSkxRMjBxVXQ1VnhtSW1pMTRZdW1XNllIa3djIiwiaHViIjoiaHViLmV4YW1wbGUiLCJyZWxlYXNlIjoiMC45LjAifQ",
+  "signatures": [
+    {
+      "kid": "k1.7jjJipSU1jZBHvxMYWMDhA",
+      "sig": "-_PCPEVUDBWvFs_r1Sz-H6UrGYRlf1UkwzlYlOd5PusFPLaBR8EbZKav-zVk3d-XH-wcfVjAVHig6RxsEWZuAA"
+    }
+  ],
+  "verify_keys": [
+    {
+      "kid": "k1.7jjJipSU1jZBHvxMYWMDhA",
+      "alg": "Ed25519",
+      "use": "sign",
+      "pub": "_-2c7_nOJRpW5HfxP2irxtVfhWWwU-IqTcETdZVWCv4",
+      "created": "2026-11-17T21:30:00Z"
+    }
+  ],
+  "required": [
+    "k1.7jjJipSU1jZBHvxMYWMDhA"
+  ],
+  "document": {
+    "v": "l0w/0.1",
+    "type": "tunnel-hello",
+    "payload": "eyJ2IjoibDB3LzAuMSIsInR5cGUiOiJ0dW5uZWwtaGVsbG8iLCJpYXQiOiIyMDI2LTExLTE3VDIxOjMwOjAwWiIsImFkZHJlc3MiOiJtYXJhQGh1Yi5leGFtcGxlIiwibm9uY2UiOiJyOXdOUXY2Q3lCdUlHemctSkxRMjBxVXQ1VnhtSW1pMTRZdW1XNllIa3djIiwiaHViIjoiaHViLmV4YW1wbGUiLCJyZWxlYXNlIjoiMC45LjAifQ",
+    "sigs": [
+      {
+        "kid": "k1.7jjJipSU1jZBHvxMYWMDhA",
+        "sig": "-_PCPEVUDBWvFs_r1Sz-H6UrGYRlf1UkwzlYlOd5PusFPLaBR8EbZKav-zVk3d-XH-wcfVjAVHig6RxsEWZuAA"
+      }
+    ]
+  },
+  "challenge": {
+    "t": "challenge",
+    "nonce": "r9wNQv6CyBuIGzg-JLQ20qUt5VxmImi14YumW6YHkwc",
+    "hub": "hub.example"
+  }
+}

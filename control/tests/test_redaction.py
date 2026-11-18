@@ -49,9 +49,13 @@ def test_store_text_takes_a_vault_or_a_backend(be):
 
 # Columns that can't hold owner or agent text. Everything else of type TEXT must be in vault.SCRUB.
 NOT_TEXT = {
+    # hub membership (H3): what the hub and the gateway sent (addresses, hostnames, keys, signed documents), never owner or agent text
+    "hub_membership": {"state", "hub_base", "hub_domain", "hub_name", "hub_key", "capabilities", "api", "name", "address", "mode", "hostnames",
+                       "own_urls", "tunnel_url", "self_doc", "joined_at", "left_at", "backup", "check_at", "check_result", "hub_key_alarm"},
+    "hub_log": {"event", "detail"},
     "extensions": {"name", "version", "sdk", "source", "found_at"}, "extension_kv": {"ext", "key"}, "extension_cards": {"ext", "kind", "status"},
     # ids, tokens, hashes and keys
-    "api_tokens": {"id", "token_hash", "scopes_json"}, "auth_sessions": {"id", "kind", "token_hash", "ip", "user_agent"},
+    "api_tokens": {"id", "token_hash", "scopes_json"}, "auth_sessions": {"id", "kind", "token_hash", "ip", "user_agent", "scope"},
     "oauth_codes": {"code_hash", "redirect_uri", "challenge", "resource"}, "oauth_tokens": {"token_hash", "kind"},
     "oauth_grants": {"client_id", "scopes"}, "oauth_clients": {"client_id", "redirect_uris"}, "recovery_codes": {"code_hash"},
     "idempotency_keys": {"key", "endpoint", "response_json"}, "shelf_versions": {"blob_path", "sha256"},

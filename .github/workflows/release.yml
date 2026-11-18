@@ -4,7 +4,12 @@ name: Release
 on:
   push:
     branches: [main]
+    # Instance releases only. Hub releases are tagged hub-X.Y.Z, never v*, and never make a GitHub
+    # release (control's update banner reads the latest release); hub/ deploys from the private ops repo.
     tags: ["v*"]
+    # The :edge images don't change when only the hub, the spec's documents or the docs do. (Path filters
+    # aren't applied to tag pushes, so releases always build.) protocol/py is in the images, so it counts.
+    paths-ignore: ["hub/**", "docs/**", "protocol/*.md", "protocol/schemas/**", "protocol/vectors/**", "protocol/conformance/**", "dev/hub/**", "**/*.md"]
 
 permissions:
   contents: write
@@ -19,8 +24,9 @@ jobs:
           - { name: control, context: ., file: deploy/control.Dockerfile }
           - { name: agent, context: agent, file: agent/Dockerfile }
           - { name: egress, context: egress, file: egress/Dockerfile }
-          - { name: agent-web, context: agent-web, file: agent-web/Dockerfile }
           - { name: chat-runtime, context: chat-runtime, file: chat-runtime/Dockerfile }
+          - { name: gateway, context: ., file: gateway/Dockerfile }
+          - { name: tunnel, context: ., file: tunnel/Dockerfile }
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3

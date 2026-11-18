@@ -62,7 +62,7 @@ describe('phone shell', () => {
     fireEvent.click(more)
     const sheet = await screen.findByRole('dialog', { name: 'More' })
     expect(sheet).toHaveAttribute('aria-modal', 'true')
-    for (const name of ['Files', 'Tools', 'Calendar', 'Network', 'Web page', 'Settings']) {
+    for (const name of ['Files', 'Tools', 'Calendar', 'Network', 'Settings']) {
       expect(within(sheet).getByRole('link', { name: new RegExp(`^${name}`) })).toBeInTheDocument()
     }
     await waitFor(() => expect(sheet).toHaveFocus())

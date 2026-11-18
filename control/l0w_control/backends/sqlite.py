@@ -37,6 +37,7 @@ from ..files_origin import make_app as files_app
 from ..integrations import Integrations
 from ..jobs import Jobs
 from ..live import Live
+from ..membership import Gateway, Membership
 from ..notify import Notifier
 from ..retention import run_retention
 from ..reviewer import Reviewer
@@ -105,6 +106,10 @@ class SqliteBackend(Backend):
         self.conv.notify = self.notifier.notify
         self.chats_ = Chats(self.db, self, self.live, self.budgets, self.vault)
         self.connector = Connector(self.db, self)
+        gw_url, gw_token = os.environ.get("L0W_GATEWAY_URL", ""), os.environ.get("L0W_GATEWAY_TOKEN", "")
+        self.membership_ = Membership(self.db, self.notifier, self.live, gateway=Gateway(gw_url, gw_token) if gw_url and gw_token else None,
+                                      two_factor=self._two_factor_on)
+        self.notifier.public_origin = lambda: self.membership_.instance_origin() or os.environ.get("L0W_PUBLIC_URL")
         self.signer = Signer(self.vault.key)
         from ..extensions import Extensions
 
@@ -142,6 +147,10 @@ class SqliteBackend(Backend):
         self.chats_.startup()
         self.ext.startup(self.loop)
         await self.runs_mgr.startup()
+        try:
+            await self.membership_.startup()
+        except Exception:  # noqa: BLE001  (the gateway may still be starting; the daily check repairs it)
+            pass
         self._watcher = asyncio.create_task(self.shelf_.watch(self.runs_mgr.active_run_id))
         self._scheduler = asyncio.create_task(self.scheduler.loop()) if os.environ.get("L0W_SCHEDULER", "1") != "0" else None
         self._reviewer = asyncio.create_task(self.reviewer.loop())
@@ -173,7 +182,8 @@ class SqliteBackend(Backend):
 
     # ── meta, status, sync, events ─────────────────────────────────────────
     def meta(self) -> s.Meta:
-        return s.Meta(server_version=__version__, api_version=API_VERSION, ui_bundle_version=__version__, capabilities=s.Capabilities(extensions=sorted(self.ext.loaded)),
+        caps = s.Capabilities(extensions=sorted(self.ext.loaded), hub=self.membership_.joined() is not None, hub_join=self.membership_.gw is not None)
+        return s.Meta(server_version=__version__, api_version=API_VERSION, ui_bundle_version=__version__, capabilities=caps,
                       setup_complete=self.auth.owner() is not None, instance_name=self.env.instance_name)
 
     def status(self) -> s.Status:
@@ -228,6 +238,12 @@ class SqliteBackend(Backend):
     def auth_sessions(self, current_cookie, current_bearer):
         return self.auth.sessions(current_cookie, current_bearer)
 
+    def token_scope(self, bearer):
+        return self.auth.scope(None, bearer)
+
+    def create_device(self, req, ip, user_agent):
+        return s.DeviceCreated(device_token=self.auth.create_device(req.label, req.scope, ip, user_agent))
+
     def revoke_session(self, session_id):
         self.auth.revoke(session_id)
         for a in self.db.q("SELECT id FROM security_alerts WHERE session_id=? AND status='open'", (session_id,)):
@@ -254,6 +270,38 @@ class SqliteBackend(Backend):
         self.notifier.notify("new_device", text, "If this wasn't you, revoke it from your Inbox.", "/inbox", "security_alert", str(aid))
         self.live.changed("security_alert", aid)
         self.live.emit("inbox_counts")
+
+    # ── hub membership (H3) ────────────────────────────────────────────────
+    def _two_factor_on(self) -> bool:
+        o = self.auth.owner()
+        return bool(o and (o.totp_enabled or o.passkeys))
+
+    def membership(self) -> s.Membership:
+        return self._await(self.membership_.view())
+
+    def membership_preview(self, req: s.InvitePreviewRequest) -> s.InvitePreview:
+        return self._await(self.membership_.preview(req))
+
+    def membership_join(self, req: s.JoinRequest) -> s.JoinResult:
+        return self._await(self.membership_.join(req), timeout=120)
+
+    def membership_check(self) -> s.MembershipCheck:
+        return self._await(self.membership_.check())
+
+    def membership_rotate(self) -> s.Membership:
+        return self._await(self.membership_.rotate())
+
+    def membership_recover(self, req: s.RecoverRequest) -> s.Membership:
+        return self._await(self.membership_.recover(req))
+
+    def membership_leave(self, req: s.LeaveRequest) -> s.Membership:
+        return self._await(self.membership_.leave(req))
+
+    def self_description(self) -> dict | None:
+        return self.membership_.self_doc()
+
+    def public_origins(self) -> tuple[str | None, str | None]:
+        return self.membership_.instance_origin(), self.membership_.files_origin()
 
     # ── inbox ──────────────────────────────────────────────────────────────
     def _alert(self, aid: int) -> s.SecurityAlert:
@@ -528,6 +576,12 @@ class SqliteBackend(Backend):
         body, size = self.storage.iter_file(volume, path)
         return body, size, guess_mime(path)
 
+    def file_stat(self, volume: str, path: str) -> tuple[int, str]:
+        return self.storage.stat(volume, path).st_size, guess_mime(path)
+
+    def file_range(self, volume: str, path: str, start: int, end: int) -> bytes:
+        return self.storage.read_range(volume, path, start, end)[0]
+
     def file_history(self, volume: str, path: str) -> list[s.FileHistoryEntry]:
         return [s.FileHistoryEntry(rev=h["rev"], run_id=h["run_id"] or self._run_at(h["time"]), at=h["at"], added=h["added"], removed=h["removed"], message=h["message"])
                 for h in self.storage.history(volume, path)]
@@ -582,17 +636,6 @@ class SqliteBackend(Backend):
             folder, _, name = it.path.rpartition("/")
             return self._signed({"k": "dir", "v": it.volume, "p": folder}, name, files_origin)
         return self._signed({"k": "shelf", "i": item_id, "n": version}, it.path.rsplit("/", 1)[-1], files_origin)
-
-    def web_page(self, url: str) -> s.WebPage:
-        import socket
-
-        host, _, port = os.environ.get("L0W_AGENT_WEB_TARGET", "agent:8787").rpartition(":")
-        try:
-            with socket.create_connection((host, int(port)), timeout=1):
-                reachable = True
-        except OSError:
-            reachable = False
-        return s.WebPage(url=url, reachable=reachable)
 
     # ── network ────────────────────────────────────────────────────────────
     def network(self, filter: str = "all") -> s.NetworkView:
@@ -829,6 +872,7 @@ class SqliteBackend(Backend):
     async def _housekeeping(self, now) -> None:
         from datetime import timedelta
         await self._check_disk(now)
+        await self.membership_.housekeeping(now)
         if self.settings.get("UPDATE_CHECK"):
             before = self.updates.info().available
             await self.updates.check()

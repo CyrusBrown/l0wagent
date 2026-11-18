@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.l0wagent.invalid/0.1/self.json",
+  "title": "self",
+  "description": "Payload of a self document (identity.md)",
+  "type": "object",
+  "required": [
+    "v",
+    "type",
+    "iat",
+    "address",
+    "seq",
+    "keys",
+    "history",
+    "hostnames",
+    "protocols"
+  ],
+  "properties": {
+    "v": {
+      "const": "l0w/0.1"
+    },
+    "type": {
+      "const": "self"
+    },
+    "iat": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+      "description": "RFC 3339 UTC, whole seconds"
+    },
+    "exp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+      "description": "RFC 3339 UTC, whole seconds"
+    },
+    "address": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*@[a-z0-9][a-z0-9.-]*(:[0-9]+)?$"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "keys": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "$ref": "key.json"
+      },
+      "description": "Exactly one current key each for use sign, seal and recover"
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "$ref": "signed-document.json"
+      },
+      "description": "Signed rotation documents, oldest first"
+    },
+    "hostnames": {
+      "type": "object",
+      "required": [
+        "instance",
+        "files"
+      ],
+      "properties": {
+        "instance": {
+          "type": "string"
+        },
+        "files": {
+          "type": "string"
+        }
+      }
+    },
+    "own_urls": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "instance",
+            "files"
+          ],
+          "properties": {
+            "instance": {
+              "type": "string"
+            },
+            "files": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "protocols": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": true
+}

@@ -69,3 +69,4 @@ Resolutions: **plan** = update the plan to match the mockup. **owner** = needs y
 | 21 | Agent web page on port 8080. | Port 8787. | **fixture**. |
 | 22 | Routines "Weekly digest" and "Inbox triage". | Built-in "weekly review". | **fixture**: rename to Weekly review. |
 | 23 | `/workspace` holds `projects/ people/ journal/ memory/`; uploads in `inbox/`. | The workspace seed; uploads in `_inbox/`. | **fixture**. |
+| 24 | Home has an "Assistant's web page" card (and More lists a Web page screen). | Removed: the agent has no web page; port 8787 and `agent-web` are gone (hub plan decision 5, docs/plans/hub-development.md). | **removed**. |

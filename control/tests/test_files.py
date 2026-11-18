@@ -206,3 +206,69 @@ def test_zip_and_raw_stream_in_chunks(c, tree, monkeypatch):
     assert arc.testzip() is None
     r = c.get("/api/files/raw", params={"volume": "work", "path": "garden/big.bin", "download": True})
     assert r.content == data and r.headers["content-length"] == str(len(data))
+
+
+def test_sandbox_header_on_every_files_response(c):
+    files = TestClient(c.be.files_app, raise_server_exceptions=False)
+    for path in ("/", "/nope", "/f/garbage/x", "/f/a.b/x"):
+        r = files.get(path)
+        assert r.status_code >= 400 and r.headers["content-security-policy"].startswith("sandbox allow-scripts"), path
+        assert r.headers["x-content-type-options"] == "nosniff"
+
+
+def test_files_hostname(c, monkeypatch):
+    """On a hub the files app answers at its own hostname, on control's port, and nothing else of control does."""
+    monkeypatch.setenv("L0W_FILES_ORIGIN", "https://files--mara.example.net")
+    url = ok(c.get("/api/files/preview-url", params={"volume": "work", "path": "garden/page.html"}))["url"]
+    assert url.startswith("https://files--mara.example.net/f/")
+    path = url.split("example.net", 1)[1]
+    for host in ("files--mara.example.net", "FILES--mara.example.net:443"):
+        page = c.get(path, headers={"host": host})
+        assert page.status_code == 200 and page.text.startswith("<h1>hi</h1>")
+        assert page.headers["content-security-policy"].startswith("sandbox allow-scripts") and "x-frame-options" not in page.headers
+    r = c.get("/api/auth/me", headers={"host": "files--mara.example.net"})
+    assert r.status_code == 404 and r.headers["content-security-policy"].startswith("sandbox")
+    assert c.get("/api/auth/me").status_code == 200  # the instance hostname is unchanged
+    # The agent's network can't use the files hostname to reach anything.
+    with TestClient(create_app(c.be), client=("10.255.255.7", 5000)) as agent:
+        assert agent.get(path, headers={"host": "files--mara.example.net"}).status_code == 404
+
+
+def test_raw_supports_range(c, tree):
+    data = bytes(range(256)) * 4
+    (tree / "work" / "garden" / "clip.mp4").write_bytes(data)
+    p = {"volume": "work", "path": "garden/clip.mp4"}
+    r = c.get("/api/files/raw", params=p)
+    assert r.status_code == 200 and r.headers["accept-ranges"] == "bytes" and r.content == data
+    assert r.headers["x-content-type-options"] == "nosniff" and r.headers["content-security-policy"] == "sandbox"
+    for hdr, lo, hi in (("bytes=10-19", 10, 19), ("bytes=1000-", 1000, 1023), ("bytes=-24", 1000, 1023), ("bytes=1020-5000", 1020, 1023)):
+        r = c.get("/api/files/raw", params=p, headers={"Range": hdr})
+        assert r.status_code == 206, hdr
+        assert r.content == data[lo:hi + 1] and r.headers["content-range"] == f"bytes {lo}-{hi}/1024"
+        assert r.headers["content-security-policy"] == "sandbox" and r.headers["x-content-type-options"] == "nosniff"
+    for hdr in ("bytes=1024-", "bytes=2000-3000", "bytes=-0"):
+        r = c.get("/api/files/raw", params=p, headers={"Range": hdr})
+        assert r.status_code == 416 and r.headers["content-range"] == "bytes */1024", hdr
+    assert c.get("/api/files/raw", params=p, headers={"Range": "bytes=0-1,5-6"}).status_code == 200
+    # HTML stays text/plain even for a range.
+    r = c.get("/api/files/raw", params={"volume": "work", "path": "garden/page.html"}, headers={"Range": "bytes=0-3"})
+    assert r.status_code == 206 and r.content == b"<h1>" and r.headers["content-type"].startswith("text/plain")
+
+
+def test_shelf_raw_supports_range(c, tree):
+    (tree / "work" / "garden" / "song.mp3").write_bytes(b"0123456789")
+    pj = ok(c.post("/api/projects", json={"name": "Garden", "idempotency_key": "g1"}), 201)
+    item = ok(c.post(f"/api/projects/{pj['slug']}/shelf", json={"volume": "work", "path": "garden/song.mp3", "mode": "live"}), 201)
+    r = c.get(f"/api/shelf/{item['id']}/raw", headers={"Range": "bytes=2-4"})
+    assert r.status_code == 206 and r.content == b"234" and r.headers["content-range"] == "bytes 2-4/10"
+    assert c.get(f"/api/shelf/{item['id']}/raw", headers={"Range": "bytes=10-"}).status_code == 416
+
+
+def test_files_origin_pdf_is_sandboxed_too(c, tree):
+    (tree / "work" / "garden" / "doc.pdf").write_bytes(b"%PDF-1.4 x")
+    url = ok(c.get("/api/files/preview-url", params={"volume": "work", "path": "garden/doc.pdf"}))["url"]
+    r = TestClient(c.be.files_app).get(url[url.index("/f/"):])
+    assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
+    assert r.headers["content-security-policy"].startswith("sandbox allow-scripts")
+    r = TestClient(c.be.files_app).get(url[url.index("/f/"):], headers={"Range": "bytes=0-3"})
+    assert r.status_code == 206 and r.headers["content-security-policy"].startswith("sandbox")

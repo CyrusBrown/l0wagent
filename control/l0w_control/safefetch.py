@@ -22,7 +22,7 @@ from .backends.base import BadRequest
 
 # The compose services and networks (compose.yaml), plus names the host side gives itself.
 STACK_NAMES = frozenset({
-    "control", "egress", "egress-admin", "agent", "agent-web", "runner", "chat-runtime", "web", "sandbox", "chat", "ctl", "outside",
+    "control", "egress", "egress-admin", "agent", "runner", "chat-runtime", "web", "sandbox", "chat", "ctl", "outside",
     "localhost", "host.docker.internal", "gateway.docker.internal",
 })
 

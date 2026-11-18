@@ -15,6 +15,67 @@ jobs:
       - run: uv run pytest -q
       - run: uv run python scripts/export_openapi.py --check
 
+  protocol:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: protocol/py } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - run: uv run pytest -q
+      - run: uv run python scripts/make_vectors.py --check
+      - run: uv run python scripts/make_schemas.py --check
+      - run: python3 ../../dev/check-boundaries.py   # instance and hub/ depend only on protocol/
+
+  fake-hub:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: dev/hub } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - run: uv run pytest -q   # includes the whole conformance suite against the fake hub
+
+  gateway:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: gateway } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - run: uv run pytest -q
+      - run: uv run ruff check .
+
+  tunnel:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: tunnel } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - run: uv run pytest -q
+      - run: uv run ruff check .
+
+  # The generic hub on Cloudflare: unit tests (spec vectors), then the whole conformance suite against
+  # `wrangler dev` running locally (scripts/conformance.sh starts and stops it).
+  hub:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: hub } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: pnpm/action-setup@v4
+        with: { package_json_file: hub/package.json }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm, cache-dependency-path: hub/pnpm-lock.yaml }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: ./scripts/conformance.sh
+      # A real instance (control + gateway + tunnel) joins this hub under wrangler dev and is reached through it.
+      - run: uv sync --frozen && uv run pytest -q tests/test_hub_join.py -k hub-core
+        working-directory: control
+
   web:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: web } }
@@ -54,7 +115,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker compose -f compose.dev.yaml up -d --build --wait control egress agent agent-web
+      - run: docker compose -f compose.dev.yaml up -d --build --wait control egress agent gateway tunnel
       - run: dev/isolation-test.sh
       - if: failure()
         run: docker compose -f compose.dev.yaml logs --tail 200

@@ -1,0 +1,28 @@
+[project]
+name = "l0w-gateway"
+version = "0.1.0"
+description = "The l0wagent hub gateway: the only holder of the instance's private keys for the hub protocol"
+requires-python = ">=3.12,<3.13"
+dependencies = ["l0wproto", "starlette>=0.40", "uvicorn>=0.30"]
+
+[dependency-groups]
+dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.6"]
+
+[tool.uv.sources]
+l0wproto = { path = "../protocol/py", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["l0w_gateway"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 190
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

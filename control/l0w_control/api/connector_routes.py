@@ -17,7 +17,8 @@ from starlette.concurrency import run_in_threadpool
 
 from ..backends.base import Unauthorized
 from ..connector import SCOPES, OAuthError
-from ..netaddr import client_ip
+from ..membership import hub_origins
+from ..netaddr import client_ip, request_scheme
 
 if TYPE_CHECKING:
     from ..connector import Connector
@@ -31,8 +32,14 @@ def _c(request: Request) -> Connector:
 
 
 def base_url(request: Request) -> str:
-    """The instance's public URL: L0W_PUBLIC_URL, else what the client used to reach it."""
-    return (os.environ.get("L0W_PUBLIC_URL") or str(request.base_url)).rstrip("/")
+    """The instance's public URL: L0W_PUBLIC_URL; through a hub's tunnel, the instance hostname the hub
+    assigned; else what the client used to reach it (with the scheme a trusted proxy reports)."""
+    if os.environ.get("L0W_PUBLIC_URL"):
+        return os.environ["L0W_PUBLIC_URL"].rstrip("/")
+    hub = hub_origins(request)[0]
+    if hub:
+        return hub
+    return str(request.base_url.replace(scheme=request_scheme(request))).rstrip("/")
 
 
 def _oauth_error(e: OAuthError) -> JSONResponse:

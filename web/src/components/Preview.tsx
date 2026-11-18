@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { api, ok, type S } from '../api/client'
 import { bytes } from './format'
 import { ExtSlot } from '../ext/ExtElement'
@@ -8,6 +8,7 @@ import { useExtensions } from '../ext/useExtensions'
 import { Markdown } from './Markdown'
 
 const Model3D = lazy(() => import('./Model3D'))
+const PdfView = lazy(() => import('./PdfView'))
 
 /** What a preview shows: a file in the agent's storage, or a shelf item (optionally a kept version). */
 export type Source =
@@ -50,6 +51,18 @@ function usePreviewUrl(src: Source, enabled: boolean) {
   })
 }
 
+/** A blob: URL for some text, revoked when it changes or the component goes away. */
+function useBlobUrl(text: string | undefined, type: string) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (text == null) { setUrl(null); return }
+    const u = URL.createObjectURL(new Blob([text], { type }))
+    setUrl(u)
+    return () => URL.revokeObjectURL(u)
+  }, [text, type])
+  return url
+}
+
 function useText(src: Source, enabled: boolean, version?: string | number) {
   return useQuery({
     queryKey: ['files', 'text', src, version],
@@ -85,7 +98,10 @@ function BuiltinPreview({ src, size, stamp, compact, as }: { src: Source; size?:
   const textual = ['markdown', 'code', 'csv', 'json', 'notebook'].includes(kind)
   const tooBig = textual && size != null && size > TEXT_MAX
   const text = useText(src, textual && !tooBig, stamp)
-  const framed = ['image', 'audio', 'video', 'pdf', 'html'].includes(kind)
+  const svg = kind === 'image' && /\.svg$/i.test(src.path)
+  const svgText = useText(src, svg, stamp)
+  const blobUrl = useBlobUrl(svg ? svgText.data : undefined, 'image/svg+xml')
+  const framed = kind === 'html'
   const link = usePreviewUrl(src, framed)
   const name = src.path.split('/').pop() ?? ''
 
@@ -102,14 +118,21 @@ function BuiltinPreview({ src, size, stamp, compact, as }: { src: Source; size?:
     if (kind === 'notebook') return <Notebook text={text.data} />
     return <CodeView text={text.data} />
   }
+  // Inert kinds come straight from the main origin's raw route: images, media, PDFs drawn on canvases,
+  // and SVG as an <img> from a blob (so it never runs). Only HTML needs the files origin.
+  if (svg) {
+    if (svgText.isError) return <div className="error">Couldn't read the file: {(svgText.error as Error).message}</div>
+    if (!blobUrl) return <div className="sub">Loading…</div>
+    return <div className="media-preview"><img src={blobUrl} alt={name} /></div>
+  }
+  if (kind === 'image') return <div className="media-preview"><img src={rawUrl(src)} alt={name} /></div>
+  if (kind === 'audio') return <audio className="audio-preview" controls src={rawUrl(src)} />
+  if (kind === 'video') return <video className="video-preview" controls src={rawUrl(src)} />
+  if (kind === 'pdf') return <Suspense fallback={<div className="sub">Loading the PDF viewer…</div>}><PdfView url={rawUrl(src)} name={name} /></Suspense>
   if (framed) {
     if (link.isError) return <div className="error">Couldn't open a preview link.</div>
     const url = link.data?.url
     if (!url) return <div className="sub">Loading…</div>
-    if (kind === 'image') return <div className="media-preview"><img src={url} alt={name} /></div>
-    if (kind === 'audio') return <audio className="audio-preview" controls src={url} />
-    if (kind === 'video') return <video className="video-preview" controls src={url} />
-    if (kind === 'pdf') return <iframe className="frame-preview" title={name} src={url} />
     return (
       <div className="stack" style={{ gap: 6 }}>
         <div className="sub row-start"><span className="pill ok">sandboxed</span>Agent-made page, shown on a separate origin. <a href={url} target="_blank" rel="noopener noreferrer">Open in new tab</a></div>

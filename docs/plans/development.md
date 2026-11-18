@@ -2,7 +2,7 @@
 
 The order of work, what each milestone delivers, and how we know it's done. Part of the [overhaul plan](README.md).
 
-**Rule: the assistant and its UI come first.** Everything hub-related (friends, board, email, shared spaces, published services, streams) and the other optional extras wait until the owner says to start them. Early milestones leave **seams** for them (auth modes, capability flags, UI slots), not features.
+**Rule: the assistant and its UI come first.** Everything hub-related (friends, board, email, shared spaces, published services, streams) and the other optional extras wait until the owner says to start them (the hub: started 2026-11-17, see below). Early milestones leave **seams** for them (auth modes, capability flags, UI slots), not features.
 
 ## Tracks
 - **Backend** (control, runner, agent image, egress) and **UI** (the React app, starting from the mockup) move together. Every milestone includes the screens for what it builds, so each one ends with something usable end to end.
@@ -258,8 +258,10 @@ Decided 2026-11-16 ([wakeups review](../review/2026-11-16-wakeups-and-providers.
 
 ---
 
+## The hub (started 2026-11-17)
+The owner said to start the hub. Its stages (H1–H7) and their done-when checks are in [hub-development.md](hub-development.md); progress is tracked there. Hub services themselves are built in a separate repo. The SDK was built in M8 (owner, 2026-11-18); hub services' extensions use it.
+
 ## Later: not started until you say
-- **Hub**: revised 2026-11-16. Step 0 is making the instance ready for the internet (the "before the hub" fixes, passkeys, backups, scoped tokens, both domains on the Public Suffix List), then the protocol and a fake hub, then the core on Cloudflare, the gateway with friends and messages, the connector through the hub, hub services, published services on the content domain, rooms and spaces, email, linking, streams. Order in [hub.md](hub.md#build-order). The SDK itself was built in M8 (owner, 2026-11-18); the hub services' extensions use it.
 - **More providers** (Google AI Studio, OpenRouter, local models), the planner model, the adaptive reserve.
 - **The desktop app** (owner, 2026-11-18: set aside; was M9): the Tauri app per [ui.md](ui.md#desktop-tauri), with the connect screen, device token, the cached server UI, native notifications, tray, `l0wagent://` links, drag-and-drop and CI-built unsigned installers. Together with it, the **"Open in app" link page** for the connector's links. The installable web app covers desktop use until then.
 - The extension catalog, the CAD visual diff, the desktop app starting a local Docker stack.

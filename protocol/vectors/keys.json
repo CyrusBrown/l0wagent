@@ -1,0 +1,65 @@
+{
+  "note": "Seeds are SHA-256('l0wagent-vector-seed/' + label). The seed is the 32-byte Ed25519/X25519 private key.",
+  "keys": {
+    "member-sign": {
+      "seed": "4aa9a9561a86a02807e6cde6a1fdc50feec26c3f2186473a5d5650bfb42d6a7f",
+      "key": {
+        "kid": "k1.7jjJipSU1jZBHvxMYWMDhA",
+        "alg": "Ed25519",
+        "use": "sign",
+        "pub": "_-2c7_nOJRpW5HfxP2irxtVfhWWwU-IqTcETdZVWCv4",
+        "created": "2026-11-17T21:30:00Z"
+      }
+    },
+    "member-seal": {
+      "seed": "240200f1fbad3fca946de69e66e9b2ccbf7563909af780b8a14a62ec37987013",
+      "key": {
+        "kid": "k1.uE5l--pYHGdaZTY-sHD90Q",
+        "alg": "X25519",
+        "use": "seal",
+        "pub": "TvI1yw2S0w404arbvNlWSilV5iTAPKMvhBWXmUJrFiE",
+        "created": "2026-11-17T21:30:00Z"
+      }
+    },
+    "member-recover": {
+      "seed": "747ff959bdc0bd616b44ff2cf028cca9e48fd91deec872f7ca15303fbd26c85a",
+      "key": {
+        "kid": "k1.lFPm_Dsd-8gxz1QZeLWCLg",
+        "alg": "Ed25519",
+        "use": "recover",
+        "pub": "5YF4asiwt1BysW1UJ0jYR-l78k0zTY7S3FpQkAX3iK0",
+        "created": "2026-11-17T21:30:00Z"
+      }
+    },
+    "member-sign-2": {
+      "seed": "d9e29879af50d5fda9761414d63d68e7082d57544363415a711e980ba2948c89",
+      "key": {
+        "kid": "k1.3gjCDkYEoYDXYV1n-lILmg",
+        "alg": "Ed25519",
+        "use": "sign",
+        "pub": "4Glb3WjQ0o2J8EPG8anG19FacWAGTRs6boiIkIj8G2I",
+        "created": "2026-11-17T21:30:00Z"
+      }
+    },
+    "hub-sign": {
+      "seed": "ecb6142ed79ba186d79f8a244a5c6d03dddeb0b0362306cbdbd3dd3b8c21a31c",
+      "key": {
+        "kid": "k1.hmVthpzAnnRyhRX_LZwsYA",
+        "alg": "Ed25519",
+        "use": "sign",
+        "pub": "e17MT0LBD425WrvLStwN5P00ObS5N_TAnLkmPVHPddY",
+        "created": "2026-11-17T21:30:00Z"
+      }
+    },
+    "hop-sign": {
+      "seed": "abeacd3acf50be3a55c0724f1100d5777c6a51713232ba57857f6a097d32064b",
+      "key": {
+        "kid": "k1.Q2PclzZc3ev9K7FdvRWPQg",
+        "alg": "Ed25519",
+        "use": "sign",
+        "pub": "ij-KEpfTjJ25zelkoIDsCk0BCq4cXazcW9j16G4jrNA",
+        "created": "2026-11-17T21:30:00Z"
+      }
+    }
+  }
+}

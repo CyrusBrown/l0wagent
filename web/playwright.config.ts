@@ -13,6 +13,7 @@ export default defineConfig({
   timeout: 120_000,
   workers: 1,
   reporter: [['list']],
+  testIgnore: /h3-hub/,  // the hub spec has its own stack: playwright.hub.config.ts
   use: { baseURL: `http://localhost:${WEB_PORT}`, trace: 'retain-on-failure' },
   webServer: [
     {

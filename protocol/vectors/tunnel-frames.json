@@ -1,0 +1,120 @@
+{
+  "valid": [
+    {
+      "description": "OPEN",
+      "type": 1,
+      "flags": 0,
+      "stream_id": 1,
+      "payload_hex": "7b226d6574686f64223a22474554222c22746172676574223a222f6170692f6865616c74683f783d31222c22686f7374223a226d6172612e6875622e6578616d706c65222c2268656164657273223a5b5b22616363657074222c226170706c69636174696f6e2f6a736f6e225d5d2c22636c69656e74223a223230332e302e3131332e39222c22736368656d65223a226874747073227d",
+      "frame_hex": "0100000000017b226d6574686f64223a22474554222c22746172676574223a222f6170692f6865616c74683f783d31222c22686f7374223a226d6172612e6875622e6578616d706c65222c2268656164657273223a5b5b22616363657074222c226170706c69636174696f6e2f6a736f6e225d5d2c22636c69656e74223a223230332e302e3131332e39222c22736368656d65223a226874747073227d"
+    },
+    {
+      "description": "RESPONSE",
+      "type": 2,
+      "flags": 0,
+      "stream_id": 1,
+      "payload_hex": "7b22737461747573223a3230302c2268656164657273223a5b5b22636f6e74656e742d74797065222c226170706c69636174696f6e2f6a736f6e225d5d7d",
+      "frame_hex": "0200000000017b22737461747573223a3230302c2268656164657273223a5b5b22636f6e74656e742d74797065222c226170706c69636174696f6e2f6a736f6e225d5d7d"
+    },
+    {
+      "description": "DATA",
+      "type": 3,
+      "flags": 0,
+      "stream_id": 1,
+      "payload_hex": "68656c6c6f",
+      "frame_hex": "03000000000168656c6c6f"
+    },
+    {
+      "description": "DATA at the 65536 limit",
+      "type": 3,
+      "flags": 0,
+      "stream_id": 3,
+      "payload_hex": "00 x 65536",
+      "frame_hex": "030000000003 + payload",
+      "elided": true
+    },
+    {
+      "description": "END",
+      "type": 4,
+      "flags": 0,
+      "stream_id": 1,
+      "payload_hex": "",
+      "frame_hex": "040000000001"
+    },
+    {
+      "description": "RESET",
+      "type": 5,
+      "flags": 0,
+      "stream_id": 3,
+      "payload_hex": "7b226572726f72223a22666c6f775f636f6e74726f6c227d",
+      "frame_hex": "0500000000037b226572726f72223a22666c6f775f636f6e74726f6c227d"
+    },
+    {
+      "description": "CREDIT 262144",
+      "type": 6,
+      "flags": 0,
+      "stream_id": 1,
+      "payload_hex": "00040000",
+      "frame_hex": "06000000000100040000"
+    },
+    {
+      "description": "PING",
+      "type": 7,
+      "flags": 0,
+      "stream_id": 0,
+      "payload_hex": "0001020304050607",
+      "frame_hex": "0700000000000001020304050607"
+    },
+    {
+      "description": "PONG",
+      "type": 7,
+      "flags": 1,
+      "stream_id": 0,
+      "payload_hex": "0001020304050607",
+      "frame_hex": "0701000000000001020304050607"
+    }
+  ],
+  "malformed": [
+    {
+      "why": "too short",
+      "frame_hex": "01000000"
+    },
+    {
+      "why": "unknown type",
+      "frame_hex": "09000000000100"
+    },
+    {
+      "why": "DATA with stream id 0",
+      "frame_hex": "03000000000000"
+    },
+    {
+      "why": "DATA over 65536 bytes",
+      "frame_hex": "030000000001... (65543 bytes)",
+      "frame_hex_elided": true
+    },
+    {
+      "why": "END with a payload",
+      "frame_hex": "04000000000100"
+    },
+    {
+      "why": "CREDIT with 3 bytes",
+      "frame_hex": "060000000001000000"
+    },
+    {
+      "why": "PING with stream id 1",
+      "frame_hex": "0700000000010001020304050607"
+    },
+    {
+      "why": "PING with 7 bytes",
+      "frame_hex": "07000000000000010203040506"
+    },
+    {
+      "why": "RESPONSE not JSON",
+      "frame_hex": "0200000000017b"
+    },
+    {
+      "why": "RESET without error",
+      "frame_hex": "0500000000017b7d"
+    }
+  ]
+}

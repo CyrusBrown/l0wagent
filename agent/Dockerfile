@@ -58,6 +58,4 @@ ENV PATH=/home/agent/.local/bin:$PATH \
     RUNNER_STATE_DIR=/home/agent/.runner
 
 WORKDIR /workspace
-# Port 8787 reaches the owner's LAN only through the agent-web forwarder.
-EXPOSE 8787
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/sbin/entrypoint.sh"]

@@ -1,0 +1,4 @@
+VERSION = "l0w/0.1"
+SUPPORTED_VERSIONS = (VERSION,)
+SIG_PREFIX = "l0wagent-sig/1"
+MAX_SKEW = 300  # seconds

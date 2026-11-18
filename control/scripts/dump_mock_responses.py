@@ -14,7 +14,7 @@ from l0w_control.mock.backend import MockBackend
 OUT = Path(__file__).resolve().parents[2] / "web" / "src" / "test" / "mock-responses.json"
 
 GETS = [
-    "/api/meta", "/api/auth/me", "/api/status", "/api/inbox/counts", "/api/inbox?view=waiting", "/api/inbox?view=history",
+    "/api/meta", "/api/auth/me", "/api/status", "/api/membership", "/api/inbox/counts", "/api/inbox?view=waiting", "/api/inbox?view=history",
     "/api/claims?active=true", "/api/jobs", "/api/messages/recent?sender=assistant&limit=5", "/api/projects", "/api/projects?status=active",
     "/api/projects/garden-irrigation", "/api/projects/garden-irrigation/shelf", "/api/threads", "/api/threads?project=garden-irrigation&archived=true",
     "/api/threads/1", "/api/threads/1/items?limit=200", "/api/threads/1/delivery", "/api/runs", "/api/runs/123",

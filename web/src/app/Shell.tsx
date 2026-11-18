@@ -64,7 +64,7 @@ export function Shell() {
       <OutboxFailures />
       <div className="body">
         {inConversation && <Sidebar />}
-        <main className={/^\/c\//.test(loc.pathname) ? 'main pin' : 'main'} style={/^\/(t\/|files|web)/.test(loc.pathname) ? { display: 'flex', overflow: 'hidden' } : undefined}>
+        <main className={/^\/c\//.test(loc.pathname) ? 'main pin' : 'main'} style={/^\/(t\/|files)/.test(loc.pathname) ? { display: 'flex', overflow: 'hidden' } : undefined}>
           <Outlet />
         </main>
       </div>
@@ -85,13 +85,12 @@ export function Shell() {
 }
 
 /** What the More dropdown (desktop) and the More sheet (phone) list; the first three are the dropdown's. */
-const MORE_DESKTOP = [['/calendar', 'Calendar', 'Wakeups, routines, protected hours'], ['/network', 'Network', 'Request log and egress rules'], ['/web', 'Web page', "The assistant's web port"]]
+const MORE_DESKTOP = [['/calendar', 'Calendar', 'Wakeups, routines, protected hours'], ['/network', 'Network', 'Request log and egress rules']]
 const MORE_PHONE: [string, string, string, keyof typeof Icon][] = [
   ['/files', 'Files', "The assistant's workspace and project shelves", 'files'],
   ['/tools', 'Tools', 'Integrations, connected apps and secrets', 'tools'],
   ['/calendar', 'Calendar', 'Wakeups, routines, protected hours', 'calendar'],
   ['/network', 'Network', 'Request log and egress rules', 'network'],
-  ['/web', 'Web page', "The assistant's web port", 'web'],
   ['/settings', 'Settings', 'Budgets, providers, account, appearance', 'settings'],
 ]
 

@@ -1,0 +1,21 @@
+{
+  "name": "l0wagent-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The generic l0wagent hub core on Cloudflare (Workers, Durable Objects, D1)",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "wrangler dev --config wrangler.dev.toml --local --port 8787",
+    "conformance": "./scripts/conformance.sh"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261118.1",
+    "@types/node": "^24.0.0",
+    "typescript": "~5.9.3",
+    "vitest": "^5.1.1",
+    "wrangler": "4.164.0"
+  },
+  "packageManager": "pnpm@12.15.0"
+}

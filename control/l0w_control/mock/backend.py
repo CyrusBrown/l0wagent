@@ -65,7 +65,7 @@ class MockBackend(Backend):
 
     # ── meta, status, sync, events ─────────────────────────────────────────
     def meta(self) -> s.Meta:
-        return s.Meta(server_version=__version__, api_version="0", ui_bundle_version="dev", capabilities=s.Capabilities(),
+        return s.Meta(server_version=__version__, api_version="0", ui_bundle_version="dev", capabilities=s.Capabilities(hub=self._member.state == "joined", hub_join=True),
                       setup_complete=True, instance_name="l0wagent (mock)")
 
     def status(self) -> s.Status:
@@ -166,6 +166,12 @@ class MockBackend(Backend):
             raise BadRequest("wrong_password", "That isn't your password.")
         self.owner = self.owner.model_copy(update={"totp_enabled": False})
         return self.owner
+
+    def token_scope(self, bearer: str) -> str:
+        return "full"
+
+    def create_device(self, req: s.DeviceCreate, ip: str, user_agent: str) -> s.DeviceCreated:
+        return s.DeviceCreated(device_token=secrets.token_urlsafe(24))
 
     def revoke_session(self, session_id: str) -> None:
         if self.w.sessions.pop(session_id, None) is None:
@@ -503,6 +509,69 @@ class MockBackend(Backend):
         return s.UpdateInfo(current="0.4.0", channel="stable", latest="0.5.0", available=True, url="https://github.com/CyrusBrown/l0wagent/releases/tag/v0.5.0",
                             notes="First friends release: install with ./l0w, an installable web app with push notifications, and the l0w CLI.",
                             checked_at=_now() - timedelta(hours=1), error=None, draining_until=None, waiting_for=[])
+
+    # ── hub membership: a fake hub, so the Hub settings screen works on fake data ──
+    _member = s.Membership(state="standalone", available=True)
+    MOCK_HUB = s.HubInfo(name="Example hub", domain="hub.example", base_url="https://hub.example",
+                         policies={"terms": "https://hub.example/terms", "privacy": "https://hub.example/privacy"})
+
+    def _mock_invite(self, invite: str) -> None:
+        if not invite.strip().startswith("l0w-invite:https://") or "#" not in invite:
+            raise BadRequest("bad_invite", "That isn't an invite. It starts with l0w-invite:")
+
+    def membership(self) -> s.Membership:
+        return self._member
+
+    def membership_preview(self, req: s.InvitePreviewRequest) -> s.InvitePreview:
+        self._mock_invite(req.invite)
+        return s.InvitePreview(hub=self.MOCK_HUB, name_hint="mara", expires=_now() + timedelta(days=7), own_url_allowed=True,
+                               example=s.MemberHostnames(instance="mara.hub.example", files="files--mara.hubfiles.example"), two_factor_ready=True)
+
+    def membership_join(self, req: s.JoinRequest) -> s.JoinResult:
+        self._mock_invite(req.invite)
+        if self._member.state == "joined":
+            raise Conflict("already_joined", "This instance is already a member of a hub. Leave it first.")
+        name = req.name.strip().lower()
+        host = s.MemberHostnames(instance=f"{name}.hub.example", files=f"files--{name}.hubfiles.example")
+        self._member = s.Membership(
+            state="joined", available=True, address=f"{name}@hub.example", mode=req.mode, hub=self.MOCK_HUB, hostnames=host,
+            urls=s.MemberHostnames(instance=f"https://{host.instance}", files=f"https://{host.files}"), joined_at=_now(),
+            tunnel=s.TunnelStatus(state="connected", since=_now()), check=s.MembershipCheck(ok=True, at=_now()),
+            sign_key=s.MemberKey(kid="k1." + secrets.token_urlsafe(16)[:22], created=_now()))
+        return s.JoinResult(membership=self._member, recovery_key="l0w-recovery:" + secrets.token_urlsafe(32))
+
+    def _joined(self) -> s.Membership:
+        if self._member.state != "joined":
+            raise Conflict("not_joined", "This instance isn't a member of a hub.")
+        return self._member
+
+    def membership_check(self) -> s.MembershipCheck:
+        m = self._joined()
+        m.check = s.MembershipCheck(ok=True, at=_now())
+        return m.check
+
+    def membership_rotate(self) -> s.Membership:
+        m = self._joined()
+        m.sign_key = s.MemberKey(kid="k1." + secrets.token_urlsafe(16)[:22], created=_now())
+        return m
+
+    def membership_recover(self, req: s.RecoverRequest) -> s.Membership:
+        if not req.recovery_key.startswith("l0w-recovery:"):
+            raise BadRequest("wrong_recovery_key", "That isn't this instance's recovery key.")
+        return self.membership_rotate()
+
+    def membership_leave(self, req: s.LeaveRequest) -> s.Membership:
+        m = self._joined()
+        if req.confirm.strip().lower() != m.address:
+            raise BadRequest("confirm", f"Type your address ({m.address}) to confirm.")
+        self._member = s.Membership(state="left", available=True, address=m.address, left_at=_now())
+        return self._member
+
+    def self_description(self) -> dict | None:
+        return None
+
+    def public_origins(self) -> tuple[str | None, str | None]:
+        return None, None
 
     def check_update(self) -> s.UpdateInfo:
         return self.update_info()
@@ -1130,6 +1199,13 @@ class MockBackend(Backend):
         data, mime = self.read_file(volume, path)
         return iter([data]), len(data), mime
 
+    def file_stat(self, volume: str, path: str) -> tuple[int, str]:
+        data, mime = self.read_file(volume, path)
+        return len(data), mime
+
+    def file_range(self, volume: str, path: str, start: int, end: int) -> bytes:
+        return self.read_file(volume, path)[0][start:end + 1]
+
     def read_file(self, volume: str, path: str) -> tuple[bytes, str]:
         node, _ = self._node(volume, path)
         if "size" not in node:
@@ -1209,9 +1285,6 @@ class MockBackend(Backend):
         if item_id not in self.w.shelf:
             raise NotFound(f"shelf item {item_id}")
         return s.PreviewUrl(url=f"/api/shelf/{item_id}/raw", expires_at=_now() + timedelta(hours=1))
-
-    def web_page(self, url: str) -> s.WebPage:
-        return s.WebPage(url=url, reachable=True)
 
     def remove_from_shelf(self, item_id: int, by: str = "owner") -> None:
         if self.w.shelf.pop(item_id, None) is None:

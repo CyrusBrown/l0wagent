@@ -12,7 +12,7 @@
 #                        │  ▲                      │
 #                        │  └──── agent API ◀──────┘
 #                        └─(ctl net)─▶ egress ◀── HTTP(S)_PROXY ─┘ ──▶ internet
-#   LAN ──:8787 agent-web ──(sandbox net)──▶ agent :8787   (inbound only)
+#   tunnel ──(hubnet)──▶ control-hub, gateway;  tunnel ──(outside)──▶ the hub (the agent is never on hubnet)
 #
 # The agent's only network is `sandbox`: internal (no route out) and with no host IP on the
 # bridge, so it can't reach the host, the LAN or the internet except through egress.
@@ -23,10 +23,13 @@ x-tokens: &tokens
   L0W_AGENT_TOKEN: ${L0W_AGENT_TOKEN:-dev-agent-token}
   L0W_RUNNER_TOKEN: ${L0W_RUNNER_TOKEN:-dev-runner-token}
   L0W_EGRESS_TOKEN: ${L0W_EGRESS_TOKEN:-dev-egress-token}
+  L0W_GATEWAY_TOKEN: ${L0W_GATEWAY_TOKEN:-dev-gateway-token}
 
 services:
   control:
-    build: ./control
+    build:
+      context: .
+      dockerfile: control/Dockerfile
     environment:
       <<: *tokens
       L0W_BACKEND: ${L0W_BACKEND:-sqlite}
@@ -40,6 +43,8 @@ services:
       L0W_CHAT_SUBNET: ${CHAT_SUBNET:-172.31.230.0/24}
       USAGE_UNKNOWN_POLICY: ${USAGE_UNKNOWN_POLICY:-allow}
       L0W_CORS_ORIGINS: http://localhost:5173  # the Vite dev server (the release image allows only the desktop app)
+      L0W_GATEWAY_URL: http://gateway:8780
+      L0W_TUNNEL_SUBNET: ${TUNNEL_SUBNET:-172.31.220.0/24}
       L0W_FILES_PORT: "8001"  # the files origin: agent-made files, never on the UI's origin
     ports: ["127.0.0.1:8000:8000", "127.0.0.1:8001:8001"]
     volumes:
@@ -54,14 +59,45 @@ services:
         volume: { subpath: _inbox }
       # The owner's extensions (M8), read-only: control loads them; the agent never sees this folder.
       - ./extensions:/app/extensions:ro
-    networks: [outside, sandbox, ctl, chat]
+    networks:
+      outside: {}
+      sandbox: {}
+      ctl: {}
+      chat: {}
+      # Reached by the tunnel as `control-hub`, an alias on hubnet only, so its requests always come
+      # from the tunnel subnet (plain `control` could resolve to another network's address).
+      hubnet:
+        aliases: [control-hub]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    depends_on: [agent]  # the agent's image seeds the work volume (with _inbox/) first
+    depends_on: [agent, gateway]  # the agent's image seeds the work volume (with _inbox/) first
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/meta')"]
       interval: 5s
       retries: 10
+
+  # `./l0w backup` / `./l0w restore`: encrypted backup of the volumes and the install folder. Not
+  # started by `up`; it has no network and reads the archive from stdin / writes it to stdout.
+  backup:
+    build:
+      context: .
+      dockerfile: control/Dockerfile
+    profiles: ["tools"]
+    entrypoint: ["python", "-m", "l0w_control.backup"]
+    network_mode: none
+    user: "0:0"
+    environment:
+      L0W_BACKUP_PASSPHRASE: ${L0W_BACKUP_PASSPHRASE:-}
+      L0W_BACKUP_ROOT: /vol
+    volumes:
+      - control-data:/vol/data
+      - egress-data:/vol/egress-data
+      - gateway-data:/vol/gateway-data
+      - agent-home:/vol/agent-home
+      - agent-reviewer:/vol/agent-reviewer
+      - agent-workspace:/vol/agent-workspace
+      - agent-work:/vol/agent-work
+      - ./:/vol/install
 
   egress:
     build: ./egress
@@ -146,16 +182,41 @@ services:
     pids_limit: 512
     depends_on: [egress]
 
-  agent-web:
-    build: ./agent-web
+  # The hub (H1): the gateway holds the instance's keys and signs on request; the tunnel dials out to the
+  # hub and forwards visitors to control. Both live on hubnet (internal) only, never on the sandbox.
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
     environment:
-      TARGET_HOST: agent
-      TARGET_PORT: "8787"
-    ports: ["127.0.0.1:8787:8787"]
-    networks: [outside, sandbox]
+      GATEWAY_DATA_DIR: /data
+      GATEWAY_PORT: "8780"
+      GATEWAY_CONTROL_TOKEN: ${L0W_GATEWAY_TOKEN:-dev-gateway-token}
+      GATEWAY_TUNNEL_TOKEN: ${L0W_GATEWAY_TUNNEL_TOKEN:-dev-gateway-tunnel-token}
+    volumes:
+      - gateway-data:/data
+    networks: [hubnet]
+    read_only: true
+    tmpfs: ["/tmp:size=16m,mode=1777"]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    depends_on: [agent]
+
+  tunnel:
+    build:
+      context: .
+      dockerfile: tunnel/Dockerfile
+    environment:
+      TUNNEL_GATEWAY_URL: http://gateway:8780
+      TUNNEL_GATEWAY_TOKEN: ${L0W_GATEWAY_TUNNEL_TOKEN:-dev-gateway-tunnel-token}
+      # control-hub, not control: see the alias on control's hubnet entry.
+      TUNNEL_CONTROL_URL: http://control-hub:8000
+      TUNNEL_FILES_URL: http://control-hub:8001
+    networks: [hubnet, outside]
+    read_only: true
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    depends_on: [gateway]
 
   web:
     image: node:24-slim
@@ -190,12 +251,21 @@ networks:
     ipam:
       config:
         - subnet: ${CHAT_SUBNET:-172.31.230.0/24}
+  hubnet:
+    internal: true
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.inhibit_ipv4: "true"
+    ipam:
+      config:
+        - subnet: ${TUNNEL_SUBNET:-172.31.220.0/24}
   ctl:
     internal: true
 
 volumes:
   control-data:
   egress-data:
+  gateway-data:
   agent-home:
   agent-reviewer:
   agent-workspace:

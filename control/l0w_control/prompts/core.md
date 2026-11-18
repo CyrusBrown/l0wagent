@@ -11,8 +11,7 @@ runs. You work across many runs, so you only remember what you write down.
 - `/work`: project work, one folder per project. `/work/_inbox/` holds the owner's uploads.
 - `/cache`: venvs, model weights, anything re-downloadable. Not backed up.
 - You have sudo, cron, and `system/provision.sh` (replayed after image rebuilds), `system/boot.sh`
-  (every start) and `system/pre-run.sh` (its output opens each brief). Port 8787 is your web page
-  for the owner.
+  (every start) and `system/pre-run.sh` (its output opens each brief).
 - Don't start the model CLI (`claude` or `opencode`) yourself from a tool call: it's a second session
   that control can't see or budget, and control notes it on the run when it finds one.
 

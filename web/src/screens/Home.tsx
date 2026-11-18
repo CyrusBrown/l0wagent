@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router'
 import type { S } from '../api/client'
-import { useCalendar, useClaims, useInbox, useJobs, useMe, useRecent, useStatus, useSystem, useUpdateInfo, useWebPage } from '../api/queries'
+import { useCalendar, useClaims, useInbox, useJobs, useMe, useMembership, useRecent, useStatus, useSystem, useUpdateInfo } from '../api/queries'
 import { useTimeFormat } from '../app/timeFormat'
 import { CardPlace, InboxCard } from '../components/Cards'
 import { ago, pts, stamp } from '../components/format'
@@ -26,9 +26,9 @@ export function Home() {
   const recent = useRecent('assistant')
   const claims = useClaims()
   const jobs = useJobs()
-  const web = useWebPage()
   const cal = useCalendar()
   const nav = useNavigate()
+  const hub = useMembership().data
   const st = status.data
   const top = [...(waiting.data ?? [])].sort((a, b) => Number(b.kind === 'security') - Number(a.kind === 'security')).slice(0, 3)  // security first
   const upcoming = (cal.data?.wakeups ?? []).filter((w) => w.status === 'planned').slice(0, 3)
@@ -40,6 +40,14 @@ export function Home() {
         <h1>{greeting()}{me.data?.display_name ? `, ${me.data.display_name}` : ''}</h1>
         {st && <div className="home-state"><span className={`dot ${st.state === 'working' ? 'working' : ''}`} /><span className="s">{STATE[st.state]}</span><span>{stateText}</span></div>}
       </div>
+
+      {hub?.state === 'joined' && (hub.check?.ok === false || !!hub.hub_key_alarm) && (
+        <Link to="/settings/hub" className="hub-alert">
+          <span className="dot bad" />
+          <span>{hub.hub_key_alarm ? 'The hub\'s signing key changed. Check your hub settings.' : 'Your hub connection failed its last check.'}</span>
+          <span className="sub">Open Hub settings</span>
+        </Link>
+      )}
 
       <div className="home-grid">
         <div className="home-col" style={{ gap: 28 }}>
@@ -91,12 +99,6 @@ export function Home() {
                 <div key={j.id} className="job-row"><span className="l"><span className="d" /><span className="ellipsis">{j.label}</span></span><span className="mono">{j.progress}</span></div>
               ))}
             </div>
-          )}
-          {web.data?.reachable && (
-            <Link to="/web" className="web-card">
-              <div className="stack" style={{ gap: 2 }}><span className="t">Assistant's web page</span><span className="mono">port 8787</span></div>
-              <span style={{ color: 'var(--faint)' }}>›</span>
-            </Link>
           )}
           <SystemLine />
         </div>

@@ -38,6 +38,7 @@ log = logging.getLogger("l0w.notify")
 EVENTS = {
     "approval": ("Approvals", "Permissions, secure input and promote requests waiting for you", True),
     "new_device": ("New sign-ins", "A new device or browser signed in to your account", True),
+    "hub": ("Hub", "Your hub membership needs attention (a failed self-check, a changed hub key)", True),
     "question": ("Questions", "The assistant asked you something", False),
     "task": ("Tasks", "Something only you can do", False),
     "assistant_message": ("Messages", "The assistant wrote in a thread", False),
@@ -57,6 +58,7 @@ class Notifier:
         self._vapid = None
         self.ntfy_transport: httpx.AsyncBaseTransport | None = None  # tests
         self.vault = None  # set by the backend: holds the ntfy token
+        self.public_origin = None  # set by the backend: () -> the public URL (hub instance hostname or L0W_PUBLIC_URL), for absolute ntfy links
         self.app_settings = None  # set by the backend: the owner's tunables
 
     # ── keys and settings ──────────────────────────────────────────────────
@@ -156,7 +158,11 @@ class Notifier:
             sent += int(ok)
         if ntfy_url:
             try:
-                headers = {"Title": payload["title"], "Click": payload["url"]}
+                click = payload["url"]
+                origin = (self.public_origin() or "") if self.public_origin else ""
+                if click.startswith("/") and origin:  # ntfy opens links outside the app: make them absolute (the hub hostname, or L0W_PUBLIC_URL)
+                    click = origin.rstrip("/") + click
+                headers = {"Title": payload["title"], "Click": click}
                 token = self.vault.value_for_control(NTFY_TOKEN) if self.vault and self.vault.exists(NTFY_TOKEN) else None
                 if token:
                     headers["Authorization"] = f"Bearer {token}"

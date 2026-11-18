@@ -18,7 +18,7 @@ from . import __version__, guard
 from .api import schemas
 from .api.agent import router as agent_router
 from .api.connector_routes import router as connector_router
-from .api.routes import api, public
+from .api.routes import api, public, wellknown
 from .backends.base import Backend, BadRequest, Conflict, LoginFailed, NotFound, Unauthorized
 
 API_VERSION = "0"
@@ -56,6 +56,7 @@ def create_app(backend: Backend) -> FastAPI:
         app.router.routes.append(Mount("/api/agent/ext", app=ext.asgi(owner=False)))
         app.router.routes.append(Mount("/api/ext", app=ext.asgi(owner=True)))
     app.include_router(public)
+    app.include_router(wellknown)
     app.include_router(api)
     if hasattr(backend, "runs_mgr"):
         app.include_router(agent_router)
@@ -76,6 +77,13 @@ def create_app(backend: Backend) -> FastAPI:
         response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'self'")
         return response
 
+    files_app = getattr(backend, "files_app", None)
+    if files_app is not None:  # the files hostname (on a hub): served by the files app only
+        from .files_origin import HostDispatch, host_of
+
+        app.add_middleware(HostDispatch, files_app=files_app, files_host=lambda: (host_of(os.environ.get("L0W_FILES_ORIGIN", "")), _hub_files_host(backend)),
+                           may_reach=guard.owner_side(getattr(backend, "env", None) or Env()))
+
     install_error_handlers(app)
 
     def openapi() -> dict:
@@ -92,6 +100,12 @@ def create_app(backend: Backend) -> FastAPI:
     app.openapi = openapi  # type: ignore[method-assign]
     _serve_ui(app)
     return app
+
+
+def _hub_files_host(backend) -> str:
+    """The files hostname a hub assigned (membership.py), if this instance is a member."""
+    m = getattr(backend, "membership_", None)
+    return m.files_host() if m is not None else ""
 
 
 def install_error_handlers(app: FastAPI) -> None:

@@ -1,10 +1,18 @@
 .git
 .env
 control/.venv
+gateway/.venv
+tunnel/.venv
+protocol/py/.venv
+dev/hub/.venv
 control/data
 web/node_modules
 web/dist
-__pycache__
+**/__pycache__
 *.pyc
 node_modules
 .DS_Store
+.pytest_cache
+.ruff_cache
+# the hub core deploys separately (hub/CLAUDE.md); never part of an instance image
+hub

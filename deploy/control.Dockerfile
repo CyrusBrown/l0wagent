@@ -12,6 +12,8 @@ FROM python:3.12-slim
 COPY --from=ghcr.io/astral-sh/uv:0.13.5 /uv /usr/local/bin/uv
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PROJECT_ENVIRONMENT=/venv PYTHONUNBUFFERED=1
+# pyproject's path source ../protocol/py must resolve from /app
+COPY protocol/py /protocol/py
 COPY control/pyproject.toml control/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY control/ ./

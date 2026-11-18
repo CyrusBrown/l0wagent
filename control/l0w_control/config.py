@@ -45,6 +45,8 @@ class Env:
     chat_runtime_url: str = field(default_factory=lambda: _env("L0W_CHAT_RUNTIME_URL").rstrip("/"))
     chat_runtime_token: str = field(default_factory=lambda: _env("L0W_CHAT_RUNTIME_TOKEN"))
     chat_subnet: str = field(default_factory=lambda: _env("L0W_CHAT_SUBNET"))
+    # The hub tunnel service's network: callers from it are the "tunnel" class (guard.py, netaddr.py).
+    tunnel_subnet: str = field(default_factory=lambda: _env("L0W_TUNNEL_SUBNET"))
     # How the sidecar reaches control (for its per-turn MCP endpoint).
     chat_control_url: str = field(default_factory=lambda: _env("L0W_CHAT_CONTROL_URL", "http://control:8000").rstrip("/"))
     # Dev only (dev_stack.py, tests): let /api/agent/* be called from any address, not just the sandbox subnet.

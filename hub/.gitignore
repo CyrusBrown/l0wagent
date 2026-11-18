@@ -1,0 +1,5 @@
+node_modules/
+.wrangler/
+.dev.vars
+# the real configuration lives in the private ops repo
+wrangler.toml

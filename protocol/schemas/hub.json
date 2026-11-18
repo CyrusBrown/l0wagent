@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.l0wagent.invalid/0.1/hub.json",
+  "title": "hub",
+  "description": "Payload of the hub's capabilities document (capabilities.md)",
+  "type": "object",
+  "required": [
+    "v",
+    "type",
+    "iat",
+    "name",
+    "domain",
+    "keys",
+    "protocols",
+    "instance_releases",
+    "api",
+    "tunnel",
+    "membership",
+    "hostnames",
+    "limits"
+  ],
+  "properties": {
+    "v": {
+      "const": "l0w/0.1"
+    },
+    "type": {
+      "const": "hub"
+    },
+    "iat": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+      "description": "RFC 3339 UTC, whole seconds"
+    },
+    "exp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+      "description": "RFC 3339 UTC, whole seconds"
+    },
+    "name": {
+      "type": "string"
+    },
+    "domain": {
+      "type": "string"
+    },
+    "keys": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "key.json"
+      }
+    },
+    "protocols": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "instance_releases": {
+      "type": "object",
+      "required": [
+        "min"
+      ],
+      "properties": {
+        "min": {
+          "type": "string"
+        }
+      }
+    },
+    "api": {
+      "type": "string",
+      "pattern": "/$"
+    },
+    "tunnel": {
+      "type": "string"
+    },
+    "membership": {
+      "type": "object",
+      "required": [
+        "invites",
+        "signups",
+        "own_url",
+        "require_2fa"
+      ],
+      "properties": {
+        "invites": {
+          "type": "boolean"
+        },
+        "signups": {
+          "enum": [
+            "closed",
+            "open",
+            "approval"
+          ]
+        },
+        "own_url": {
+          "type": "boolean"
+        },
+        "require_2fa": {
+          "type": "boolean"
+        }
+      }
+    },
+    "hostnames": {
+      "type": "object",
+      "properties": {
+        "layout": {
+          "type": "string"
+        },
+        "example": {
+          "type": "object",
+          "required": [
+            "instance",
+            "files"
+          ],
+          "properties": {
+            "instance": {
+              "type": "string"
+            },
+            "files": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "policies": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "limits": {
+      "type": "object",
+      "required": [
+        "tunnel_streams",
+        "request_body_bytes",
+        "auth_rate_per_minute"
+      ],
+      "properties": {
+        "tunnel_streams": {
+          "type": "integer"
+        },
+        "request_body_bytes": {
+          "type": "integer"
+        },
+        "auth_rate_per_minute": {
+          "type": "integer"
+        }
+      }
+    },
+    "extras": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,24 @@
+[project]
+name = "fakehub"
+version = "0.1.0"
+description = "A fake l0wagent hub for development and for testing the conformance suite (no Cloudflare)"
+requires-python = ">=3.12"
+dependencies = ["l0wproto", "starlette>=0.40", "uvicorn>=0.30", "websockets>=14", "httpx>=0.27"]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv.sources]
+l0wproto = { path = "../../protocol/py", editable = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["fakehub"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# the conformance suite lives in protocol/conformance
+pythonpath = ["../../protocol"]

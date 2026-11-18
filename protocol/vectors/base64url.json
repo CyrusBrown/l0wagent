@@ -1,0 +1,54 @@
+{
+  "valid": [
+    {
+      "bytes_hex": "",
+      "b64": ""
+    },
+    {
+      "bytes_hex": "00",
+      "b64": "AA"
+    },
+    {
+      "bytes_hex": "fb",
+      "b64": "-w"
+    },
+    {
+      "bytes_hex": "fffe",
+      "b64": "__4"
+    },
+    {
+      "bytes_hex": "000102",
+      "b64": "AAEC"
+    },
+    {
+      "bytes_hex": "deadbeef",
+      "b64": "3q2-7w"
+    }
+  ],
+  "invalid": [
+    {
+      "b64": "AA==",
+      "why": "padding"
+    },
+    {
+      "b64": "AA=",
+      "why": "padding"
+    },
+    {
+      "b64": "+/8",
+      "why": "standard alphabet"
+    },
+    {
+      "b64": "AB",
+      "why": "non-canonical trailing bits"
+    },
+    {
+      "b64": "A",
+      "why": "impossible length"
+    },
+    {
+      "b64": "AA AA",
+      "why": "whitespace"
+    }
+  ]
+}

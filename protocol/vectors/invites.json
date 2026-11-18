@@ -1,0 +1,16 @@
+{
+  "valid": [
+    {
+      "string": "l0w-invite:https://hub.example#Zk3abc",
+      "base_url": "https://hub.example",
+      "code": "Zk3abc"
+    }
+  ],
+  "invalid": [
+    "https://hub.example#x",
+    "l0w-invite:https://hub.example",
+    "l0w-invite:https://hub.example#",
+    "l0w-invite:http://hub.example#x",
+    "l0w-invite:https://hub.example/path#x"
+  ]
+}

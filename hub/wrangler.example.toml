@@ -1,0 +1,53 @@
+# Production configuration for a hub. Copy this to wrangler.toml in your private ops repo (the real
+# file is git-ignored here), fill in your own names, and deploy with `wrangler deploy`.
+# Nothing in the hub's code names a domain: everything below is yours.
+# README.md explains each setting; config.example.md has worked examples.
+name = "my-hub"
+main = "src/index.ts"                # in the ops repo: the path to this folder's src/index.ts
+compatibility_date = "2026-10-01"
+
+# --- Routes -------------------------------------------------------------------------------------
+# The hub's own host (API, capabilities, the tunnel WebSocket) and a wildcard for each of the two
+# domains that hold members' hostnames. Wildcard routes need a proxied wildcard DNS record in each
+# zone (see README.md, "Hostnames"): one `*` record per domain covers every member, so no DNS calls
+# are made when someone joins. Universal SSL covers one level of subdomain under each zone.
+routes = [
+  { pattern = "hub.example", custom_domain = true },
+  { pattern = "*.hub.example/*", zone_name = "hub.example" },
+  { pattern = "*.hubfiles.example/*", zone_name = "hubfiles.example" },
+]
+
+[vars]
+HUB_NAME = "Example hub"
+HUB_BASE_URL = "https://hub.example"
+# HUB_DOMAIN = "hub.example"         # only if members' addresses should use another domain than HUB_BASE_URL's host
+TUNNEL_URL = "wss://hub.example/v0/tunnel"
+INSTANCE_HOST_PATTERN = "{name}.hub.example"
+FILES_HOST_PATTERN = "{name}.hubfiles.example"
+# RESERVED_NAMES = "shop,blog"       # extra reserved names, comma separated
+MIN_RELEASE = "0.8.0"
+LIMITS = '{"tunnel_streams": 64, "request_body_bytes": 104857600, "auth_rate_per_minute": 20}'
+POLICIES = '{"terms": "https://hub.example/terms", "privacy": "https://hub.example/privacy"}'
+OWN_URL = "true"
+# INVITE_DAYS = "7"
+
+# Secrets are not set here: `wrangler secret put HUB_SIGNING_SEED` and `wrangler secret put ADMIN_TOKEN`.
+
+[[d1_databases]]
+binding = "DB"
+database_name = "my-hub"
+database_id = "<from `wrangler d1 create my-hub`>"
+migrations_dir = "migrations"        # in the ops repo: the path to this folder's migrations/
+
+[durable_objects]
+bindings = [
+  { name = "MEMBER", class_name = "MemberRoute" },
+  { name = "CONN", class_name = "TunnelConn" },
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MemberRoute", "TunnelConn"]
+
+[observability]
+enabled = true

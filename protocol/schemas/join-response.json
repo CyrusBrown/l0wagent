@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.l0wagent.invalid/0.1/join-response.json",
+  "title": "join-response",
+  "type": "object",
+  "required": [
+    "v",
+    "address",
+    "hostnames",
+    "hub_key",
+    "tunnel"
+  ],
+  "properties": {
+    "v": {
+      "const": "l0w/0.1"
+    },
+    "address": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*@[a-z0-9][a-z0-9.-]*(:[0-9]+)?$"
+    },
+    "hostnames": {
+      "type": "object",
+      "required": [
+        "instance",
+        "files"
+      ],
+      "properties": {
+        "instance": {
+          "type": "string"
+        },
+        "files": {
+          "type": "string"
+        }
+      }
+    },
+    "hub_key": {
+      "$ref": "key.json"
+    },
+    "tunnel": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "additionalProperties": true
+}

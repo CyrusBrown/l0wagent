@@ -61,6 +61,8 @@ export function invalidateFor(qc: QueryClient, e: S['LiveEvent']) {
       return inv(['runs'], ['run'], ['status'], ['system'])
     case 'timeline':
       return inv(['runs'], ['run'], ['status'], ['system'])
+    case 'membership':
+      return inv(['membership'])
     case 'job':
       return inv(['jobs'])
     case 'budget':

@@ -322,6 +322,56 @@
         ]
       }
     },
+    "/api/account/devices": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Create Device",
+        "description": "A new device token (for the `l0w` CLI, a script, another app), shown once; revoke it under sessions.",
+        "operationId": "create_device_api_account_devices_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceCreated"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
     "/api/account/sessions/{session_id}": {
       "delete": {
         "tags": [
@@ -5928,6 +5978,296 @@
         ]
       }
     },
+    "/api/membership": {
+      "get": {
+        "tags": [
+          "hub"
+        ],
+        "summary": "Membership",
+        "description": "This instance's hub membership: none (standalone), joined, or left.",
+        "operationId": "membership_api_membership_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Membership"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/membership/preview": {
+      "post": {
+        "tags": [
+          "hub"
+        ],
+        "summary": "Membership Preview",
+        "description": "Online only. Reads an invite: fetches and verifies the hub's capabilities, checks the invite, and lists what would stop a join.",
+        "operationId": "membership_preview_api_membership_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitePreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/membership/join": {
+      "post": {
+        "tags": [
+          "hub"
+        ],
+        "summary": "Membership Join",
+        "description": "Online only. Joins the hub (needs two-step sign-in). The gateway makes fresh keys; the recovery key is in the answer, once.",
+        "operationId": "membership_join_api_membership_join_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JoinResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/membership/check": {
+      "post": {
+        "tags": [
+          "hub"
+        ],
+        "summary": "Membership Check",
+        "description": "Runs the self-check now (it also runs daily).",
+        "operationId": "membership_check_api_membership_check_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipCheck"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/membership/rotate": {
+      "post": {
+        "tags": [
+          "hub"
+        ],
+        "summary": "Membership Rotate",
+        "description": "Replaces the signing key (the old key signs the rotation) and publishes a new self-description.",
+        "operationId": "membership_rotate_api_membership_rotate_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Membership"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/membership/recover": {
+      "post": {
+        "tags": [
+          "hub"
+        ],
+        "summary": "Membership Recover",
+        "description": "Replaces the signing key with a rotation signed by the recovery key (when the signing key is lost or stolen).",
+        "operationId": "membership_recover_api_membership_recover_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoverRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Membership"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/membership/leave": {
+      "post": {
+        "tags": [
+          "hub"
+        ],
+        "summary": "Membership Leave",
+        "description": "Leaves the hub. The name is never given to anyone else, and can't be had back.",
+        "operationId": "membership_leave_api_membership_leave_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Membership"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
     "/api/system/update/check": {
       "post": {
         "tags": [
@@ -6162,7 +6502,7 @@
           "files"
         ],
         "summary": "Read File",
-        "description": "File bytes, for downloads and client-side previewers (text, CSV, notebooks, 3D).",
+        "description": "File bytes, for downloads, media elements (Range supported) and client-side previewers.",
         "operationId": "read_file_api_files_raw_get",
         "security": [
           {
@@ -6712,7 +7052,7 @@
           "files"
         ],
         "summary": "Shelf Raw",
-        "description": "A shelf item's bytes: a kept version, the snapshot, or the live file.",
+        "description": "A shelf item's bytes: a kept version, the snapshot, or the live file (Range supported).",
         "operationId": "shelf_raw_api_shelf__item_id__raw_get",
         "security": [
           {
@@ -6843,36 +7183,6 @@
             }
           }
         }
-      }
-    },
-    "/api/web": {
-      "get": {
-        "tags": [
-          "files"
-        ],
-        "summary": "Web Page",
-        "description": "The assistant's web page (its port 8787, through agent-web).",
-        "operationId": "web_page_api_web_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WebPage"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "session": []
-          },
-          {
-            "device": []
-          }
-        ]
       }
     },
     "/api/uploads": {
@@ -7505,6 +7815,17 @@
           "current": {
             "type": "boolean",
             "title": "Current"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "full",
+              "cli",
+              "read"
+            ],
+            "title": "Scope",
+            "description": "full: everything; cli: no account, security, secret or settings changes; read: reads only.",
+            "default": "full"
           }
         },
         "additionalProperties": false,
@@ -8148,6 +8469,13 @@
           "hub": {
             "type": "boolean",
             "title": "Hub",
+            "description": "This instance is a member of a hub (hub features are on).",
+            "default": false
+          },
+          "hub_join": {
+            "type": "boolean",
+            "title": "Hub Join",
+            "description": "This install can join a hub (it has the gateway service).",
             "default": false
           },
           "push": {
@@ -9032,6 +9360,47 @@
         ],
         "title": "Delivery",
         "description": "What the thread's delivery indicator shows (server side; 'waiting for connection' is client-only)."
+      },
+      "DeviceCreate": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "full",
+              "cli",
+              "read"
+            ],
+            "title": "Scope",
+            "default": "cli"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "label"
+        ],
+        "title": "DeviceCreate"
+      },
+      "DeviceCreated": {
+        "properties": {
+          "device_token": {
+            "type": "string",
+            "title": "Device Token",
+            "description": "Shown once."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "device_token"
+        ],
+        "title": "DeviceCreated"
       },
       "EgressHealth": {
         "properties": {
@@ -10117,6 +10486,38 @@
         ],
         "title": "HostStat"
       },
+      "HubInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "domain": {
+            "type": "string",
+            "title": "Domain"
+          },
+          "base_url": {
+            "type": "string",
+            "title": "Base Url"
+          },
+          "policies": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Policies",
+            "default": {}
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "domain",
+          "base_url"
+        ],
+        "title": "HubInfo"
+      },
       "InboxCounts": {
         "properties": {
           "waiting": {
@@ -10763,6 +11164,87 @@
         ],
         "title": "IntegrationTool"
       },
+      "InvitePreview": {
+        "properties": {
+          "hub": {
+            "$ref": "#/components/schemas/HubInfo"
+          },
+          "name_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name Hint"
+          },
+          "expires": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires"
+          },
+          "own_url_allowed": {
+            "type": "boolean",
+            "title": "Own Url Allowed"
+          },
+          "example": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemberHostnames"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "two_factor_ready": {
+            "type": "boolean",
+            "title": "Two Factor Ready"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Problems",
+            "description": "Reasons joining would be refused now (fix them first).",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "hub",
+          "own_url_allowed",
+          "two_factor_ready"
+        ],
+        "title": "InvitePreview"
+      },
+      "InvitePreviewRequest": {
+        "properties": {
+          "invite": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Invite"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "invite"
+        ],
+        "title": "InvitePreviewRequest"
+      },
       "Job": {
         "properties": {
           "id": {
@@ -10856,6 +11338,100 @@
           "log_tail"
         ],
         "title": "Job"
+      },
+      "JoinRequest": {
+        "properties": {
+          "invite": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Invite"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 3,
+            "title": "Name"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "tunnel",
+              "own-url"
+            ],
+            "title": "Mode",
+            "default": "tunnel"
+          },
+          "own_urls": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemberHostnames"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Own-URL mode: two https URLs on different origins."
+          },
+          "backup": {
+            "type": "string",
+            "enum": [
+              "made",
+              "skipped"
+            ],
+            "title": "Backup",
+            "description": "The owner made a backup first, or chose to skip it."
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Idempotency Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "invite",
+          "name",
+          "backup",
+          "idempotency_key"
+        ],
+        "title": "JoinRequest"
+      },
+      "JoinResult": {
+        "properties": {
+          "membership": {
+            "$ref": "#/components/schemas/Membership"
+          },
+          "recovery_key": {
+            "type": "string",
+            "title": "Recovery Key",
+            "description": "Shown once. The instance doesn't keep it."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "membership",
+          "recovery_key"
+        ],
+        "title": "JoinResult"
+      },
+      "LeaveRequest": {
+        "properties": {
+          "confirm": {
+            "type": "string",
+            "title": "Confirm",
+            "description": "The member's address, typed to confirm."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "confirm"
+        ],
+        "title": "LeaveRequest"
       },
       "LevelPreset": {
         "properties": {
@@ -10995,6 +11571,17 @@
             ],
             "title": "Device Label",
             "description": "For device tokens: 'Desktop app on mac-mini'."
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "full",
+              "cli",
+              "read"
+            ],
+            "title": "Scope",
+            "description": "For device tokens: what the token may do. Browser sessions are always full.",
+            "default": "full"
           }
         },
         "additionalProperties": false,
@@ -11046,6 +11633,221 @@
           "status"
         ],
         "title": "LoginResult"
+      },
+      "MemberHostnames": {
+        "properties": {
+          "instance": {
+            "type": "string",
+            "title": "Instance"
+          },
+          "files": {
+            "type": "string",
+            "title": "Files"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "instance",
+          "files"
+        ],
+        "title": "MemberHostnames"
+      },
+      "MemberKey": {
+        "properties": {
+          "kid": {
+            "type": "string",
+            "title": "Kid"
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kid",
+          "created"
+        ],
+        "title": "MemberKey"
+      },
+      "Membership": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "standalone",
+              "joined",
+              "left"
+            ],
+            "title": "State"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "description": "This install has the gateway, so it can join a hub."
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "tunnel",
+                  "own-url"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "hub": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HubInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hostnames": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemberHostnames"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Exactly as the hub assigned them."
+          },
+          "urls": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemberHostnames"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the instance and its files are reached through the hub."
+          },
+          "joined_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Joined At"
+          },
+          "left_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Left At"
+          },
+          "tunnel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TunnelStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "check": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MembershipCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sign_key": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemberKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hub_key_alarm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hub Key Alarm"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "available"
+        ],
+        "title": "Membership"
+      },
+      "MembershipCheck": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "problems": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Problems",
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ok",
+          "at"
+        ],
+        "title": "MembershipCheck"
       },
       "Message": {
         "properties": {
@@ -12894,6 +13696,22 @@
           "project"
         ],
         "title": "RecentMessage"
+      },
+      "RecoverRequest": {
+        "properties": {
+          "recovery_key": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 10,
+            "title": "Recovery Key"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "recovery_key"
+        ],
+        "title": "RecoverRequest"
       },
       "ReserveSettings": {
         "properties": {
@@ -15575,6 +16393,51 @@
         "title": "TotpSetup",
         "description": "A new, not yet enabled TOTP secret. Enabling it needs a valid code."
       },
+      "TunnelStatus": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "connecting",
+              "connected",
+              "offline",
+              "refused",
+              "unknown"
+            ],
+            "title": "State"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "TunnelStatus"
+      },
       "UpdateInfo": {
         "properties": {
           "current": {
@@ -16164,27 +17027,6 @@
         "type": "object",
         "title": "WakeupPatch"
       },
-      "WebPage": {
-        "properties": {
-          "url": {
-            "type": "string",
-            "title": "Url",
-            "description": "Where the browser reaches the assistant's port 8787 (through agent-web)."
-          },
-          "reachable": {
-            "type": "boolean",
-            "title": "Reachable",
-            "description": "Something is listening on the assistant's port."
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "url",
-          "reachable"
-        ],
-        "title": "WebPage"
-      },
       "LiveEvent": {
         "additionalProperties": false,
         "description": "One line of GET /api/events (newline-delimited JSON).",
@@ -16216,7 +17058,8 @@
               "calendar",
               "chat",
               "chat_delta",
-              "extension"
+              "extension",
+              "membership"
             ],
             "title": "Type",
             "type": "string"

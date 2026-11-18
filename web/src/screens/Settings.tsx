@@ -2,7 +2,7 @@ import { type JSX, useEffect, useState } from 'react'
 import { NavLink, useParams } from 'react-router'
 import type { S } from '../api/client'
 import {
-  problem, useChangePassword, useMe, usePause, usePauseState, useResume, useRevokeSession, useSelftest, useSessions, useSystem, useTotpDisable, useTotpEnable, useTotpSetup,
+  problem, useChangePassword, useMembership, useMe, usePause, usePauseState, useResume, useCreateDevice, useRevokeSession, useSelftest, useSessions, useSystem, useTotpDisable, useTotpEnable, useTotpSetup,
 } from '../api/queries'
 import { ago, clock, stamp, usageText } from '../components/format'
 import { useTheme, type ThemePref } from '../app/theme'
@@ -11,6 +11,7 @@ import { Budgets, Instructions, Providers, Reviewer, Roles } from './SettingsBud
 import { Notifications } from './SettingsNotify'
 import { Extensions } from './SettingsExtensions'
 import { Advanced } from './SettingsAdvanced'
+import { Hub, hubSummary } from './SettingsHub'
 
 // Tab list and order from the mockup. Tabs without a screen yet say which milestone brings them.
 const TABS: [slug: string, label: string, later?: string][] = [
@@ -23,6 +24,7 @@ const TABS: [slug: string, label: string, later?: string][] = [
   ['account', 'Account'],
   ['notifications', 'Notifications'],
   ['extensions', 'Extensions'],
+  ['hub', 'Hub'],
   ['advanced', 'Advanced'],
   ['system', 'System'],
 ]
@@ -31,12 +33,13 @@ export function Settings() {
   const tab = useParams().tab ?? 'budgets'  // the mockup opens Settings on Budgets & levels
   const cur = TABS.find(([slug]) => slug === tab) ?? TABS[0]
   // On a phone the tab list is a scrolling row of pills: keep the open one in view.
+  const membership = useMembership()
   useEffect(() => { document.querySelector('.settings-nav a.on')?.scrollIntoView?.({ inline: 'center', block: 'nearest' }) }, [cur[0]])
   return (
     <div className="settings">
       <nav className="settings-nav">
         <h1>Settings</h1>
-        {TABS.map(([slug, label]) => <NavLink key={slug} to={`/settings/${slug}`} className={() => (slug === cur[0] ? 'on' : '')}>{label}</NavLink>)}
+        {TABS.map(([slug, label]) => <NavLink key={slug} to={`/settings/${slug}`} className={() => (slug === cur[0] ? 'on' : '')}>{label}{slug === 'hub' && membership.data && <span className="nav-sum">{hubSummary(membership.data)}</span>}</NavLink>)}
       </nav>
       <div className="settings-body">
         {PAGES[cur[0]] ?? <Later text={cur[2] ?? ''} title={cur[1]} />}
@@ -47,7 +50,7 @@ export function Settings() {
 
 const PAGES: Record<string, JSX.Element> = {
   appearance: <Appearance />, budgets: <Budgets />, providers: <Providers />, roles: <Roles />, reviewer: <Reviewer />, instructions: <Instructions />,
-  account: <Account />, system: <System />, notifications: <Notifications />, extensions: <Extensions />, advanced: <Advanced />,
+  account: <Account />, system: <System />, notifications: <Notifications />, extensions: <Extensions />, hub: <Hub />, advanced: <Advanced />,
 }
 
 function Later({ title, text }: { title: string; text: string }) {
@@ -201,13 +204,48 @@ function Sessions() {
           <div key={s.id} className="set-row">
             <div className="stack" style={{ gap: 2 }}>
               <span style={{ fontWeight: 500 }}>{s.label} {s.current && <span className="pill ok" style={{ marginLeft: 6 }}>This device</span>}</span>
-              <span className="sub">{s.kind === 'device' ? 'App token' : 'Browser session'}{s.ip ? ` · ${s.ip}` : ''} · signed in {ago(s.created_at)} · last seen {ago(s.last_seen_at)}</span>
+              <span className="sub">{s.kind === 'device' ? `Device token · ${SCOPE_LABEL[s.scope ?? 'full']}` : 'Browser session'}{s.ip ? ` · ${s.ip}` : ''} · signed in {ago(s.created_at)} · last seen {ago(s.last_seen_at)}</span>
             </div>
             {!s.current && <button className="btn small danger" disabled={revoke.isPending} onClick={() => revoke.mutate(s.id)}>Revoke</button>}
           </div>
         ))}
       </div>
+      <NewDevice />
     </section>
+  )
+}
+
+const SCOPE_LABEL = { full: 'full access', cli: 'everyday work', read: 'read only' } as const
+
+/** A device token for the `l0w` CLI, a script or another app, with a scope; shown once. */
+function NewDevice() {
+  const create = useCreateDevice()
+  const [f, setF] = useState<{ label: string; scope: 'full' | 'cli' | 'read' }>({ label: '', scope: 'cli' })
+  const [token, setToken] = useState<string | null>(null)
+  return (
+    <form className="set-form" style={{ marginTop: 12 }} onSubmit={(e) => {
+      e.preventDefault()
+      create.mutate(f, { onSuccess: (r) => { setToken(r.device_token); setF({ label: '', scope: 'cli' }) } })
+    }}>
+      <div className="sub">New device token: for the <code>l0w</code> CLI, a script or another app. Everyday work can't change your account, 2FA, devices, secrets, connected apps or settings.</div>
+      <div className="row-start" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <input className="input" placeholder="Name (e.g. laptop CLI)" maxLength={80} value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} />
+        <select className="input" aria-label="Scope" value={f.scope} onChange={(e) => setF({ ...f, scope: e.target.value as typeof f.scope })}>
+          <option value="cli">Everyday work</option>
+          <option value="read">Read only</option>
+          <option value="full">Full access</option>
+        </select>
+        <button className="btn" disabled={!f.label.trim() || create.isPending}>Create token</button>
+      </div>
+      {create.error && <div className="error" role="alert">{problem(create.error)}</div>}
+      {token && (
+        <div className="done stack" style={{ gap: 4 }}>
+          <span>Copy it now: it isn't shown again.</span>
+          <code style={{ userSelect: 'all', wordBreak: 'break-all' }}>{token}</code>
+          <div><button type="button" className="btn small" onClick={() => { void navigator.clipboard?.writeText(token) }}>Copy</button> <button type="button" className="btn small" onClick={() => setToken(null)}>Done</button></div>
+        </div>
+      )}
+    </form>
   )
 }
 

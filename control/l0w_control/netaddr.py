@@ -2,6 +2,10 @@
 
 Forwarding headers are believed only when the socket peer is in L0W_TRUSTED_PROXIES
 (comma-separated addresses or subnets; empty by default, so nothing is trusted).
+
+Requests from the hub tunnel's network (L0W_TUNNEL_SUBNET) are different: the tunnel service
+sets `X-L0W-Tunnel-Client` to the visitor's address and nothing else is believed. They always
+came over HTTPS (the hub terminates TLS) and never count as local, whatever the header says.
 """
 
 from __future__ import annotations
@@ -31,6 +35,13 @@ def trusted_networks() -> tuple:
     return _parse_networks(os.environ.get("L0W_TRUSTED_PROXIES", ""))
 
 
+TUNNEL_CLIENT_HEADER = "x-l0w-tunnel-client"
+
+
+def tunnel_networks() -> tuple:
+    return _parse_networks(os.environ.get("L0W_TUNNEL_SUBNET", ""))
+
+
 def _ip(text: str):
     try:
         return ipaddress.ip_address(text.strip())
@@ -46,6 +57,12 @@ def peer_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def via_tunnel(request: Request) -> bool:
+    """Whether the request came through the hub tunnel (by the socket peer, never a header)."""
+    nets = tunnel_networks()
+    return bool(nets) and _in(nets, _ip(peer_ip(request)))
+
+
 def _peer_trusted(request: Request) -> bool:
     nets = trusted_networks()
     return bool(nets) and _in(nets, _ip(peer_ip(request)))
@@ -55,6 +72,9 @@ def client_ip(request: Request) -> str:
     """The caller's address. From a trusted proxy: CF-Connecting-IP, else the right-most
     X-Forwarded-For hop that isn't itself a trusted proxy; otherwise the socket peer."""
     peer = peer_ip(request)
+    if via_tunnel(request):
+        addr = _ip(request.headers.get(TUNNEL_CLIENT_HEADER, ""))
+        return str(addr) if addr is not None else "unknown"
     if not _peer_trusted(request):
         return peer
     cf = _ip(request.headers.get("cf-connecting-ip", ""))
@@ -73,6 +93,8 @@ def client_ip(request: Request) -> str:
 
 def request_scheme(request: Request) -> str:
     """http or https, believing X-Forwarded-Proto only from a trusted proxy."""
+    if via_tunnel(request):
+        return "https"
     if _peer_trusted(request):
         proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
         if proto in ("http", "https"):
@@ -88,3 +110,8 @@ def is_local_or_private(addr: str) -> bool:
     if getattr(ip, "ipv4_mapped", None):
         ip = ip.ipv4_mapped
     return ip.is_loopback or ip.is_private or ip.is_link_local
+
+
+def is_lan_caller(request: Request) -> bool:
+    """A caller on this machine or its private network. Never true through the hub tunnel."""
+    return not via_tunnel(request) and is_local_or_private(client_ip(request))

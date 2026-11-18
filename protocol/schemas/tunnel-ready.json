@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.l0wagent.invalid/0.1/tunnel-ready.json",
+  "title": "tunnel-ready",
+  "type": "object",
+  "required": [
+    "t",
+    "session",
+    "limits"
+  ],
+  "properties": {
+    "t": {
+      "const": "ready"
+    },
+    "session": {
+      "type": "string"
+    },
+    "limits": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true
+}

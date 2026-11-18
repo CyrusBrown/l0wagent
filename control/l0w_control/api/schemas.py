@@ -32,7 +32,8 @@ class Ok(Model):
 
 # ── Meta, status, sync ─────────────────────────────────────────────────────
 class Capabilities(Model):
-    hub: bool = False
+    hub: bool = Field(False, description="This instance is a member of a hub (hub features are on).")
+    hub_join: bool = Field(False, description="This install can join a hub (it has the gateway service).")
     push: bool = False
     passkeys: bool = False
     chat: bool = False
@@ -103,11 +104,15 @@ class SyncResponse(Model):
 
 
 # ── Auth and account ───────────────────────────────────────────────────────
+DeviceScope = Literal["full", "cli", "read"]
+
+
 class LoginRequest(Model):
     username: str
     password: str
     want: Literal["session", "device_token"] = "session"
     device_label: str | None = Field(None, description="For device tokens: 'Desktop app on mac-mini'.")
+    scope: DeviceScope = Field("full", description="For device tokens: what the token may do. Browser sessions are always full.")
 
 
 class TotpRequest(Model):
@@ -142,6 +147,16 @@ class AuthSession(Model):
     created_at: datetime
     last_seen_at: datetime
     current: bool
+    scope: DeviceScope = Field("full", description="full: everything; cli: no account, security, secret or settings changes; read: reads only.")
+
+
+class DeviceCreate(Model):
+    label: str = Field(min_length=1, max_length=80)
+    scope: DeviceScope = "cli"
+
+
+class DeviceCreated(Model):
+    device_token: str = Field(description="Shown once.")
 
 
 class SetupOwnerRequest(Model):
@@ -1066,11 +1081,6 @@ class PreviewUrl(Model):
     expires_at: datetime
 
 
-class WebPage(Model):
-    url: str = Field(description="Where the browser reaches the assistant's port 8787 (through agent-web).")
-    reachable: bool = Field(description="Something is listening on the assistant's port.")
-
-
 class FileHistoryEntry(Model):
     rev: str
     run_id: int | None
@@ -1559,7 +1569,89 @@ class LiveEvent(Model):
     type: Literal[
         "hello", "heartbeat", "status", "message", "thread", "project", "card", "claim",
         "timeline", "run", "inbox_counts", "unread", "job", "shelf", "upload", "question", "permission",
-        "task", "suggestion", "promote", "security", "budget", "calendar", "chat", "chat_delta", "extension",
+        "task", "suggestion", "promote", "security", "budget", "calendar", "chat", "chat_delta", "extension", "membership",
     ]
     cursor: str | None = Field(None, description="Sync cursor after this event, when it changed cached data.")
     data: dict[str, Any] = {}
+
+
+# ── hub membership (H3; protocol/membership.md) ─────────────────────────────
+class HubInfo(Model):
+    name: str
+    domain: str
+    base_url: str
+    policies: dict[str, str] = {}
+
+
+class MemberHostnames(Model):
+    instance: str
+    files: str
+
+
+class MemberKey(Model):
+    kid: str
+    created: datetime
+
+
+class TunnelStatus(Model):
+    state: Literal["idle", "connecting", "connected", "offline", "refused", "unknown"]
+    since: datetime | None = None
+    error: str | None = None
+
+
+class MembershipCheck(Model):
+    ok: bool
+    at: datetime
+    problems: list[str] = []
+
+
+class Membership(Model):
+    state: Literal["standalone", "joined", "left"]
+    available: bool = Field(description="This install has the gateway, so it can join a hub.")
+    address: str | None = None
+    mode: Literal["tunnel", "own-url"] | None = None
+    hub: HubInfo | None = None
+    hostnames: MemberHostnames | None = Field(None, description="Exactly as the hub assigned them.")
+    urls: MemberHostnames | None = Field(None, description="Where the instance and its files are reached through the hub.")
+    joined_at: datetime | None = None
+    left_at: datetime | None = None
+    tunnel: TunnelStatus | None = None
+    check: MembershipCheck | None = None
+    sign_key: MemberKey | None = None
+    hub_key_alarm: str | None = None
+
+
+class InvitePreviewRequest(Model):
+    invite: str = Field(min_length=1, max_length=2000)
+
+
+class InvitePreview(Model):
+    hub: HubInfo
+    name_hint: str | None = None
+    expires: datetime | None = None
+    own_url_allowed: bool
+    example: MemberHostnames | None = None
+    two_factor_ready: bool
+    problems: list[str] = Field([], description="Reasons joining would be refused now (fix them first).")
+
+
+class JoinRequest(Model):
+    invite: str = Field(min_length=1, max_length=2000)
+    name: str = Field(min_length=3, max_length=32)
+    mode: Literal["tunnel", "own-url"] = "tunnel"
+    own_urls: MemberHostnames | None = Field(None, description="Own-URL mode: two https URLs on different origins.")
+    backup: Literal["made", "skipped"] = Field(description="The owner made a backup first, or chose to skip it.")
+    idempotency_key: str = Field(min_length=1, max_length=100)
+
+
+class JoinResult(Model):
+    membership: Membership
+    recovery_key: str = Field(description="Shown once. The instance doesn't keep it.")
+
+
+class RecoverRequest(Model):
+    recovery_key: str = Field(min_length=10, max_length=200)
+
+
+class LeaveRequest(Model):
+    confirm: str = Field(description="The member's address, typed to confirm.")

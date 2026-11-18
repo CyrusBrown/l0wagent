@@ -1,0 +1,37 @@
+{
+  "description": "The owner revokes a stolen key with the recovery key",
+  "type": "revocation",
+  "now": "2026-11-17T21:30:00Z",
+  "payload_json": "{\"v\":\"l0w/0.1\",\"type\":\"revocation\",\"iat\":\"2026-11-17T21:30:00Z\",\"address\":\"mara@hub.example\",\"kid\":\"k1.7jjJipSU1jZBHvxMYWMDhA\",\"reason\":\"stolen\"}",
+  "payload_b64": "eyJ2IjoibDB3LzAuMSIsInR5cGUiOiJyZXZvY2F0aW9uIiwiaWF0IjoiMjAyNi0xMS0xN1QyMTozMDowMFoiLCJhZGRyZXNzIjoibWFyYUBodWIuZXhhbXBsZSIsImtpZCI6ImsxLjdqakppcFNVMWpaQkh2eE1ZV01EaEEiLCJyZWFzb24iOiJzdG9sZW4ifQ",
+  "signing_input": "l0wagent-sig/1\nrevocation\neyJ2IjoibDB3LzAuMSIsInR5cGUiOiJyZXZvY2F0aW9uIiwiaWF0IjoiMjAyNi0xMS0xN1QyMTozMDowMFoiLCJhZGRyZXNzIjoibWFyYUBodWIuZXhhbXBsZSIsImtpZCI6ImsxLjdqakppcFNVMWpaQkh2eE1ZV01EaEEiLCJyZWFzb24iOiJzdG9sZW4ifQ",
+  "signatures": [
+    {
+      "kid": "k1.lFPm_Dsd-8gxz1QZeLWCLg",
+      "sig": "bXki5DMa445b_G-b-SCiV7-e3lBplLA0zKRtPl9E2CeS_EwpLA5kdIKepnqFMbLA4OddWWqSpj9ceDHEV5OsDg"
+    }
+  ],
+  "verify_keys": [
+    {
+      "kid": "k1.lFPm_Dsd-8gxz1QZeLWCLg",
+      "alg": "Ed25519",
+      "use": "recover",
+      "pub": "5YF4asiwt1BysW1UJ0jYR-l78k0zTY7S3FpQkAX3iK0",
+      "created": "2026-11-17T21:30:00Z"
+    }
+  ],
+  "required": [
+    "k1.lFPm_Dsd-8gxz1QZeLWCLg"
+  ],
+  "document": {
+    "v": "l0w/0.1",
+    "type": "revocation",
+    "payload": "eyJ2IjoibDB3LzAuMSIsInR5cGUiOiJyZXZvY2F0aW9uIiwiaWF0IjoiMjAyNi0xMS0xN1QyMTozMDowMFoiLCJhZGRyZXNzIjoibWFyYUBodWIuZXhhbXBsZSIsImtpZCI6ImsxLjdqakppcFNVMWpaQkh2eE1ZV01EaEEiLCJyZWFzb24iOiJzdG9sZW4ifQ",
+    "sigs": [
+      {
+        "kid": "k1.lFPm_Dsd-8gxz1QZeLWCLg",
+        "sig": "bXki5DMa445b_G-b-SCiV7-e3lBplLA0zKRtPl9E2CeS_EwpLA5kdIKepnqFMbLA4OddWWqSpj9ceDHEV5OsDg"
+      }
+    ]
+  }
+}

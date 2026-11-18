@@ -121,4 +121,9 @@ When a reviewer is on, `assistant reviewer start "what, why, what done looks lik
 the backlog, the roadmap, recent journal entries) at the start of its conversation and keeps a ranked list of next tasks:
 when it says what's next, take it unless you have a reason not to. Keep no stopping rule of your own in `CLAUDE.md`:
 control's "When to stop" decides, and the reviewer will point out one that contradicts it."""),
+    ("2026-11-18", "Your port-8787 web page is gone", """\
+The owner's browser no longer reaches anything you serve on port 8787: the forwarder (`agent-web`) and the web page
+card are removed, and nothing on that port is reachable from outside the sandbox anymore. Don't start servers for the
+owner to open. Put deliverables on the project's shelf (`assistant shelf add`) or in a message instead. If your
+`CLAUDE.md` or `system/boot.sh` starts something on 8787 or tells you it is your web page, remove that."""),
 ]

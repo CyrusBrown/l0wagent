@@ -1,0 +1,32 @@
+# Local development and the conformance suite only: `wrangler dev --local`. The seed and token below are
+# public dev values. Production configuration is wrangler.example.toml (copied into your private ops repo).
+name = "l0w-hub-dev"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+[vars]
+HUB_NAME = "Dev hub"
+HUB_BASE_URL = "http://hub.localhost:8787"
+TUNNEL_URL = "ws://hub.localhost:8787/v0/tunnel"
+INSTANCE_HOST_PATTERN = "{name}.hub.localhost:8787"
+FILES_HOST_PATTERN = "files--{name}.hubfiles.localhost:8787"
+MIN_RELEASE = "0.8.0"
+OWN_URL = "true"
+HUB_SIGNING_SEED = "lecYjx28aUdQ7GyN8sVZ3kZZdkBrMHqfDC8drU5zC9M"
+ADMIN_TOKEN = "dev-admin-token"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "l0w-hub-dev"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[durable_objects]
+bindings = [
+  { name = "MEMBER", class_name = "MemberRoute" },
+  { name = "CONN", class_name = "TunnelConn" },
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MemberRoute", "TunnelConn"]

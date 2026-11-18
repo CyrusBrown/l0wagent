@@ -29,7 +29,7 @@ yours and are never overwritten.
 
 ```sh
 ./l0w ps
-./l0w logs control        # or agent, egress, agent-web; Ctrl+C to stop following
+./l0w logs control        # or agent, egress; Ctrl+C to stop following
 ./l0w restart
 ./l0w down                # stop everything (data stays)
 ./l0w up
@@ -68,19 +68,35 @@ Memory, CPU, the GPU and host folders for the assistant go in `compose.override.
 
 ## Backups
 
-Everything lives in Docker volumes named `l0wagent_*`:
+`./l0w backup [-o FILE]` writes one encrypted file (default `l0w-backup-DATE.l0wbak`, mode 600). It
+holds control's database (taken consistently while it runs) and keys, the assistant's storage
+(home, reviewer home, workspace, work), the egress log and rules, the hub gateway's keys (`gateway-data`), and from the install folder
+`.env`, `extensions.toml` and `extensions/`. It doesn't hold `agent-cache` (re-downloadable) or the
+images. It asks for a passphrase twice (or reads `L0W_BACKUP_PASSPHRASE`). **Keep the passphrase:
+there is no way to open the file without it.** A backup contains your secrets, so treat the file
+like them; the encryption (AES-256-GCM, scrypt key) is what protects it in storage.
 
-| Volume | What |
-|---|---|
-| `l0wagent_control-data` | your account, threads, runs, settings, secrets (encrypted) |
-| `l0wagent_agent-workspace` | the assistant's memory (a git repo) |
-| `l0wagent_agent-work` | project work and your uploads |
-| `l0wagent_agent-home` | the assistant's home, including its Claude login |
-| `l0wagent_egress-data` | the request log and network rules |
+`./l0w restore FILE [--yes]` asks for confirmation and the passphrase, stops the stack, checks the
+whole file first (a wrong passphrase or a damaged file changes nothing), replaces the volumes and
+those install files with the backup's, and starts the stack again.
 
-`l0wagent_agent-cache` holds re-downloadable data and doesn't need backing up. Back up with
-the stack stopped (`./l0w down`), e.g.
-`docker run --rm -v l0wagent_control-data:/v -v "$PWD":/b alpine tar czf /b/control-data.tgz -C /v .`.
+To move to a new machine: install l0wagent there (`git clone`/release folder, Docker), copy the
+backup file over, and run `./l0w restore FILE` in the folder. No `./l0w install` is needed first;
+the restored `.env` brings the tokens and subnets with it (if the new machine's subnets clash,
+edit `SANDBOX_SUBNET` / `CHAT_SUBNET` / `TUNNEL_SUBNET` in `.env` and `./l0w up`). Then `./l0w update` to the
+current release if you like.
+
+The volumes are named `l0wagent_*` (`control-data`, `egress-data`, `gateway-data`, `agent-home`, `agent-reviewer`,
+`agent-workspace`, `agent-work`, and the cache `agent-cache`).
+
+## The hub services (gateway and tunnel)
+
+Two services support joining a hub (see `docs/plans/hub.md`). They run all the time but do nothing until the owner joins one.
+
+- **gateway** holds the instance's private keys for the hub protocol and signs on request; it never hands a key out. Its state is the `gateway-data` volume, which `./l0w backup` and `restore` include, so **a backup now contains the gateway's keys**: keep the file and its passphrase as carefully as the rest.
+- **tunnel** dials out to the hub and forwards visitors' requests to control. It holds no key; the gateway signs its handshake.
+- Both sit on `hubnet`, an internal network with its own subnet (`TUNNEL_SUBNET`, picked by `./l0w install`; added to an older `.env` by `./l0w update`). The agent is never on it and can't reach either service. The tunnel is also on `outside` to reach the hub. Control joins `hubnet` under the name `control-hub`, which is how the tunnel reaches it, so control sees those requests as coming from the tunnel subnet (`L0W_TUNNEL_SUBNET`) and treats them as a separate, restricted caller class.
+- New `.env` entries: `L0W_GATEWAY_TOKEN` (control to gateway), `L0W_GATEWAY_TUNNEL_TOKEN` (tunnel to gateway), `TUNNEL_SUBNET`. Don't edit them by hand; the services refuse to start with an empty or identical pair.
 
 ## Talking to it from the command line
 

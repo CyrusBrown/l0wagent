@@ -148,6 +148,8 @@ export const usePause = () =>
 export const useResume = () => useInvalidating(() => ok(api.DELETE('/api/system/pause')), [['system'], ['status'], ['calendar']])
 
 export const useSessions = () => useQuery({ queryKey: ['sessions'], queryFn: () => ok(api.GET('/api/account/sessions')) })
+export const useCreateDevice = () =>
+  useInvalidating((b: S['DeviceCreate']) => ok(api.POST('/api/account/devices', { body: b })), [['sessions'], ['inbox']])
 export const useRevokeSession = () =>
   useInvalidating((id: string) => ok(api.DELETE('/api/account/sessions/{session_id}', { params: { path: { session_id: id } } })), [['sessions'], ['inbox']])
 export const useChangePassword = () =>
@@ -249,7 +251,6 @@ export const useAddToShelf = () =>
   [['shelf'], ['projects']])
 export const useRemoveFromShelf = () =>
   useInvalidating((id: number) => ok(api.DELETE('/api/shelf/{item_id}', { params: { path: { item_id: id } } })), [['shelf'], ['projects']])
-export const useWebPage = () => useQuery({ queryKey: ['web'], queryFn: () => ok(api.GET('/api/web')), refetchInterval: 60_000 })
 
 // ── M4: budgets, providers, roles, the reviewer, the calendar, routines ────
 // All of these changes are online only (never queued): budgets and settings.
@@ -367,3 +368,14 @@ export const useChatAsk = (id: number) =>
   useInvalidating((b: S['ChatAsk']) => ok(api.POST('/api/chats/{chat_id}/ask', { params: { path: { chat_id: id } }, body: b })), [...chatKeys, ['thread']])
 export const useChatPull = (id: number) =>
   useInvalidating((thread_id: number) => ok(api.POST('/api/chats/{chat_id}/context', { params: { path: { chat_id: id } }, body: { thread_id } })), chatKeys)
+
+// ── Hub membership (H1) ──
+export const useMembership = () => useQuery({ queryKey: ['membership'], queryFn: () => ok(api.GET('/api/membership')) })
+export const useInvitePreview = () => useMutation({ mutationFn: (invite: string) => ok(api.POST('/api/membership/preview', { body: { invite } })) })
+export const useJoinHub = () =>
+  useInvalidating((b: Omit<S['JoinRequest'], 'idempotency_key'>) => ok(api.POST('/api/membership/join', { body: { ...b, idempotency_key: newKey() } })), [['membership']])
+export const useMembershipCheck = () => useInvalidating(() => ok(api.POST('/api/membership/check')), [['membership']])
+export const useRotateMemberKey = () => useInvalidating(() => ok(api.POST('/api/membership/rotate')), [['membership']])
+export const useRecoverMembership = () =>
+  useInvalidating((recovery_key: string) => ok(api.POST('/api/membership/recover', { body: { recovery_key } })), [['membership']])
+export const useLeaveHub = () => useInvalidating((confirm: string) => ok(api.POST('/api/membership/leave', { body: { confirm } })), [['membership']])
