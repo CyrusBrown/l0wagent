@@ -27,7 +27,11 @@ workspace; between runs it remembers nothing else.
 - **Long jobs**: background work that outlives a run, with its log.
 - **The reviewer**: a second model that watches wakeups (Settings → Reviewer). Off, Advisor
   (answers when asked), Monitor (reads its notes and may interject; the default) or Gate (must
-  agree before it stops or closes a task). It can move the assistant to another model mid-run.
+  agree before it stops or closes a task). It can move the assistant to another model mid-run. At
+  the start of each conversation (one a day by default) it reads the assistant's workspace (manual,
+  handoff, backlog, roadmap, recent journal) and your recent messages, and keeps a ranked list of next
+  tasks it hands the assistant when it finishes something, asks what's next, or wants to stop. The
+  assistant must tell it when it starts and finishes each piece of work.
 - **Standing instructions** (Settings) open every run's brief. A second box holds instructions only
   the reviewer reads.
 - **Use the whole budget** (Settings → Advanced, on by default): use it or lose it. A wakeup keeps

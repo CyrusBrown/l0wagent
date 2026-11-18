@@ -438,3 +438,26 @@ def test_the_run_manager_refuses_to_start_while_paused(tmp_path, monkeypatch):
     with pytest.raises(Conflict) as e:
         asyncio.run(b.runs_mgr.start(s.RunStart(budget=5, reason="x")))
     assert e.value.error == "paused"
+
+
+def test_a_new_reviewer_conversation_orients_itself_first(be):
+    """The first turn of a new conversation reads the workspace and gets the owner's recent messages; later turns don't."""
+    rid = be.db.ex("INSERT INTO runs(kind, why, provider, tier, budget, status, started_at, reviewer_mode, bucket) "
+                   "VALUES('wakeup','planned','claude-subscription','sonnet/medium',20,'running',?,'monitor','allowance')", (be.db.now(),))
+    tid = be.conv.create_thread("Pump schedule", None, "owner").id
+    be.conv.post_owner_message(tid, "Please move the pump test to Friday.", [], None)
+    prompts = []
+
+    async def consult(payload):
+        prompts.append((payload["prompt"], payload["resume_session"], payload["system_append"]))
+        return {"ok": True, "text": "QUIET", "session_id": "rv-day", "cost_usd": 0.0, "usage": {}, "messages": []}
+
+    be.runner.consult = consult
+    asyncio.run(be.reviewer.from_agent(rid, "start", "Writing the export"))
+    asyncio.run(be.reviewer.from_agent(rid, "ask", "What next?"))
+    first, second = prompts
+    assert first[1] is None and "# Start of your day as reviewer" in first[0] and "/workspace/NOW.md" in first[0]
+    assert "Please move the pump test to Friday." in first[0] and "“Pump schedule”" in first[0]
+    assert "use it or lose it" in first[0] and first[0].rstrip().endswith("Writing the export")
+    assert second[1] == "rv-day" and "Start of your day" not in second[0]
+    assert "give it the next task" in first[2] and "skipping the protocol" in first[2]

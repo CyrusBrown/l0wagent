@@ -58,8 +58,19 @@ runs. You work across many runs, so you only remember what you write down.
   run for it): don't retry in a loop. Write `NOW.md` and a note so the next run can pick up,
   then finish; plan a wakeup after the reset (`assistant budget` says when) and tell the owner
   in a thread only if something they're waiting on slipped.
-- If a reviewer is on (your brief says), use it: `assistant reviewer start|ask|done "…"`. In gate mode
-  it must agree before you end or close a claim as done.
+- If a reviewer is on (your brief says), using it is part of the job, not optional. It's a stronger
+  model that has read your workspace and knows what the owner asked; it advises, the owner decides.
+  1. Starting a piece of work: `assistant reviewer start "what, why, and what done looks like"`
+     (it may comment).
+  2. Unsure what to do or which approach, or stuck: `assistant reviewer ask "…"` instead of guessing,
+     stalling or stopping.
+  3. You think it's finished: `assistant reviewer done "what you did, where it is, how you verified
+     it, what's left"`. It checks and usually asks questions: answer with `assistant reviewer ask`
+     (fix real gaps first), then agree on the next task with it and `start` that.
+  Don't skip `start` and `done` to save budget: they're what keep the run on track. When it
+  interjects (a "From the reviewer" note next to a tool result), take it seriously; if you disagree,
+  say why. In gate mode it must agree before you end or close a claim as done. If it's unavailable,
+  the command says so: carry on with your own judgment.
 
 ## Long jobs
 Never wait on something long: start it in the background, register it (`assistant job start

@@ -133,6 +133,51 @@ class Reviewer:
             worker_text=worker_text, cost_text=cost_text, stop_text=STOP_TEXT[bool(self.settings.get("USE_WHOLE_BUDGET"))],
             share=f"{cfg.budget_share:.0%}", timezone=str(self.budgets.tz())) + self._owner_text() + self.ext_prompt("reviewer")
 
+    def _orientation(self, run: dict) -> str:
+        """The first turn of a new conversation: read the workspace, then keep a ranked list of next tasks.
+        Control adds what it knows (the owner's recent messages, open claims, asks waiting on the owner, the plan)."""
+        from .runs.manager import _strip_comment
+
+        cfg = self.budgets.reviewer_config()
+        scope = "wakeup" if cfg.continuity == "wakeup" else "day"
+        use_it = bool(self.settings.get("USE_WHOLE_BUDGET"))
+        stop_rule = ("use the whole budget (use it or lose it): finishing the planned work isn't a reason to stop; the default answer to "
+                     "an early end is no, with the next concrete task." if use_it else
+                     "the budget is planned: stopping early with `IDLE:` is fine when nothing worthwhile is left.")
+        return Template(_strip_comment((PROMPTS / "reviewer_orientation.md").read_text())).safe_substitute(
+            scope=scope, today=f"{self.budgets.local(utcnow()):%a %Y-%m-%d}", stop_rule=stop_rule, context=self._context(run))
+
+    def _context(self, run: dict) -> str:
+        parts = []
+        msgs = self.db.q("SELECT m.body, m.created_at, m.delivered_at, t.title FROM messages m JOIN threads t ON t.id=m.thread_id "
+                         "WHERE m.sender='owner' ORDER BY m.id DESC LIMIT 12")
+        if msgs:
+            lines = []
+            for m in reversed(msgs):
+                body = " ".join((m["body"] or "").split())
+                body = body if len(body) <= 600 else body[:597] + "…"
+                seen = "" if m["delivered_at"] else " (the assistant hasn't seen it yet)"
+                lines.append(f"- {m['created_at'][:16].replace('T', ' ')} in “{m['title']}”{seen}: {body}")
+            parts.append("The owner's recent messages, oldest first:\n" + "\n".join(lines))
+        conv = getattr(self.runs, "conv", None)
+        if conv:
+            try:
+                claims = conv.claims(active=True)
+                if claims:
+                    parts.append("Open claims (work it said it would do):\n" + "\n".join(f"- thread #{c.thread_id} “{c.thread_title}”: {c.plan}" for c in claims[:15]))
+                waiting = conv.inbox_entries(True, [])
+                if waiting:
+                    parts.append(f"Waiting on the owner: {len(waiting)} ask(s) ("
+                                 + ", ".join(sorted({e.kind for e in waiting})) + "). Work that depends on them is blocked; the rest isn't.")
+            except Exception:  # noqa: BLE001  (orientation must never fail a turn)
+                pass
+        planned = self.db.q("SELECT at, budget, reason FROM wakeups WHERE status='planned' ORDER BY at LIMIT 5")
+        if planned:
+            parts.append("Planned wakeups:\n" + "\n".join(f"- {w['at'][:16].replace('T', ' ')} UTC, {w['budget']:g} pts: {w['reason']}" for w in planned))
+        parts.append(f"This run: #{run['id']}, {run['kind']} ({run['why']}{': ' + run['why_detail'] if run.get('why_detail') else ''}), "
+                     f"budget {run['budget'] or 0:g} pts.")
+        return "\n\n".join(parts)
+
     def _owner_text(self) -> str:
         text = (self.budgets.instructions().reviewer_text or "").strip()
         return f"\n\n## Standing instructions from the owner, for you\n\nThe assistant doesn't see these.\n\n{text}" if text else ""
@@ -156,13 +201,15 @@ class Reviewer:
             key = self._session_key(run) + ("" if spec["runtime"] == "claude-code" else f":{spec['runtime']}")
             row = self.db.q1("SELECT value FROM kv WHERE key=?", (key,))
             resume = json.loads(row["value"]) if row else None
-            payload = {"run_id": run_id, "prompt": f"{self._header(run)}\n\n{prompt}", "system_append": self._system(), "runtime": spec["runtime"],
+            first = f"{self._orientation(run)}\n\n" if resume is None else ""  # a new conversation orients itself first
+            payload = {"run_id": run_id, "prompt": f"{first}{self._header(run)}\n\n{prompt}", "system_append": self._system(), "runtime": spec["runtime"],
                        "model": spec["model"], "effort": spec["effort"], "resume_session": resume, "env": self.budgets.provider_env(pid)}
             try:
                 out = await self.runner.consult(payload)
             except RunnerError as e:
-                if resume:  # a stale conversation: start a new one once
+                if resume:  # a stale conversation: start a new one once (and orient it)
                     payload["resume_session"] = None
+                    payload["prompt"] = f"{self._orientation(run)}\n\n{self._header(run)}\n\n{prompt}"
                     try:
                         out = await self.runner.consult(payload)
                     except RunnerError as e2:

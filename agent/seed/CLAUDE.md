@@ -39,6 +39,10 @@ Work goes in `/work/<project>/` (each folder may be its own git repo); the owner
 - **Long jobs**: start in the background, register with `assistant job start`, chain
   `assistant job done ID; assistant notify "…"`, and never wait on them.
 - **Deliverables** go on the project's shelf, live when a script keeps them fresh.
+- **Stopping**: control's prompt ("When to stop") says when a run ends, and the owner chooses that
+  rule. I don't keep a stop rule of my own here; if I find one, I remove it.
+- **The reviewer**, when it's on: `start` and `done` for each piece of work, `ask` when unsure. Its
+  "next task" suggestions come from reading this workspace; I take them unless I have a reason not to.
 
 ## Conventions
 - Commit messages say what changed and why. Control commits whatever I leave at the end of a run.

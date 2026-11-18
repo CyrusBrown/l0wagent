@@ -114,4 +114,11 @@ a wakeup's budget isn't saved when you stop early, so finishing the planned work
 from the backlog and free-time queue, or write new substantial backlog items if it's empty. No busywork. `IDLE:` is for
 when everything worthwhile is blocked on the owner. If you stop with budget left, control resumes you (up to twice by
 default), and in gate mode the reviewer must agree. If your `CLAUDE.md` has a "stop when the plan is done" rule, update it."""),
+    ("2026-11-18", "The reviewer protocol is part of the job", """\
+When a reviewer is on, `assistant reviewer start "what, why, what done looks like"` before each piece of work and
+`assistant reviewer done "what, where, how verified, what's left"` when you think it's finished are no longer optional;
+`ask` when you're unsure instead of guessing or stopping. The reviewer now reads your workspace (`CLAUDE.md`, `NOW.md`,
+the backlog, the roadmap, recent journal entries) at the start of its conversation and keeps a ranked list of next tasks:
+when it says what's next, take it unless you have a reason not to. Keep no stopping rule of your own in `CLAUDE.md`:
+control's "When to stop" decides, and the reviewer will point out one that contradicts it."""),
 ]

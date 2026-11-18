@@ -18,6 +18,9 @@ Each release's section becomes its GitHub release notes, which the app shows in 
 - Settings → Advanced: the wait length, time limits, Reply-now and Wake-now budgets and other tuning
   knobs; the 1:1 chat can change them too.
 - Standing instructions have a second box only the reviewer reads.
+- The reviewer orients itself at the start of each conversation (the assistant's workspace, your recent
+  messages, open claims) and hands the assistant concrete next tasks; the assistant must tell it when it
+  starts and finishes each piece of work.
 - Enter sends in every message box, phones included; Shift+Enter is a new line.
 - Long jobs past their estimate say so, instead of "expected in 1 minute".
 
