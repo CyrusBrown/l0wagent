@@ -1795,6 +1795,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/membership/accelerator": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Membership Accelerator
+         * @description Allow or refuse the hub's faster connection (cloudflared) when it offers one.
+         */
+        put: operations["membership_accelerator_api_membership_accelerator_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/membership/rotate": {
         parameters: {
             query?: never;
@@ -2251,6 +2271,36 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AcceleratorRequest */
+        AcceleratorRequest: {
+            /** Enabled */
+            enabled: boolean;
+        };
+        /** AcceleratorSetting */
+        AcceleratorSetting: {
+            /**
+             * Offered
+             * @description The hub advertises the cloudflared accelerator.
+             */
+            offered: boolean;
+            /**
+             * Enabled
+             * @description The owner allows using it (default on).
+             */
+            enabled: boolean;
+        };
+        /** AcceleratorStatus */
+        AcceleratorStatus: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "off" | "starting" | "ready" | "active" | "error";
+            /** Since */
+            since?: string | null;
+            /** Error */
+            error?: string | null;
+        };
         /**
          * AdvancedSetting
          * @description A tuning knob without a screen of its own (Settings → Advanced).
@@ -3852,6 +3902,8 @@ export interface components {
             /** Left At */
             left_at?: string | null;
             tunnel?: components["schemas"]["TunnelStatus"] | null;
+            /** @description Tunnel mode only. */
+            accelerator?: components["schemas"]["AcceleratorSetting"] | null;
             check?: components["schemas"]["MembershipCheck"] | null;
             sign_key?: components["schemas"]["MemberKey"] | null;
             /** Hub Key Alarm */
@@ -5651,6 +5703,7 @@ export interface components {
             since?: string | null;
             /** Error */
             error?: string | null;
+            accelerator?: components["schemas"]["AcceleratorStatus"] | null;
         };
         /** UpdateInfo */
         UpdateInfo: {
@@ -9554,6 +9607,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MembershipCheck"];
+                };
+            };
+        };
+    };
+    membership_accelerator_api_membership_accelerator_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceleratorRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Membership"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

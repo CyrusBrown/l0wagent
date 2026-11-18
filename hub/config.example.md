@@ -71,3 +71,19 @@ capabilities document and in the tunnel's `ready` message.
 
 Cloudflare's own request body limit depends on your plan (100 MB on Free and Pro, 200 MB Business, 500 MB
 Enterprise); a `request_body_bytes` above it is answered by Cloudflare before the hub sees the request.
+
+## The cloudflared accelerator
+
+Members' visitors can skip the Worker. Needs the member zones to be on Cloudflare and an API token (README.md lists its
+permissions). Ids are in the dashboard (zone *Overview*, right column).
+
+```toml
+CF_ACCELERATOR = "true"
+CF_ACCOUNT_ID = "0123456789abcdef0123456789abcdef"
+CF_ZONE_ID = "<zone id of hub.example>"
+CF_FILES_ZONE_ID = "<zone id of hubfiles.example>"   # omit when both hostnames are in one zone
+```
+
+```
+wrangler secret put CF_API_TOKEN
+```

@@ -14,8 +14,11 @@ CONNECT="127.0.0.1:${PORT}"
 STATE=$(mktemp -d "${TMPDIR:-/tmp}/l0w-hub-state.XXXXXX")
 LOG="${STATE}/wrangler.log"
 WRANGLER_PID=""
+MOCK_PID=""
+MOCK_PORT=8788
 
 cleanup() {
+  if [ -n "${MOCK_PID}" ]; then kill "${MOCK_PID}" 2>/dev/null || true; fi
   if [ -n "${WRANGLER_PID}" ] && kill -0 "${WRANGLER_PID}" 2>/dev/null; then
     kill "${WRANGLER_PID}" 2>/dev/null || true
     for _ in $(seq 1 30); do kill -0 "${WRANGLER_PID}" 2>/dev/null || break; sleep 0.2; done
@@ -29,6 +32,14 @@ if (exec 3<>"/dev/tcp/127.0.0.1/${PORT}") 2>/dev/null; then
   echo "conformance: port ${PORT} is already in use (is another wrangler dev running?)" >&2
   exit 2
 fi
+
+if (exec 3<>"/dev/tcp/127.0.0.1/${MOCK_PORT}") 2>/dev/null; then
+  echo "conformance: port ${MOCK_PORT} (the mock Cloudflare API) is already in use" >&2
+  exit 2
+fi
+echo "conformance: starting the mock Cloudflare API on :${MOCK_PORT}"
+MOCK_CF_TOKEN=dev-cf-token node scripts/mock-cf-api.mjs --port "${MOCK_PORT}" >"${STATE}/mock-cf.log" 2>&1 &
+MOCK_PID=$!
 
 echo "conformance: applying migrations to a fresh local D1"
 pnpm exec wrangler d1 migrations apply DB --local --config wrangler.dev.toml --persist-to "${STATE}" >"${STATE}/migrate.log" 2>&1 \

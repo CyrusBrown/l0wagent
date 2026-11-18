@@ -4,16 +4,18 @@ host-routing front are in tunnel.py."""
 from __future__ import annotations
 
 import json
+import secrets
+import uuid
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 import httpx
-from l0wproto import VERSION, docs, payloads
+from l0wproto import VERSION, b64, docs, payloads
 from l0wproto.consts import SUPPORTED_VERSIONS
-from l0wproto.errors import NameRuleError, UnsupportedVersion
+from l0wproto.errors import DocumentError, NameRuleError, SignatureError, UnsupportedVersion
 from l0wproto.keys import Key
 from l0wproto.names import check_name
-from l0wproto.times import check_fresh, format_time, now
+from l0wproto.times import check_fresh, format_time, now, parse_time
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -53,6 +55,9 @@ class Hub:
         self.store = Store(cfg.state_path)
         self.key = load_hub_key(cfg.seed_path)
         self.tunnels = TunnelServer(self)
+        #: member name -> {tunnel_id, token, active, last_iat}; in memory only (the fake has no Cloudflare)
+        self.cloudflared: dict[str, dict] = {}
+        self.cloudflared_iat: dict[str, int] = {}  # member name -> last accepted iat
         self._http_factory = http_client_factory or (
             lambda: httpx.AsyncClient(verify=cfg.own_url_verify_tls, timeout=5.0, follow_redirects=False))
 
@@ -108,7 +113,9 @@ class Hub:
             c.name, c.domain, [self.key.key], c.api, c.tunnel_url, min_release=c.min_release,
             membership={"invites": True, "signups": "closed", "own_url": True, "require_2fa": True},
             hostnames={"layout": "two-domains", "example": c.hostnames_for("mara")},
-            limits=c.limits)
+            limits=c.limits,
+            extras=[{"kind": "accelerator", "id": "cloudflared", "doc": f"{c.base_url}/docs/cloudflared",
+                     "api": f"{c.api}accelerators/cloudflared"}])
         doc = docs.sign_document("hub", payload, [self.key])
         return JSONResponse(doc, headers={"Cache-Control": "max-age=300"})
 
@@ -203,6 +210,7 @@ class Hub:
                         "revocation", payloads.build_revocation(member["address"], kid, "re-registered"), [self.key]))
             s["members"][name] = member
         if reregistered:
+            self.cloudflared.pop(name, None)
             await self.tunnels.drop(name, 4401)
         tunnel = self.cfg.tunnel_url if p["mode"] == "tunnel" else None
         return JSONResponse(payloads.build_join_response(self.address(name), hostnames, self.key.key, tunnel), status_code=201)
@@ -298,8 +306,65 @@ class Hub:
         with self.store.write() as s:
             m = self._member_or_raise(s, name)
             m["status"], m["left_at"], m["moved_to"], m["moved_doc"] = "left", format_time(now()), p["moved_to"], moved_doc
+        self.cloudflared.pop(name, None)  # leaving disables the accelerator first
         await self.tunnels.drop(name, 1000)
         return JSONResponse({"v": VERSION, "left": True})
+
+    # --- accelerators ---------------------------------------------------------------------
+
+    async def cloudflared_request(self, request: Request):
+        """POST /v0/accelerators/cloudflared (accelerators.md). In-memory state; `activate` never checks
+        the tunnel's connection (there is no Cloudflare here)."""
+        doc = await self.body(request, "bad_request")
+        try:  # the address is read before the signature is checked, only to find the key
+            addr = json.loads(b64.decode(doc["payload"]))["address"]
+            name, domain = payloads.split_address(addr)
+        except Exception as e:
+            raise HubError(400, "bad_request", "malformed accelerator-request") from e
+        with self.store.read() as s:
+            m = s["members"].get(name)
+            m = json.loads(json.dumps(m)) if m else None
+        if m is None or domain != self.cfg.domain.lower():
+            raise HubError(401, "bad_sig", "unknown address")
+        try:
+            p = payloads.verify_accelerator_request(doc, Key.from_dict(m["keys"]["sign"]), hub=self.cfg.domain,
+                                                    address=self.address(name))
+        except UnsupportedVersion as e:
+            raise HubError(400, "unsupported_version", str(e), {"supported": list(SUPPORTED_VERSIONS)}) from e
+        except SignatureError as e:
+            raise HubError(401, "bad_sig", str(e)) from e
+        except DocumentError as e:
+            raise HubError(400, "bad_request", str(e)) from e
+        if m["status"] != "active" or m["mode"] != "tunnel":
+            raise HubError(403, "not_member", "only active tunnel-mode members may use the accelerator")
+        iat = parse_time(p["iat"])
+        last = self.cloudflared_iat.get(name)
+        if last is not None and iat <= last:
+            raise HubError(409, "stale", "iat is not later than the last accepted request", {"last_iat": format_time(last)})
+        action, st = p["action"], self.cloudflared.get(name)
+        if action == "enable":
+            st = self.cloudflared.setdefault(name, {"tunnel_id": str(uuid.uuid4()), "token": "fake-cf-token-" + secrets.token_hex(16),
+                                                    "active": False})
+            st["service"] = p["service"]
+        elif st is None and action != "disable":
+            raise HubError(409, "not_enabled", "enable the accelerator first")
+        elif action == "activate":
+            st["active"] = True
+        elif action == "deactivate":
+            st["active"] = False
+        else:  # disable
+            self.cloudflared.pop(name, None)
+            st = None
+        self.cloudflared_iat[name] = iat
+        return JSONResponse({"state": self._cf_state(m, st, token=action == "enable")})
+
+    def _cf_state(self, m: dict, st: dict | None, token: bool = False) -> dict:
+        hn = m["hostnames"]
+        out = {"enabled": st is not None, "active": bool(st and st["active"]), "tunnel_id": st["tunnel_id"] if st else None,
+               "hostnames": [hn["instance"], hn["files"]]}
+        if token and st:
+            out["token"] = st["token"]
+        return out
 
 
 def create_app(cfg: Config, *, http_client_factory=None):
@@ -324,6 +389,7 @@ def create_app(cfg: Config, *, http_client_factory=None):
         Route("/v0/members", wrap(hub.register), methods=["POST"]),
         Route(f"/v0/members/{name_re}/self", wrap(hub.put_self), methods=["PUT"]),
         Route(f"/v0/members/{name_re}/leave", wrap(hub.leave), methods=["POST"]),
+        Route("/v0/accelerators/cloudflared", wrap(hub.cloudflared_request), methods=["POST"]),
     ]
     app = Starlette(routes=routes)
     front = hub.tunnels.asgi(app)

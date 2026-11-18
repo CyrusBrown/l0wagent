@@ -14,6 +14,7 @@ import websockets
 from l0wproto import VERSION, docs, keys, payloads, tunnel as lt
 from l0wproto.invite import parse_invite
 from l0wproto.keys import Key
+from l0wproto.times import format_time, now
 
 from .harness import (Failure, Inst, Net, Peer, Report, connect_tunnel, expect, expect_error, new_name, open_peer, sha,
                       stale)
@@ -594,6 +595,102 @@ class Suite:
                 expect(r.status_code >= 400, f"{kind} hostname still answers {r.status_code}")
         await self.r.step("after leaving: the hostnames no longer serve", host_gone)
 
+    # --- accelerators ---------------------------------------------------------------------
+
+    def accelerator_api(self) -> str | None:
+        for e in self.caps.get("extras", []):
+            if e.get("kind") == "accelerator" and e.get("id") == "cloudflared" and isinstance(e.get("api"), str):
+                return e["api"]
+        return None
+
+    async def cloudflared(self, m: Inst, api: str) -> None:
+        """The `cloudflared` accelerator (accelerators.md). The hub under test must report the tunnel as
+        connected (a real hub is pointed at a provider that does)."""
+        n = [0]
+
+        def when() -> str:  # strictly increasing iat, within the 300 s future allowance
+            n[0] += 1
+            return format_time(now() + n[0])
+
+        async def post(doc):
+            return await self.net.http.post(api, json=doc)
+
+        async def ok(doc) -> dict:
+            r = await post(doc)
+            expect(r.status_code == 200, f"expected 200, got {r.status_code} {r.text[:200]}")
+            st = r.json().get("state")
+            expect(isinstance(st, dict), "answer has no state object")
+            return st
+
+        async def not_enabled():
+            expect_error(await post(m.accel("activate", iat=when())), 409, "not_enabled")
+            expect_error(await post(m.accel("deactivate", iat=when())), 409, "not_enabled")
+        await self.r.step("cloudflared: activate/deactivate before enable -> 409 not_enabled", not_enabled)
+
+        async def refused():
+            expect_error(await post(m.accel("enable", iat=when(), signer=keys.generate("sign"), service="http://127.0.0.1:8790")), 401, "bad_sig")
+            expect_error(await post(m.accel("enable", "http://127.0.0.1:8790", iat=when(), hub="other.example")), 401, "bad_sig")
+            expect_error(await post(m.accel("enable", "http://127.0.0.1:8790", iat=when(), accelerator="other")), 401, "bad_sig")
+            expect_error(await post(m.accel("enable", "http://127.0.0.1:8790", iat=format_time(now() - 200))), 401, "bad_sig")
+            expect_error(await post(m.accel("enable", "http://127.0.0.1:8790", iat=format_time(now() + 4000))), 401, "bad_sig")
+        await self.r.step("cloudflared: bad signature, wrong hub or accelerator, old or future iat -> 401 bad_sig", refused)
+
+        async def bad_requests():
+            for svc in ("http://10.0.0.1:80", "https://127.0.0.1:1", "http://127.0.0.1:0", "http://127.0.0.1:65536",
+                        "http://localhost:80", None):
+                expect_error(await post(m.accel("enable", svc, iat=when())), 400, "bad_request")
+            expect_error(await post(m.accel("explode", "http://127.0.0.1:8790", iat=when())), 400, "bad_request")
+            r = await self.net.http.post(api, content=b"not json", headers={"content-type": "application/json"})
+            expect_error(r, 400, "bad_request")
+        await self.r.step("cloudflared: bad service, unknown action or body -> 400 bad_request", bad_requests)
+
+        out: dict = {}
+
+        async def enable():
+            st = await ok(m.accel("enable", "http://127.0.0.1:8790", iat=when()))
+            expect(st.get("enabled") is True and st.get("active") is False, f"state {st}")
+            expect(isinstance(st.get("token"), str) and st["token"], "enable answer has no token")
+            expect(isinstance(st.get("tunnel_id"), str) and st["tunnel_id"], "no tunnel_id")
+            expect(sorted(h.lower() for h in st.get("hostnames", [])) == sorted(h.lower() for h in m.hostnames.values()),
+                   f"hostnames {st.get('hostnames')} are not the member's {m.hostnames}")
+            out["tunnel_id"] = st["tunnel_id"]
+        if not await self.r.step("cloudflared: enable -> token, tunnel_id, both hostnames, enabled and not active", enable):
+            return
+
+        async def enable_again():
+            st = await ok(m.accel("enable", "http://127.0.0.1:8791", iat=when()))
+            expect(st.get("tunnel_id") == out["tunnel_id"], "a second enable made another tunnel")
+            expect(st.get("enabled") is True and st.get("active") is False, f"state {st}")
+        await self.r.step("cloudflared: enable again -> the same tunnel_id", enable_again)
+
+        async def replay():
+            doc = m.accel("activate", iat=when())
+            st = await ok(doc)
+            expect(st.get("active") is True, f"state {st}")
+            body = expect_error(await post(doc), 409, "stale")
+            expect("last_iat" in body, "stale answer has no last_iat")
+            expect_error(await post(m.accel("deactivate", iat=format_time(now() + 1))), 409, "stale")
+        await self.r.step("cloudflared: activate -> active true; replaying the document, or an older iat -> 409 stale with last_iat", replay)
+
+        async def state_changes():
+            st = await ok(m.accel("deactivate", iat=when()))
+            expect(st.get("active") is False and st.get("enabled") is True, f"state {st}")
+            st = await ok(m.accel("activate", iat=when()))
+            expect(st.get("active") is True, f"state {st}")
+            st = await ok(m.accel("disable", iat=when()))
+            expect(st.get("enabled") is False and st.get("active") is False and st.get("tunnel_id") is None, f"state {st}")
+            expect("token" not in st, "disable answer carries a token")
+            expect_error(await post(m.accel("activate", iat=when())), 409, "not_enabled")
+        await self.r.step("cloudflared: deactivate, activate, disable (enabled false, tunnel_id null), then not_enabled", state_changes)
+
+        async def after_leave():
+            await ok(m.accel("enable", "http://127.0.0.1:8790", iat=when()))
+            r = await self.net.http.post(self.api + f"members/{m.name}/leave", json=m.leave_doc())
+            expect(r.status_code == 200, f"leave answered {r.status_code}")
+            r = await post(m.accel("enable", "http://127.0.0.1:8790", iat=when()))
+            expect(r.status_code in (401, 403), f"a member that left got {r.status_code}")
+        await self.r.step("cloudflared: after leaving the member cannot use it (401 or 403)", after_leave)
+
     # --- everything -----------------------------------------------------------------------
 
     async def run(self) -> None:
@@ -609,6 +706,15 @@ class Suite:
             await self.refusals(m1)
             await self.self_updates(m1)
             await self.rotation(m1)
+        api = self.accelerator_api()
+        if api is None:
+            self.r.add("SKIP", "cloudflared accelerator checks", "the hub does not advertise the cloudflared accelerator")
+        else:
+            m3 = await self.register("member 3 (accelerator)")
+            if m3 is None or not await self.after_join(m3):
+                self.r.add("FAIL", "cloudflared accelerator checks", "not run: registration or the first self failed")
+            else:
+                await self.cloudflared(m3, api)
         m2 = await self.register("member 2")
         if m2 is None or not await self.after_join(m2):
             self.r.add("FAIL", "tunnel and leave checks", "not run: registration or the first self failed")

@@ -288,6 +288,9 @@ class SqliteBackend(Backend):
     def membership_check(self) -> s.MembershipCheck:
         return self._await(self.membership_.check())
 
+    def membership_accelerator(self, req: s.AcceleratorRequest) -> s.Membership:
+        return self._await(self.membership_.set_accelerator(req.enabled))
+
     def membership_rotate(self) -> s.Membership:
         return self._await(self.membership_.rotate())
 

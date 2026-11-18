@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import type { S } from '../api/client'
 import {
-  problem, useInvitePreview, useJoinHub, useLeaveHub, useMembership, useMembershipCheck, useRecoverMembership, useRotateMemberKey,
+  problem, useInvitePreview, useJoinHub, useLeaveHub, useMembership, useMembershipCheck, useRecoverMembership, useRotateMemberKey, useSetAccelerator,
 } from '../api/queries'
 import { ago, stamp } from '../components/format'
 
@@ -13,6 +13,14 @@ export function hubSummary(m: S['Membership']): string {
 }
 
 const TUNNEL_DOT: Record<S['TunnelStatus']['state'], string> = { connected: 'ok', connecting: 'warn', idle: 'bad', offline: 'bad', refused: 'bad', unknown: 'bad' }
+
+/** The tunnel line's text: the state, and which way the traffic goes. */
+export function tunnelText(t: NonNullable<S['Membership']['tunnel']>): string {
+  const a = t.accelerator?.state
+  if (t.state === 'connected' && a === 'active') return 'Connected · via cloudflared'
+  if (a === 'starting' || a === 'ready') return `${t.state} · cloudflared starting…`
+  return t.state
+}
 
 export function Hub() {
   const q = useMembership()
@@ -148,6 +156,7 @@ function Joined({ m }: { m: S['Membership'] }) {
   const rotate = useRotateMemberKey()
   const recover = useRecoverMembership()
   const leave = useLeaveHub()
+  const accel = useSetAccelerator()
   const [confirmRotate, setConfirmRotate] = useState(false)
   const [recovering, setRecovering] = useState(false)
   const [rkey, setRkey] = useState('')
@@ -167,18 +176,29 @@ function Joined({ m }: { m: S['Membership'] }) {
           {m.hub && <div className="set-row"><span className="k">Hub</span><span>{m.hub.name} · {m.hub.domain}</span></div>}
           {m.urls && <div className="set-row"><span className="k">App</span><a href={m.urls.instance} target="_blank" rel="noreferrer">{m.urls.instance}</a></div>}
           {m.urls && <div className="set-row"><span className="k">Files</span><a href={m.urls.files} target="_blank" rel="noreferrer">{m.urls.files}</a></div>}
+          {m.accelerator?.offered && (
+            <div className="set-row">
+              <span>Use the hub's faster connection (cloudflared) when it offers one</span>
+              <button className="toggle" role="switch" aria-checked={m.accelerator.enabled} aria-label="Use the hub's faster connection" disabled={accel.isPending}
+                onClick={() => accel.mutate(!m.accelerator!.enabled)}>
+                <span className={`switch ${m.accelerator.enabled ? 'on' : ''}`}><span /></span>
+              </button>
+            </div>
+          )}
           <div className="set-row"><span className="k">Mode</span><span>{m.mode === 'own-url' ? 'Own URLs' : 'Hub tunnel'}</span></div>
           {m.joined_at && <div className="set-row"><span className="k">Joined</span><span>{ago(m.joined_at)}</span></div>}
           {t && (
             <div className="set-row">
               <span className="k">Tunnel</span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 8, textAlign: 'right' }}>
-                <span className={`dot ${TUNNEL_DOT[t.state]}`} />{t.state}{t.since ? ` · since ${ago(t.since)}` : ''}
+                <span className={`dot ${TUNNEL_DOT[t.state]}`} />{tunnelText(t)}{t.since ? ` · since ${ago(t.since)}` : ''}
               </span>
             </div>
           )}
         </div>
         {t?.error && <div className="error" role="alert">{t.error}</div>}
+        {t?.accelerator?.state === 'error' && <div className="error" role="alert">cloudflared isn't working{t.accelerator.error ? `: ${t.accelerator.error}` : ''}. The normal tunnel is carrying your traffic.</div>}
+        {accel.error && <div className="error" role="alert">{problem(accel.error)}</div>}
       </section>
 
       <section className="set-section">

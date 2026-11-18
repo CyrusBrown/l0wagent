@@ -184,6 +184,52 @@ def test_tunnel_hello(kp):
         P.verify_tunnel_hello(short, kp["sign"].key, nonce=b64.encode(b"x"), hub=HUB, now=NOW)
 
 
+def _acc(kp, action="enable", service="http://127.0.0.1:8790", signer="sign", **kw):
+    p = P.build_accelerator_request(kw.pop("address", ADDR), kw.pop("hub", HUB), action, service if service is not None else P._OMIT,
+                                    iat=kw.pop("iat", IAT), **kw)
+    return docs.sign_document("accelerator-request", p, [kp[signer]])
+
+
+def test_accelerator_service_rule():
+    for ok in ("http://127.0.0.1:1", "http://127.0.0.1:8790", "http://127.0.0.1:65535"):
+        assert P.valid_service(ok), ok
+    for bad in ("http://127.0.0.1:0", "http://127.0.0.1:65536", "http://127.0.0.1:099", "http://127.0.0.1", "http://127.0.0.1:80/",
+                "https://127.0.0.1:80", "http://localhost:80", "http://10.0.0.1:80", "http://127.0.0.1:80\n", None, 80):
+        assert not P.valid_service(bad), bad
+
+
+def test_accelerator_request(kp):
+    for action in ("enable", "activate", "deactivate", "disable"):
+        p = P.verify_accelerator_request(_acc(kp, action), kp["sign"].key, hub=HUB, address=ADDR, now=NOW)
+        assert p["action"] == action
+    # service is only required to enable
+    P.verify_accelerator_request(_acc(kp, "activate", None), kp["sign"].key, hub=HUB, now=NOW)
+    with pytest.raises(ValidationError) as e:
+        P.verify_accelerator_request(_acc(kp, "enable", None), kp["sign"].key, hub=HUB, now=NOW)
+    assert e.value.code == "bad_request"
+    for bad in ("http://10.0.0.1:80", "https://127.0.0.1:1", "http://127.0.0.1:0"):
+        with pytest.raises(ValidationError):
+            P.verify_accelerator_request(_acc(kp, "enable", bad), kp["sign"].key, hub=HUB, now=NOW)
+    with pytest.raises(ValidationError) as e:
+        P.verify_accelerator_request(_acc(kp, "explode"), kp["sign"].key, hub=HUB, now=NOW)
+    assert e.value.code == "bad_request"
+
+
+def test_accelerator_request_bad_sig_cases(kp):
+    def bad(doc, **kw):
+        with pytest.raises(SignatureError) as e:
+            P.verify_accelerator_request(doc, kp["sign"].key, **{"hub": HUB, "now": NOW, **kw})
+        assert e.value.code == "bad_sig"
+    bad(_acc(kp, signer="other"))
+    bad(_acc(kp, hub="other.example"))
+    bad(_acc(kp, accelerator="other"))
+    bad(_acc(kp), address="ana@hub.example")
+    bad(_acc(kp), now=NOW + 121)  # iat 121 s in the past
+    bad(_acc(kp), now=NOW - 301)  # iat too far in the future
+    P.verify_accelerator_request(_acc(kp), kp["sign"].key, hub=HUB, now=NOW + 120)
+    P.verify_accelerator_request(_acc(kp), kp["sign"].key, hub=HUB, now=NOW - 300)
+
+
 def test_a_document_is_not_another_type(kp):
     d = docs.sign_document("leave", P.build_leave(ADDR, iat=IAT), [kp["sign"]])
     with pytest.raises(Exception):

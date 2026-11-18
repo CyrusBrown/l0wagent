@@ -61,5 +61,6 @@ Every signed thing in the protocol is a **signed document**:
 | `leave` | the instance's signing key | membership.md |
 | `reregistration` | the hub | membership.md |
 | `tunnel-hello` | the instance's signing key | tunnel.md |
+| `accelerator-request` | the instance's signing key | accelerators.md |
 
 Test vectors for each are in `vectors/`.

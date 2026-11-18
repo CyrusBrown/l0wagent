@@ -1593,10 +1593,26 @@ class MemberKey(Model):
     created: datetime
 
 
+class AcceleratorStatus(Model):
+    state: Literal["off", "starting", "ready", "active", "error"]
+    since: datetime | None = None
+    error: str | None = None
+
+
+class AcceleratorSetting(Model):
+    offered: bool = Field(description="The hub advertises the cloudflared accelerator.")
+    enabled: bool = Field(description="The owner allows using it (default on).")
+
+
+class AcceleratorRequest(Model):
+    enabled: bool
+
+
 class TunnelStatus(Model):
     state: Literal["idle", "connecting", "connected", "offline", "refused", "unknown"]
     since: datetime | None = None
     error: str | None = None
+    accelerator: AcceleratorStatus | None = None
 
 
 class MembershipCheck(Model):
@@ -1616,6 +1632,7 @@ class Membership(Model):
     joined_at: datetime | None = None
     left_at: datetime | None = None
     tunnel: TunnelStatus | None = None
+    accelerator: AcceleratorSetting | None = Field(None, description="Tunnel mode only.")
     check: MembershipCheck | None = None
     sign_key: MemberKey | None = None
     hub_key_alarm: str | None = None

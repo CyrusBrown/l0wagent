@@ -379,6 +379,63 @@ export async function verifyTunnelHello(doc: unknown, signingKey: Key, opts: { n
   return p;
 }
 
+// --- accelerator-request -----------------------------------------------------------------------
+
+export const ACCELERATOR_ACTIONS = ["enable", "activate", "deactivate", "disable"] as const;
+export const ACCELERATOR_MAX_AGE = 120; // seconds an accelerator-request's iat may lie in the past
+const SERVICE = /^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})$/;
+
+export function validService(service: unknown): boolean {
+  const m = typeof service === "string" ? SERVICE.exec(service) : null;
+  return m !== null && Number(m[1]) <= 65535;
+}
+
+/** Shape rules; failures are `bad_request`. */
+export function validateAcceleratorRequest(p: unknown): Obj {
+  const o = base(p, "accelerator-request");
+  splitAddress(needStr(o, "address"));
+  needStr(o, "hub");
+  needStr(o, "accelerator");
+  const action = needStr(o, "action");
+  if (!(ACCELERATOR_ACTIONS as readonly string[]).includes(action)) throw new ValidationError(`unknown action ${JSON.stringify(action)}`);
+  if (action === "enable" && !validService(o.service)) {
+    throw new ValidationError("service must be http://127.0.0.1:<port> with a port from 1 to 65535");
+  }
+  return o;
+}
+
+/** The hub's check. Throws a ProtocolError whose `code` is `bad_sig` (signature, iat, hub, accelerator or
+ * address) or `bad_request` (malformed, action, service). Strictly increasing `iat` is the hub's own state. */
+export async function verifyAcceleratorRequest(
+  doc: unknown,
+  signingKey: Key,
+  opts: { hub: string; address?: string; accelerator?: string; now?: number },
+): Promise<Obj> {
+  const n = opts.now ?? epochNow();
+  let p: Obj;
+  try {
+    p = await verifyDocument(doc, [signingKey], { expectedType: "accelerator-request", required: [signingKey.kid], now: n });
+  } catch (e) {
+    if (e instanceof SignatureError) throw new SignatureError(e.detail, "bad_sig");
+    if (e instanceof ValidationError && /iat|expired/.test(e.detail)) throw new SignatureError(e.detail, "bad_sig");
+    if (e instanceof ValidationError || e instanceof DocumentError) throw new ValidationError(e.detail, "bad_request");
+    throw e;
+  }
+  try {
+    validateAcceleratorRequest(p);
+  } catch (e) {
+    if (e instanceof ValidationError) throw new ValidationError(e.detail, "bad_request");
+    throw e;
+  }
+  if (parseTime(p.iat) < n - ACCELERATOR_MAX_AGE) throw new SignatureError("iat is more than 120 s in the past", "bad_sig");
+  if (p.hub.toLowerCase() !== opts.hub.toLowerCase()) throw new SignatureError("request is for another hub", "bad_sig");
+  if (p.accelerator !== (opts.accelerator ?? "cloudflared")) throw new SignatureError("request is for another accelerator", "bad_sig");
+  if (opts.address !== undefined && p.address.toLowerCase() !== opts.address.toLowerCase()) {
+    throw new SignatureError("request is for another address", "bad_sig");
+  }
+  return p;
+}
+
 // --- other bodies ------------------------------------------------------------------------------
 
 export function buildInviteResponse(expires: string, hubName: string, nameHint: string | null = null): Obj {

@@ -217,6 +217,7 @@ class Backend:
     def membership_preview(self, req: s.InvitePreviewRequest) -> s.InvitePreview: raise NotImplementedError
     def membership_join(self, req: s.JoinRequest) -> s.JoinResult: raise NotImplementedError
     def membership_check(self) -> s.MembershipCheck: raise NotImplementedError
+    def membership_accelerator(self, req: s.AcceleratorRequest) -> s.Membership: raise NotImplementedError
     def membership_rotate(self) -> s.Membership: raise NotImplementedError
     def membership_recover(self, req: s.RecoverRequest) -> s.Membership: raise NotImplementedError
     def membership_leave(self, req: s.LeaveRequest) -> s.Membership: raise NotImplementedError

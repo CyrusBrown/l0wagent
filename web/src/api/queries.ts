@@ -375,6 +375,8 @@ export const useInvitePreview = () => useMutation({ mutationFn: (invite: string)
 export const useJoinHub = () =>
   useInvalidating((b: Omit<S['JoinRequest'], 'idempotency_key'>) => ok(api.POST('/api/membership/join', { body: { ...b, idempotency_key: newKey() } })), [['membership']])
 export const useMembershipCheck = () => useInvalidating(() => ok(api.POST('/api/membership/check')), [['membership']])
+export const useSetAccelerator = () =>
+  useInvalidating((enabled: boolean) => ok(api.PUT('/api/membership/accelerator', { body: { enabled } })), [['membership']])
 export const useRotateMemberKey = () => useInvalidating(() => ok(api.POST('/api/membership/rotate')), [['membership']])
 export const useRecoverMembership = () =>
   useInvalidating((recovery_key: string) => ok(api.POST('/api/membership/recover', { body: { recovery_key } })), [['membership']])

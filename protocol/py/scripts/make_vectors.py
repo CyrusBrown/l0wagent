@@ -120,7 +120,8 @@ def build() -> dict[str, str]:
         payloads.build_hub("Example hub", HUB, [HUBKEY.key], f"https://{HUB}/v0/", "wss://tunnel.hub.example/v0/tunnel",
                            hostnames={"layout": "two-domains", "example": hostnames},
                            policies={"terms": "https://hub.example/terms", "privacy": "https://hub.example/privacy"},
-                           extras=[{"kind": "accelerator", "id": "cloudflared", "doc": "https://hub.example/docs/cloudflared"}],
+                           extras=[{"kind": "accelerator", "id": "cloudflared", "doc": "https://hub.example/docs/cloudflared",
+                                     "api": f"https://{HUB}/v0/accelerators/cloudflared"}],
                            iat=IAT), [HUBKEY], [HUBKEY]))
     files["registration.json"] = dump(doc_vector(
         "Join request, signed by the new signing key and the recovery key", "registration",
@@ -135,6 +136,9 @@ def build() -> dict[str, str]:
         "Answer to the hub's challenge", "tunnel-hello",
         payloads.build_tunnel_hello(ADDR, b64.encode(nonce), HUB, "0.9.0", iat=IAT), [MEMBER], [MEMBER],
         challenge=json.loads(tunnel.challenge_message(nonce, HUB))))
+    files["accelerator-request.json"] = dump(doc_vector(
+        "Enable the cloudflared accelerator", "accelerator-request",
+        payloads.build_accelerator_request(ADDR, HUB, "enable", "http://127.0.0.1:8790", iat=IAT), [MEMBER], [MEMBER]))
 
     files["hop-auth.json"] = dump(hop_vectors())
     files["tunnel-frames.json"] = dump(frame_vectors())

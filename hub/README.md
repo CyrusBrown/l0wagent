@@ -41,6 +41,13 @@ worked examples (two domains, flat, nested), `wrangler.dev.toml` is the local se
 | `OWN_URL` | var, optional | `"true"` (default) or `"false"`: whether members may join with their own URLs |
 | `INVITE_DAYS` | var, optional | Default invite lifetime (7) |
 | `HUB_KEY_CREATED` | var, optional | The `created` time in the hub's key object (default `2026-11-17T00:00:00Z`); keep it fixed once chosen |
+| `CF_ACCELERATOR` | var, optional | `"true"` turns on the `cloudflared` accelerator (below). Default off |
+| `CF_ACCOUNT_ID` | var | The Cloudflare account that owns the members' tunnels |
+| `CF_ZONE_ID` | var | The zone holding the instance hostnames |
+| `CF_FILES_ZONE_ID` | var, optional | The zone holding the files hostnames; default `CF_ZONE_ID` |
+| `CF_API_BASE` | var, optional | Default `https://api.cloudflare.com/client/v4`; tests point it at `scripts/mock-cf-api.mjs` |
+| `CF_ACCELERATOR_DOC` | var, optional | The `doc` URL in the advertised extra; default the accelerator's API URL |
+| `CF_API_TOKEN` | **secret** | The Cloudflare API token (permissions below) |
 | `HUB_SIGNING_SEED` | **secret** | The hub's Ed25519 key: base64url of 32 random bytes. Changing it changes the hub's identity; instances treat that as an alarm |
 | `ADMIN_TOKEN` | **secret** | Bearer token for `POST /v0/admin/invites`. Unset: that endpoint answers 404 |
 
@@ -110,6 +117,37 @@ HUB_ADMIN_TOKEN=... node scripts/invite.mjs --hub https://hub.example --reregist
 The body is `{name_hint?, days?, reregister?}` and the answer `201 {invite: "l0w-invite:…", expires}`. A re-registration invite
 only approves that one name; the hub then issues the signed `reregistration` document (membership.md).
 
+## The cloudflared accelerator
+
+Optional (protocol/accelerators.md). A member who asks gets a Cloudflare Tunnel of its own; its instance runs `cloudflared`,
+and while the accelerator is **active** Cloudflare's edge sends the member's two hostnames straight to the instance and
+this Worker never sees those requests. The spec tunnel stays connected as the fallback. It is on only when
+`CF_ACCELERATOR = "true"` and `CF_ACCOUNT_ID`, `CF_ZONE_ID` and the secret `CF_API_TOKEN` are all set (apply migration
+`0002_accelerator.sql`); then the capabilities document carries `{"kind": "accelerator", "id": "cloudflared", "doc", "api"}`.
+
+What the hub does per member, with `POST /v0/accelerators/cloudflared` and a signed `accelerator-request`:
+
+| Action | Cloudflare calls |
+|---|---|
+| `enable` | create the tunnel (`l0w-<name>-<8 hex>`, remotely configured), set its ingress (both hostnames to the instance's `http://127.0.0.1:<port>`, else 404), create a proxied CNAME to `<id>.cfargotunnel.com` for each hostname (an existing record is updated), read the run token |
+| `activate` | refuse `409 not_connected` unless the tunnel is `healthy`/`degraded`; add a Worker route `<host>/*` **with no script** for each hostname. A script-less route overrides the wildcard Worker route, so the edge goes to the CNAME |
+| `deactivate` | delete the two routes |
+| `disable` | deactivate, delete the records, the tunnel's connections and the tunnel |
+
+Each Cloudflare id is stored the moment it is created (table `accelerators`), so after a `502 upstream` (with `Retry-After: 30`)
+the same request continues where it stopped. Leaving and re-registration disable the accelerator (best effort, logged).
+The request's `iat` must be strictly later than the member's last accepted one (`409 stale`), and no older than 120 s.
+
+**API token** (create at *My Profile -> API Tokens*, scope it to the account and the member zone(s)):
+Account **Cloudflare Tunnel: Edit**; Zone **DNS: Edit**; Zone **Workers Routes: Edit**.
+
+**Add a rate-limiting rule for `/api/auth/`.** While a member is active the hub sees none of its traffic, so the hub's own
+`auth_rate_per_minute` limit does not apply there (the instance limits its own sign-ins too). Add a Cloudflare rate-limiting
+rule on the member zones for the path `/api/auth/` (Free plans have one rule).
+
+Locally, `node scripts/mock-cf-api.mjs` (port 8788) implements the endpoints above in memory; `wrangler.dev.toml` points at it
+and `./scripts/conformance.sh` starts it.
+
 ## How the tunnel works here
 
 The WebSocket has to stay in one Durable Object for its whole life, and the member isn't known until the hello arrives. So:
@@ -149,6 +187,8 @@ The WebSocket has to stay in one Durable Object for its whole life, and the memb
 - **Requests.** Workers Free allows 100 000 Worker requests and 100 000 Durable Object requests a day. A visitor request
   is one Worker request and two Durable Object requests; incoming WebSocket messages count at 20:1 (about 150 a day per
   idle member for PINGs). That is enough for a few people's personal use; heavy use wants Workers Paid.
+- **Accelerated members cost nothing here.** While a member's accelerator is active, its visitors' traffic never reaches
+  the Worker (no Worker, Durable Object or duration charges); only the few control calls to Cloudflare's API are made.
 - **Request bodies**: Cloudflare caps inbound bodies by plan (100 MB Free/Pro, 200 MB Business, 500 MB Enterprise).
   The default `request_body_bytes` is 100 MiB, above Free/Pro's 100 MB, so Cloudflare answers first there.
 - **Subrequests**: a visitor request costs three (D1, `MemberRoute`, `TunnelConn`), well inside 1000 (50 on Free).

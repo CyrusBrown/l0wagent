@@ -192,6 +192,13 @@ class Inst:
         p = payloads.build_tunnel_hello(address or self.address, nonce or challenge["nonce"], hub or challenge["hub"], iat=iat)
         return json.dumps(docs.sign_document("tunnel-hello", p, [signer or self.sign]))
 
+    def accel(self, action: str, service: str | None = None, *, iat=None, hub=None, signer=None, address=None,
+              accelerator="cloudflared") -> dict:
+        """A signed accelerator-request (accelerators.md); `service=None` leaves the field out."""
+        p = payloads.build_accelerator_request(address or self.address, hub or self.domain, action,
+                                               payloads._OMIT if service is None else service, accelerator=accelerator, iat=iat)
+        return docs.sign_document("accelerator-request", p, [signer or self.sign])
+
 
 class Closed(Exception):
     def __init__(self, code):

@@ -50,7 +50,7 @@ def test_healthz_no_auth(client):
 
 CONTROL = [("GET", "/v0/keys"), ("POST", "/v0/register"), ("POST", "/v0/sign/self"), ("POST", "/v0/sign/leave"), ("POST", "/v0/sign/moved"),
            ("POST", "/v0/rotate"), ("POST", "/v0/recover"), ("POST", "/v0/hop-sign"), ("PUT", "/v0/tunnel"), ("GET", "/v0/tunnel/status")]
-TUNNEL = [("GET", "/v0/tunnel/config"), ("POST", "/v0/tunnel/hello"), ("PUT", "/v0/tunnel/status")]
+TUNNEL = [("GET", "/v0/tunnel/config"), ("POST", "/v0/tunnel/hello"), ("PUT", "/v0/tunnel/status"), ("POST", "/v0/tunnel/accelerator")]
 
 
 @pytest.mark.parametrize(("method", "path"), CONTROL)
@@ -203,7 +203,8 @@ def test_hop_sign(client):
     assert c_post(client, "/v0/hop-sign", {"method": "POST", "url": uri, "body": b64.encode(body), "content_type": None, "address": ADDR}).status_code == 400
 
 
-TUNNEL_CFG = {"url": "wss://hub.example/v0/tunnel", "address": ADDR, "hub": HUB, "hostnames": HOSTS, "release": "0.9.0", "connect_to": None}
+TUNNEL_CFG = {"url": "wss://hub.example/v0/tunnel", "address": ADDR, "hub": HUB, "hostnames": HOSTS, "release": "0.9.0", "connect_to": None,
+              "accelerator": {"enabled": False, "api": None}}
 
 
 def test_tunnel_config_and_hello(client):
@@ -232,6 +233,49 @@ def test_tunnel_status(client):
     assert client.get("/v0/tunnel/status", headers=hdr(CT)).json() == {"config": True, "status": st}
     assert client.put("/v0/tunnel/status", json={"state": "weird"}, headers=hdr(TT)).status_code == 400
     assert client.put("/v0/tunnel", json={"config": {"url": "x"}}, headers=hdr(CT)).status_code == 400
+
+
+def test_tunnel_config_accelerator(client):
+    base = {k: v for k, v in TUNNEL_CFG.items() if k != "accelerator"}  # absent: the default
+    assert client.put("/v0/tunnel", json={"config": base}, headers=hdr(CT)).json()["config"]["accelerator"] == {"enabled": False, "api": None}
+    acc = {"enabled": True, "api": "https://hub.example/v0/accelerators/cloudflared"}
+    assert client.put("/v0/tunnel", json={"config": {**base, "accelerator": acc}}, headers=hdr(CT)).status_code == 200
+    assert client.get("/v0/tunnel/config", headers=hdr(TT)).json()["config"]["accelerator"] == acc
+    for bad in ({"enabled": "yes", "api": None}, {"enabled": True, "api": "ftp://x"}, {"enabled": True, "api": "nonsense"}, {"enabled": True, "api": 5}, "on"):
+        assert client.put("/v0/tunnel", json={"config": {**base, "accelerator": bad}}, headers=hdr(CT)).status_code == 400
+
+
+def test_tunnel_accelerator_request(client):
+    r = c_post(client, "/v0/tunnel/accelerator", {"action": "enable", "service": "http://127.0.0.1:8790"}, TT)
+    assert r.status_code == 409 and r.json()["error"] == "no_tunnel"
+    out = register(client)
+    key = Key.from_dict(out["keys"][0])
+    client.put("/v0/tunnel", json={"config": TUNNEL_CFG}, headers=hdr(CT))
+    r = c_post(client, "/v0/tunnel/accelerator", {"action": "enable", "service": "http://127.0.0.1:8790"}, TT)
+    assert r.status_code == 200
+    p = payloads.verify_accelerator_request(r.json()["doc"], key, hub=HUB, address=ADDR)
+    assert p["action"] == "enable" and p["service"] == "http://127.0.0.1:8790" and p["accelerator"] == "cloudflared" and p["hub"] == HUB
+    # rapid calls: iat strictly increases
+    iats = []
+    for a in ("activate", "deactivate", "disable"):
+        d = c_post(client, "/v0/tunnel/accelerator", {"action": a, "service": "http://127.0.0.1:1"}, TT).json()["doc"]
+        p = payloads.verify_accelerator_request(d, key, hub=HUB, address=ADDR)
+        assert p["action"] == a and "service" not in p
+        iats.append(p["iat"])  # ISO strings sort in time order
+    assert iats == sorted(set(iats))
+    for body in ({"action": "nuke"}, {"action": "enable"}, {"action": "enable", "service": "http://evil.example:80"}, {"action": "enable", "service": "http://127.0.0.1:99999"}):
+        assert c_post(client, "/v0/tunnel/accelerator", body, TT).status_code == 400
+
+
+def test_tunnel_status_accelerator(client):
+    client.put("/v0/tunnel", json={"config": TUNNEL_CFG}, headers=hdr(CT))
+    st = {"state": "connected", "since": "2026-11-17T21:30:00Z", "error": None, "session": "s1", "close_code": None}
+    acc = {"state": "active", "since": "2026-11-17T21:31:00Z", "error": None}
+    assert client.put("/v0/tunnel/status", json={**st, "accelerator": acc}, headers=hdr(TT)).json() == {"ok": True}
+    assert client.get("/v0/tunnel/status", headers=hdr(CT)).json()["status"] == {**st, "accelerator": acc}
+    client.put("/v0/tunnel/status", json={**st, "state": "offline"}, headers=hdr(TT))  # silent about the accelerator: kept
+    assert client.get("/v0/tunnel/status", headers=hdr(CT)).json()["status"]["accelerator"] == acc
+    assert client.put("/v0/tunnel/status", json={**st, "accelerator": {"state": "weird"}}, headers=hdr(TT)).status_code == 400
 
 
 def test_state_survives_restart(dd):

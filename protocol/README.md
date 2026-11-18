@@ -18,6 +18,7 @@ Hub-to-hub linking and streams are not part of it.
 | [capabilities.md](capabilities.md) | The hub's capabilities document |
 | [membership.md](membership.md) | Names, invites, registration, hostnames, leaving, re-registration |
 | [tunnel.md](tunnel.md) | The tunnel: handshake, framing, flow control, reconnecting, offline answers |
+| [accelerators.md](accelerators.md) | Optional faster ways to connect: the `cloudflared` accelerator and its signed request |
 | [hop-auth.md](hop-auth.md) | HTTP Message Signatures between instances, hubs and gateways |
 | [versions.md](versions.md) | Version strings, unknown fields, what a hub must support |
 | `openapi.json` | The hub's core HTTP endpoints |

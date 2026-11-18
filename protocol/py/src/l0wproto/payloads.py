@@ -405,6 +405,68 @@ def verify_tunnel_hello(doc: dict, signing_key: Key, *, nonce: str, hub: str, no
     return p
 
 
+# --- accelerator-request ---------------------------------------------------------------------
+
+ACCELERATOR_ACTIONS = ("enable", "activate", "deactivate", "disable")
+ACCELERATOR_MAX_AGE = 120  # seconds an accelerator-request's iat may lie in the past
+_SERVICE = re.compile(r"http://127\.0\.0\.1:([1-9][0-9]{0,4})\Z")
+
+
+def valid_service(service: object) -> bool:
+    """`http://127.0.0.1:<port>`, port 1-65535, nothing else (accelerators.md)."""
+    m = _SERVICE.match(service) if isinstance(service, str) else None
+    return bool(m) and int(m.group(1)) <= 65535
+
+
+def build_accelerator_request(address, hub, action, service=_OMIT, *, accelerator="cloudflared", iat=None, exp=None) -> dict:
+    return _p("accelerator-request", iat, exp, address=address, hub=hub, accelerator=accelerator, action=action, service=service)
+
+
+def validate_accelerator_request(p: dict) -> dict:
+    """Shape rules: raises ValidationError (hub answers 400 bad_request)."""
+    _base(p, "accelerator-request")
+    split_address(_need(p, "address", str))
+    _need(p, "hub", str)
+    _need(p, "accelerator", str)
+    action = _need(p, "action", str)
+    if action not in ACCELERATOR_ACTIONS:
+        raise ValidationError(f"unknown action {action!r}", "bad_request")
+    if action == "enable" and not valid_service(p.get("service")):
+        raise ValidationError("service must be http://127.0.0.1:<port> with a port from 1 to 65535", "bad_request")
+    return p
+
+
+def verify_accelerator_request(doc: dict, signing_key: Key, *, hub: str, address: str | None = None,
+                               accelerator: str = "cloudflared", now: int | None = None) -> dict:
+    """The hub's check of an accelerator-request. Raises SignatureError (code `bad_sig`: signature, iat,
+    hub, accelerator or address) or ValidationError (code `bad_request`: malformed, action, service).
+    Strictly-increasing iat per member (`stale`) is the hub's own state."""
+    n = _now() if now is None else now
+    try:
+        p = verify_document(doc, [signing_key], expected_type="accelerator-request", required=[signing_key.kid], now=n)
+    except SignatureError as e:
+        e.code = "bad_sig"
+        raise
+    except DocumentError as e:
+        if isinstance(e, ValidationError) and ("iat" in str(e) or "expired" in str(e)):
+            raise SignatureError(str(e), "bad_sig") from e
+        raise
+    try:
+        validate_accelerator_request(p)
+    except ValidationError as e:
+        e.code = "bad_request"
+        raise
+    if parse_time(p["iat"]) < n - ACCELERATOR_MAX_AGE:
+        raise SignatureError("iat is more than 120 s in the past", "bad_sig")
+    if p["hub"].lower() != hub.lower():
+        raise SignatureError("request is for another hub", "bad_sig")
+    if p["accelerator"] != accelerator:
+        raise SignatureError("request is for another accelerator", "bad_sig")
+    if address is not None and p["address"].lower() != address.lower():
+        raise SignatureError("request is for another address", "bad_sig")
+    return p
+
+
 # --- other bodies ----------------------------------------------------------------------------
 
 

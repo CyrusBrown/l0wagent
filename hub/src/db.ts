@@ -210,3 +210,63 @@ export async function listDocs(db: D1Database, kind: "revocations" | "reregistra
   const r = await db.prepare(q).bind(name).all<Row>();
   return r.results.map((x) => JSON.parse(x.doc));
 }
+
+// --- the cloudflared accelerator ---------------------------------------------------------------
+
+export interface Accel {
+  name: string;
+  lastIat: number;
+  tunnelId: string | null;
+  service: string | null;
+  dnsInstance: string | null;
+  dnsFiles: string | null;
+  routeInstance: string | null;
+  routeFiles: string | null;
+  active: boolean;
+}
+
+const ACCEL_COLS = {
+  tunnelId: "tunnel_id",
+  service: "service",
+  dnsInstance: "dns_instance",
+  dnsFiles: "dns_files",
+  routeInstance: "route_instance",
+  routeFiles: "route_files",
+  active: "active",
+} as const;
+export type AccelPatch = Partial<Omit<Accel, "name" | "lastIat">>;
+
+function toAccel(r: Row): Accel {
+  return {
+    name: r.name,
+    lastIat: r.last_iat,
+    tunnelId: r.tunnel_id ?? null,
+    service: r.service ?? null,
+    dnsInstance: r.dns_instance ?? null,
+    dnsFiles: r.dns_files ?? null,
+    routeInstance: r.route_instance ?? null,
+    routeFiles: r.route_files ?? null,
+    active: r.active === 1,
+  };
+}
+
+export async function getAccel(db: D1Database, name: string): Promise<Accel> {
+  const r = await db.prepare("SELECT * FROM accelerators WHERE name = ?1").bind(name).first<Row>();
+  return r ? toAccel(r) : toAccel({ name, last_iat: 0, active: 0 });
+}
+
+/** Accept a request's `iat` exactly once: true only if it is strictly later than every iat accepted before. */
+export async function takeAccelIat(db: D1Database, name: string, iat: number): Promise<boolean> {
+  await db.prepare("INSERT OR IGNORE INTO accelerators (name, last_iat) VALUES (?1, 0)").bind(name).run();
+  const r = await db.prepare("UPDATE accelerators SET last_iat = ?2 WHERE name = ?1 AND last_iat < ?2").bind(name, iat).run();
+  return (r.meta.changes ?? 0) === 1;
+}
+
+/** Save what Cloudflare has made so far (a field set to null is cleared). */
+export async function saveAccel(db: D1Database, name: string, patch: AccelPatch): Promise<void> {
+  const keys = Object.keys(patch) as (keyof AccelPatch)[];
+  if (keys.length === 0) return;
+  const sets = keys.map((k, i) => `${ACCEL_COLS[k]} = ?${i + 2}`).join(", ");
+  const vals = keys.map((k) => (k === "active" ? (patch.active ? 1 : 0) : (patch[k] ?? null)));
+  await db.prepare(`UPDATE accelerators SET ${sets} WHERE name = ?1`).bind(name, ...vals).run();
+}

@@ -29,7 +29,7 @@ mv = load_script("make_vectors")
 ms = load_script("make_schemas")
 
 DOC_VECTORS = ["rotation", "rotation-recovery", "self", "self-after-rotation", "revocation", "moved", "hub", "registration", "leave",
-               "reregistration", "tunnel-hello"]
+               "reregistration", "tunnel-hello", "accelerator-request"]
 
 
 def vec(name):
@@ -77,6 +77,7 @@ def test_document_vector(name):
         "rotation-recovery": lambda: P.verify_rotation(doc, keys.Key.from_dict(vec("keys")["keys"]["member-sign"]["key"]),
                                                        keys.Key.from_dict(vec("keys")["keys"]["member-recover"]["key"]), now),
         "tunnel-hello": lambda: P.verify_tunnel_hello(doc, ks[0], nonce=v["challenge"]["nonce"], hub="hub.example", now=now),
+        "accelerator-request": lambda: P.verify_accelerator_request(doc, ks[0], hub="hub.example", address="mara@hub.example", now=now),
     }[name]()
     assert typed == payload
     # tampering with the vector fails

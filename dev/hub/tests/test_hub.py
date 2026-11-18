@@ -27,6 +27,7 @@ def test_whole_conformance_suite(running, capsys):
     assert code == 0, out
     assert "FAIL" not in out
     assert out.count("PASS") >= 70
+    assert out.count(" cloudflared: ") >= 7, out  # the accelerator checks ran (not skipped)
 
 
 def test_hostname_layout_and_config():

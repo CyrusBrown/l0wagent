@@ -34,8 +34,9 @@ members' addresses. Payload:
   hostname from it. The example shows a new member what theirs will look like.
 - `extras`: optional features, each `{"kind": "...", ...}`. Instances ignore kinds they don't know.
   Defined kinds so far:
-  - `{"kind": "accelerator", "id": "cloudflared", "doc": "<url>"}`: a faster way to connect that a
-    member may use instead of the spec tunnel. No instance needs one.
+  - `{"kind": "accelerator", "id": "cloudflared", "doc": "<url>", "api": "<url>"}`: a faster way to
+    connect that a member may use instead of the spec tunnel. No instance needs one. `api` is the
+    endpoint instances call (a hub that cannot serve it omits the extra); see [accelerators.md](accelerators.md).
   - H6 adds `{"kind": "service", …}` and H7 `{"kind": "published-hostnames", …}`.
 
 The capabilities document is cacheable (`Cache-Control: max-age=300` is RECOMMENDED). Instances refresh

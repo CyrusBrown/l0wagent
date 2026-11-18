@@ -511,6 +511,85 @@
           }
         }
       }
+    },
+    "/accelerators/cloudflared": {
+      "post": {
+        "operationId": "cloudflaredAccelerator",
+        "summary": "Use the `cloudflared` accelerator (accelerators.md)",
+        "description": "Body: an `accelerator-request` document signed by the member's current signing key. Only advertised when the hub lists the accelerator in its capabilities `extras`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "schemas/signed-document.json"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The member's accelerator state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/accelerator-state.json"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed, unknown action, or bad `service`. Codes: `bad_request`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Signature, `iat`, `hub`, `accelerator` or address check failed. Codes: `bad_sig`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an active tunnel-mode member. Codes: `not_member`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`stale` (body has `last_iat`), `not_enabled`, or `not_connected`. Codes: `stale`, `not_enabled`, `not_connected`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The hub's provider failed. Codes: `upstream`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "schemas/error.json"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

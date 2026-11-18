@@ -25,6 +25,9 @@ Auth is `Authorization: Bearer <token>`; each endpoint takes exactly one of the 
 | `GET /v0/tunnel/status` | control | control | whether a config is set, and the last reported status |
 | `GET /v0/tunnel/config` | tunnel | tunnel client | the tunnel config or null |
 | `POST /v0/tunnel/hello` | tunnel | tunnel client | signed tunnel-hello for the configured hub |
-| `PUT /v0/tunnel/status` | tunnel | tunnel client | report state (idle, connecting, connected, offline, refused) |
+| `PUT /v0/tunnel/status` | tunnel | tunnel client | report state (idle, connecting, connected, offline, refused), and optionally `accelerator` (`{"state": off/starting/ready/active/error, "since", "error"}`; kept when a report omits it) |
+| `POST /v0/tunnel/accelerator` | tunnel | tunnel client | `{"action": enable/activate/deactivate/disable, "service": "http://127.0.0.1:<port>" (enable only), "iat"?}` returns `{"doc": <signed accelerator-request>}` for the configured address and hub (`protocol/accelerators.md`); `iat` is strictly later than the last one signed (kept in memory), so rapid calls are not `stale`; 409 `no_tunnel`, 400 bad action or service |
+
+The tunnel config (`PUT /v0/tunnel`) also takes `"accelerator": {"enabled": bool, "api": http(s) URL or null}` (default `{"enabled": false, "api": null}`); `GET /v0/tunnel/config` returns it.
 
 Dev: `uv sync && uv run pytest -q && uv run ruff check .`. Image: `docker build -f gateway/Dockerfile .` from the repo root.

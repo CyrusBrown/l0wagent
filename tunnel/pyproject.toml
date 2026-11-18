@@ -3,10 +3,10 @@ name = "l0w-tunnel"
 version = "0.1.0"
 description = "The instance's hub tunnel client: dials out to the hub and forwards visitors' requests to control and the files app"
 requires-python = ">=3.12,<3.13"
-dependencies = ["l0wproto", "websockets>=14", "httpx>=0.27"]
+dependencies = ["l0wproto", "websockets>=14", "httpx>=0.27", "uvicorn>=0.30"]
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6", "fakehub", "starlette>=0.40", "uvicorn>=0.30"]
+dev = ["pytest>=8", "ruff>=0.6", "fakehub", "starlette>=0.40"]
 
 [tool.uv.sources]
 l0wproto = { path = "../protocol/py", editable = true }

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.l0wagent.invalid/0.1/accelerator-state.json",
+  "title": "accelerator-state",
+  "description": "The `200` answer of POST /v0/accelerators/cloudflared (accelerators.md). `token` only in the answer to `enable`.",
+  "type": "object",
+  "required": [
+    "state"
+  ],
+  "properties": {
+    "state": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "active",
+        "tunnel_id",
+        "hostnames"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "tunnel_id": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hostnames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "token": {
+          "type": "string",
+          "description": "The tunnel's run token: a secret"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

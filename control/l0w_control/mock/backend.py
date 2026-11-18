@@ -536,7 +536,8 @@ class MockBackend(Backend):
         self._member = s.Membership(
             state="joined", available=True, address=f"{name}@hub.example", mode=req.mode, hub=self.MOCK_HUB, hostnames=host,
             urls=s.MemberHostnames(instance=f"https://{host.instance}", files=f"https://{host.files}"), joined_at=_now(),
-            tunnel=s.TunnelStatus(state="connected", since=_now()), check=s.MembershipCheck(ok=True, at=_now()),
+            tunnel=s.TunnelStatus(state="connected", since=_now(), accelerator=s.AcceleratorStatus(state="active", since=_now())),
+            accelerator=s.AcceleratorSetting(offered=True, enabled=True), check=s.MembershipCheck(ok=True, at=_now()),
             sign_key=s.MemberKey(kid="k1." + secrets.token_urlsafe(16)[:22], created=_now()))
         return s.JoinResult(membership=self._member, recovery_key="l0w-recovery:" + secrets.token_urlsafe(32))
 
@@ -549,6 +550,14 @@ class MockBackend(Backend):
         m = self._joined()
         m.check = s.MembershipCheck(ok=True, at=_now())
         return m.check
+
+    def membership_accelerator(self, req: s.AcceleratorRequest) -> s.Membership:
+        m = self._joined()
+        if m.accelerator:
+            m.accelerator.enabled = req.enabled
+        if m.tunnel:
+            m.tunnel.accelerator = s.AcceleratorStatus(state="active" if req.enabled else "off", since=_now())
+        return m
 
     def membership_rotate(self) -> s.Membership:
         m = self._joined()

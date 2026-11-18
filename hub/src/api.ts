@@ -1,4 +1,5 @@
 // The hub's core HTTP API (protocol/openapi.json) plus the operator's invite endpoint.
+import { acceleratorExtra, disableForMember, handleAccelerator } from "./accelerator";
 import { type Config, hostnameLayout, hostnamesFor, hubKey, releaseLess } from "./config";
 import * as db from "./db";
 import type { Env } from "./env";
@@ -114,6 +115,7 @@ async function capabilities(env: Env, cfg: Config): Promise<Response> {
     hostnames: { layout: hostnameLayout(cfg), example: hostnamesFor(cfg, "mara") },
     policies: cfg.policies,
     limits: cfg.limits,
+    extras: acceleratorExtra(cfg) ? [acceleratorExtra(cfg) as Obj] : [],
   });
   const doc = await docs.signDocument("hub", payload, [key]);
   return jsonResponse(doc, 200, { "cache-control": "max-age=300" });
@@ -247,7 +249,10 @@ async function register(request: Request, env: Env, cfg: Config): Promise<Respon
     if (db.isUniqueViolation(e)) throw new HubError(409, "name_taken", "name is taken");
     throw e;
   }
-  if (reregistered) await dropTunnel(env, name, 4401, false);
+  if (reregistered) {
+    await disableForMember(env, cfg, name);
+    await dropTunnel(env, name, 4401, false);
+  }
   const tunnel = p.mode === "tunnel" ? cfg.tunnelUrl : null;
   return jsonResponse(P.buildJoinResponse(newMember.address, hostnames, (await hubKey(env)).key, tunnel), 201);
 }
@@ -340,6 +345,7 @@ async function leave(request: Request, env: Env, cfg: Config, name: string): Pro
     movedDoc = null;
   }
   if (!(await db.markLeft(env.DB, name, now(), p.moved_to, movedDoc))) memberOrRaise(await db.getMember(env.DB, name));
+  await disableForMember(env, cfg, name);
   await dropTunnel(env, name, 1000, true);
   return jsonResponse({ v: VERSION, left: true });
 }
@@ -440,6 +446,11 @@ export async function handleApi(request: Request, env: Env, cfg: Config): Promis
       }
       allow(request, "POST");
       return await leave(request, env, cfg, name);
+    }
+    if (path === "/v0/accelerators/cloudflared") {
+      if (!cfg.accelerator) throw new HubError(404, "not_found", "no such endpoint");
+      allow(request, "POST");
+      return await handleAccelerator(request, env, cfg, await readBody(request, "bad_request"));
     }
     if (path === "/v0/admin/invites") {
       allow(request, "POST");

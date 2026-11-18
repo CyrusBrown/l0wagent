@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import secrets
+import time
 from collections.abc import Callable
+from urllib.parse import urlsplit
 
 from l0wproto import b64, docs, hopsig, keys, payloads
 from l0wproto.errors import ProtocolError
@@ -16,6 +18,8 @@ from .store import Store
 
 RECOVERY_PREFIX = "l0w-recovery:"
 STATES = ("idle", "connecting", "connected", "offline", "refused")
+ACCEL_STATES = ("off", "starting", "ready", "active", "error")
+ACCEL_ACTIONS = ("enable", "activate", "deactivate", "disable")
 
 
 class ApiError(Exception):
@@ -42,6 +46,20 @@ def _url_pair(v: object, field: str, *, null: bool) -> dict | None:
     return {"instance": v["instance"], "files": v["files"]}
 
 
+def _accelerator(v: object) -> dict:
+    if v is None:
+        return {"enabled": False, "api": None}
+    if not isinstance(v, dict):
+        raise bad("accelerator must be an object")
+    enabled, api = v.get("enabled", False), v.get("api")
+    if not isinstance(enabled, bool):
+        raise bad("accelerator.enabled must be a boolean")
+    if api is not None:
+        if not isinstance(api, str) or urlsplit(api).scheme not in ("http", "https") or not urlsplit(api).netloc:
+            raise bad("accelerator.api must be an http(s) URL or null")
+    return {"enabled": enabled, "api": api}
+
+
 def _keypair(entry: dict, use: str) -> keys.KeyPair:
     kp = keys.from_seed(b64.decode(entry["seed"]), use, entry["pub"]["created"])
     if kp.kid != entry["pub"]["kid"]:
@@ -63,6 +81,7 @@ def create_app(data_dir, control_token: str, tunnel_token: str) -> Starlette:
     if secrets.compare_digest(control_token.encode(), tunnel_token.encode()):
         raise ValueError("GATEWAY_CONTROL_TOKEN and GATEWAY_TUNNEL_TOKEN must differ")
     store = Store(data_dir)
+    last_accel_iat = [0]  # the last accelerator-request iat this gateway signed (epoch seconds)
 
     def bearer(request: Request) -> bytes:
         h = request.headers.get("authorization", "")
@@ -213,6 +232,7 @@ def create_app(data_dir, control_token: str, tunnel_token: str) -> Starlette:
                 "hostnames": _url_pair(c.get("hostnames"), "hostnames", null=False),
                 "release": _str(c, "release"),
                 "connect_to": ct,
+                "accelerator": _accelerator(c.get("accelerator")),
             }
         store.save_tunnel(c)
         if c is None:
@@ -238,6 +258,30 @@ def create_app(data_dir, control_token: str, tunnel_token: str) -> Starlette:
         payload = payloads.build_tunnel_hello(cfg["address"], nonce, hub, cfg["release"])
         return {"doc": docs.sign_document("tunnel-hello", payload, [_keypair(st["sign"], "sign")])}
 
+    def tunnel_accelerator(_r, b):
+        cfg = store.tunnel()
+        if cfg is None:
+            raise ApiError(409, "no_tunnel", "no tunnel configured")
+        action = b.get("action")
+        if action not in ACCEL_ACTIONS:
+            raise bad(f"action must be one of {', '.join(ACCEL_ACTIONS)}")
+        service = b.get("service")
+        if action == "enable":
+            if not payloads.valid_service(service):
+                raise bad("service must be http://127.0.0.1:<port>")
+        else:
+            service = None
+        iat = b.get("iat")
+        if iat is not None and (not isinstance(iat, int) or isinstance(iat, bool)):
+            raise bad("iat must be an integer (epoch seconds) or absent")
+        st = need_keys()
+        # strictly later than the last one signed here, so rapid calls are never `stale`
+        when = max(int(time.time()) if iat is None else iat, last_accel_iat[0] + 1)
+        last_accel_iat[0] = when
+        kw = {"service": service} if service else {}
+        payload = payloads.build_accelerator_request(cfg["address"], cfg["hub"], action, iat=when, **kw)
+        return {"doc": docs.sign_document("accelerator-request", payload, [_keypair(st["sign"], "sign")])}
+
     def tunnel_status_put(_r, b):
         state = b.get("state")
         if state not in STATES:
@@ -248,7 +292,20 @@ def create_app(data_dir, control_token: str, tunnel_token: str) -> Starlette:
         for f in ("session", "close_code"):
             if b.get(f) is not None and (not isinstance(b[f], (str, int)) or isinstance(b[f], bool)):
                 raise bad(f"{f} must be a string, integer or null")
-        store.save_status({k: b.get(k) for k in ("state", "since", "error", "session", "close_code")})
+        saved = {k: b.get(k) for k in ("state", "since", "error", "session", "close_code")}
+        a = b.get("accelerator")
+        if a is not None:
+            if not isinstance(a, dict) or a.get("state") not in ACCEL_STATES:
+                raise bad(f"accelerator.state must be one of {', '.join(ACCEL_STATES)}")
+            for f in ("since", "error"):
+                if a.get(f) is not None and not isinstance(a[f], str):
+                    raise bad(f"accelerator.{f} must be a string or null")
+            saved["accelerator"] = {"state": a["state"], "since": a.get("since"), "error": a.get("error")}
+        else:  # a report that says nothing about the accelerator leaves its last state alone
+            prev = (store.status() or {}).get("accelerator")
+            if prev:
+                saved["accelerator"] = prev
+        store.save_status(saved)
         return {"ok": True}
 
     async def healthz(_request: Request) -> JSONResponse:
@@ -272,6 +329,7 @@ def create_app(data_dir, control_token: str, tunnel_token: str) -> Starlette:
             r("/v0/tunnel/status", "GET", "control", tunnel_status_get, False),
             r("/v0/tunnel/config", "GET", "tunnel", tunnel_config, False),
             r("/v0/tunnel/hello", "POST", "tunnel", tunnel_hello),
+            r("/v0/tunnel/accelerator", "POST", "tunnel", tunnel_accelerator),
             r("/v0/tunnel/status", "PUT", "tunnel", tunnel_status_put),
         ]
     )

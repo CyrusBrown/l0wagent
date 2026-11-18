@@ -66,6 +66,16 @@ class Gateway:
         return data
 
 
+def accelerator_api(caps: dict | None, allow_http: bool = False) -> str | None:
+    """The `api` of the hub's cloudflared accelerator extra (protocol/accelerators.md), or None when it isn't offered."""
+    for e in (caps or {}).get("extras") or []:
+        if isinstance(e, dict) and e.get("kind") == "accelerator" and e.get("id") == "cloudflared":
+            api = e.get("api")
+            if isinstance(api, str) and (api.startswith("https://") or (allow_http and api.startswith("http://"))):
+                return api
+    return None
+
+
 def release_tuple(v: str) -> tuple[int, ...] | None:
     try:
         return tuple(int(x) for x in v.split("-")[0].split("."))
@@ -91,6 +101,9 @@ class Membership:
         for k in ("hub_key", "capabilities", "hostnames", "own_urls", "self_doc", "check_result"):
             r[k] = json.loads(r[k]) if r.get(k) else None
         return r
+
+    def accelerator_api(self, r: dict) -> str | None:
+        return accelerator_api(r.get("capabilities"), self.allow_http or r["hub_base"].startswith("http://"))
 
     def joined(self) -> dict | None:
         r = self.row()
@@ -189,7 +202,12 @@ class Membership:
         except GatewayError as e:
             return s.TunnelStatus(state="unknown", error=f"The gateway isn't answering ({e.error}).")
         state = st.get("state") if st.get("state") in ("idle", "connecting", "connected", "offline", "refused") else "unknown"
-        return s.TunnelStatus(state=state, since=parse(st.get("since")) if isinstance(st.get("since"), str) else None, error=st.get("error"))
+        acc = st.get("accelerator") if isinstance(st.get("accelerator"), dict) else None  # an older gateway has none: off
+        astate = acc.get("state") if acc and acc.get("state") in ("off", "starting", "ready", "active", "error") else "off"
+        accelerator = s.AcceleratorStatus(state=astate, since=parse(acc["since"]) if acc and isinstance(acc.get("since"), str) else None,
+                                          error=acc.get("error") if acc and isinstance(acc.get("error"), str) else None)
+        return s.TunnelStatus(state=state, since=parse(st.get("since")) if isinstance(st.get("since"), str) else None, error=st.get("error"),
+                              accelerator=accelerator)
 
     async def view(self) -> s.Membership:
         r = self.row()
@@ -210,6 +228,7 @@ class Membership:
             hostnames=s.MemberHostnames(**r["hostnames"]),
             urls=s.MemberHostnames(instance=self._origin(r, "instance"), files=self._origin(r, "files")),
             joined_at=parse(r["joined_at"]), tunnel=await self.tunnel_status(),
+            accelerator=s.AcceleratorSetting(offered=self.accelerator_api(r) is not None, enabled=bool(r["use_accelerator"])) if r["mode"] == "tunnel" else None,
             check=s.MembershipCheck(ok=chk["ok"], at=parse(chk["at"]), problems=chk["problems"]) if chk else None,  # type: ignore[arg-type]
             sign_key=sign_key, hub_key_alarm=r["hub_key_alarm"],
         )
@@ -315,6 +334,21 @@ class Membership:
             self._store_check(problems)
         return s.JoinResult(membership=await self.view(), recovery_key=reg["recovery_key"])
 
+    def accelerator_config(self, r: dict) -> dict:
+        api = self.accelerator_api(r)
+        on = bool(r["use_accelerator"]) and api is not None
+        return {"enabled": on, "api": api if on else None}
+
+    async def set_accelerator(self, enabled: bool) -> s.Membership:
+        async with self._lock:
+            r = self._need_joined()
+            self.db.ex("UPDATE hub_membership SET use_accelerator=? WHERE id=1", (1 if enabled else 0,))
+            self._log("accelerator", "on" if enabled else "off")
+            if r["mode"] == "tunnel":
+                await self._set_tunnel()
+        self._changed()
+        return await self.view()
+
     async def _set_tunnel(self, off: bool = False) -> None:
         if not self.gw:
             return
@@ -322,7 +356,7 @@ class Membership:
         cfg = None
         if r and r["mode"] == "tunnel" and r["tunnel_url"] and not off:
             cfg = {"url": r["tunnel_url"], "address": r["address"], "hub": r["hub_domain"], "hostnames": r["hostnames"], "release": __version__,
-                   "connect_to": self.connect_to}
+                   "connect_to": self.connect_to, "accelerator": self.accelerator_config(r)}
         try:
             await self.gw.call("PUT", "/v0/tunnel", {"config": cfg})
         except GatewayError as e:
@@ -376,6 +410,8 @@ class Membership:
         try:
             caps = (await self._capabilities(r["hub_base"], pinned=pinned))["payload"]
             self.db.ex("UPDATE hub_membership SET capabilities=?, hub_key_alarm=NULL WHERE id=1", (json.dumps(caps),))
+            if self.accelerator_api({**r, "capabilities": caps}) != self.accelerator_api(r):
+                await self._set_tunnel()  # the hub began or stopped offering the faster connection
         except SignatureError:
             alarm = "The hub's signing key changed with no rotation from the key you joined with. Don't trust it until you've checked with the hub's operator."
             if not r["hub_key_alarm"]:

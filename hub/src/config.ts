@@ -6,6 +6,16 @@ import { type KeyPair, fromSeed } from "./proto/keys";
 
 export const DEFAULT_LIMITS = { tunnel_streams: 64, request_body_bytes: 104857600, auth_rate_per_minute: 20 };
 
+export interface AcceleratorConfig {
+  accountId: string;
+  zoneId: string; // the zone holding the instance hostnames
+  filesZoneId: string; // the zone holding the files hostnames
+  apiBase: string; // no trailing slash
+  token: string;
+  doc: string;
+  api: string;
+}
+
 export class ConfigError extends Error {}
 
 export interface Limits {
@@ -34,6 +44,7 @@ export interface Config {
   ownUrl: boolean;
   inviteDays: number;
   keyCreated: string;
+  accelerator: AcceleratorConfig | null; // the cloudflared accelerator, when enabled and fully configured
 }
 
 const cache = new WeakMap<object, Config>();
@@ -98,6 +109,20 @@ export function loadConfig(env: Env): Config {
   // the hub's own name (the first label of its domain) is reserved too (membership.md)
   reserved.push(domain.split(":")[0].split(".")[0]);
   const days = Number(env.INVITE_DAYS ?? 7);
+  const apiUrl = `${base.protocol}//${baseHost}/v0/accelerators/cloudflared`;
+  const acc = (k: keyof Env) => (typeof env[k] === "string" ? (env[k] as string).trim() : "");
+  const accelerator: AcceleratorConfig | null =
+    acc("CF_ACCELERATOR").toLowerCase() === "true" && acc("CF_ACCOUNT_ID") && acc("CF_ZONE_ID") && acc("CF_API_TOKEN")
+      ? {
+          accountId: acc("CF_ACCOUNT_ID"),
+          zoneId: acc("CF_ZONE_ID"),
+          filesZoneId: acc("CF_FILES_ZONE_ID") || acc("CF_ZONE_ID"),
+          apiBase: (acc("CF_API_BASE") || "https://api.cloudflare.com/client/v4").replace(/\/+$/, ""),
+          token: acc("CF_API_TOKEN"),
+          doc: acc("CF_ACCELERATOR_DOC") || apiUrl,
+          api: apiUrl,
+        }
+      : null;
   const cfg: Config = {
     name: need("HUB_NAME"),
     baseUrl: `${base.protocol}//${baseHost}`,
@@ -117,6 +142,7 @@ export function loadConfig(env: Env): Config {
     ownUrl: (env.OWN_URL ?? "true").trim().toLowerCase() !== "false",
     inviteDays: Number.isFinite(days) && days > 0 ? Math.floor(days) : 7,
     keyCreated: env.HUB_KEY_CREATED?.trim() || "2026-11-17T00:00:00Z",
+    accelerator,
   };
   cache.set(env, cfg);
   return cfg;

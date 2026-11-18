@@ -6138,6 +6138,56 @@
         ]
       }
     },
+    "/api/membership/accelerator": {
+      "put": {
+        "tags": [
+          "hub"
+        ],
+        "summary": "Membership Accelerator",
+        "description": "Allow or refuse the hub's faster connection (cloudflared) when it offers one.",
+        "operationId": "membership_accelerator_api_membership_accelerator_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceleratorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Membership"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
     "/api/membership/rotate": {
       "post": {
         "tags": [
@@ -7551,6 +7601,85 @@
   },
   "components": {
     "schemas": {
+      "AcceleratorRequest": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "AcceleratorRequest"
+      },
+      "AcceleratorSetting": {
+        "properties": {
+          "offered": {
+            "type": "boolean",
+            "title": "Offered",
+            "description": "The hub advertises the cloudflared accelerator."
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "The owner allows using it (default on)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "offered",
+          "enabled"
+        ],
+        "title": "AcceleratorSetting"
+      },
+      "AcceleratorStatus": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "off",
+              "starting",
+              "ready",
+              "active",
+              "error"
+            ],
+            "title": "State"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state"
+        ],
+        "title": "AcceleratorStatus"
+      },
       "AdvancedSetting": {
         "properties": {
           "key": {
@@ -11780,6 +11909,17 @@
                 "type": "null"
               }
             ]
+          },
+          "accelerator": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AcceleratorSetting"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tunnel mode only."
           },
           "check": {
             "anyOf": [
@@ -16429,6 +16569,16 @@
               }
             ],
             "title": "Error"
+          },
+          "accelerator": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AcceleratorStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,

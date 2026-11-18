@@ -2,6 +2,16 @@
 
 Tags are `hub-X.Y.Z`. Changes to the hub core only; the instance has its own changelog at the repo root.
 
+## 0.3.0
+
+- The `cloudflared` accelerator (protocol/accelerators.md): `POST /v0/accelerators/cloudflared` takes a signed
+  `accelerator-request` (enable, activate, deactivate, disable) from an active tunnel-mode member and manages a
+  Cloudflare Tunnel, its two proxied CNAMEs and two script-less Worker routes through the Cloudflare API. Advertised in the
+  capabilities `extras` only when `CF_ACCELERATOR` is `"true"` and the account, zone and token are set. New settings:
+  `CF_ACCELERATOR`, `CF_ACCOUNT_ID`, `CF_ZONE_ID`, `CF_FILES_ZONE_ID`, `CF_API_BASE`, `CF_ACCELERATOR_DOC`, secret `CF_API_TOKEN`.
+- Migration `0002_accelerator.sql` (apply it before deploying). Leaving and re-registration take the member's accelerator down.
+- `scripts/mock-cf-api.mjs`: an in-memory mock of the Cloudflare endpoints used; `conformance.sh` starts it.
+
 ## 0.2.0
 
 - The tunnel uses the WebSocket Hibernation API: an idle member's connection costs no Durable Object duration (it was

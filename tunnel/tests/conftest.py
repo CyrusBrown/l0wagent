@@ -93,7 +93,10 @@ class FakeGateway:
         self.config: dict | None = None
         self.statuses: list[dict] = []
         self.auth_seen: set[str] = set()
+        self.accel_requests: list[dict] = []
+        self._iat = int(time.time())
         self.app = Starlette(routes=[Route("/v0/tunnel/config", self._config), Route("/v0/tunnel/hello", self._hello, methods=["POST"]),
+                                     Route("/v0/tunnel/accelerator", self._accelerator, methods=["POST"]),
                                      Route("/v0/tunnel/status", self._status, methods=["PUT"])])
         self.srv = Threaded(self.app)
 
@@ -106,6 +109,14 @@ class FakeGateway:
         p = payloads.build_tunnel_hello(self.config["address"], b["nonce"], b["hub"], self.config["release"])
         return JSONResponse({"doc": docs.sign_document("tunnel-hello", p, [self.signer])})
 
+    async def _accelerator(self, request: Request):
+        b = await request.json()
+        self.accel_requests.append(b)
+        self._iat += 1
+        kw = {"service": b["service"]} if b.get("service") else {}
+        p = payloads.build_accelerator_request(self.config["address"], self.config["hub"], b["action"], iat=self._iat, **kw)
+        return JSONResponse({"doc": docs.sign_document("accelerator-request", p, [self.signer])})
+
     async def _status(self, request: Request):
         self.statuses.append(await request.json())
         return JSONResponse({"ok": True})
@@ -113,6 +124,10 @@ class FakeGateway:
     @property
     def states(self) -> list[str]:
         return [s["state"] for s in self.statuses]
+
+    @property
+    def accel_states(self) -> list[str]:
+        return [s["accelerator"]["state"] for s in self.statuses if "accelerator" in s]
 
 
 async def until(pred, timeout: float = 15.0):

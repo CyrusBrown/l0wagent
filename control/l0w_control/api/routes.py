@@ -826,6 +826,12 @@ def membership_check(be: Be) -> s.MembershipCheck:
     return be.membership_check()
 
 
+@api.put("/membership/accelerator", tags=["hub"])
+def membership_accelerator(req: s.AcceleratorRequest, be: Be) -> s.Membership:
+    """Allow or refuse the hub's faster connection (cloudflared) when it offers one."""
+    return be.membership_accelerator(req)
+
+
 @api.post("/membership/rotate", tags=["hub"])
 def membership_rotate(be: Be) -> s.Membership:
     """Replaces the signing key (the old key signs the rotation) and publishes a new self-description."""

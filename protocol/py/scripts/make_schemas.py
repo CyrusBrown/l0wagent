@@ -111,6 +111,23 @@ S["reregistration"] = payload("reregistration", {
 S["tunnel-hello"] = payload("tunnel-hello", {
     "address": ADDRESS, "nonce": B64, "hub": {"type": "string"}, "release": {"type": "string"},
 }, ["address", "nonce", "hub", "release"], "Payload of a tunnel-hello document")
+S["accelerator-request"] = payload("accelerator-request", {
+    "address": ADDRESS, "hub": {"type": "string"}, "accelerator": {"const": "cloudflared"},
+    "action": {"enum": ["enable", "activate", "deactivate", "disable"]},
+    "service": {"type": "string", "pattern": r"^http://127\.0\.0\.1:[0-9]{1,5}$",
+                "description": "http://127.0.0.1:<port>, port 1-65535 (the pattern does not check the range). Required for `enable`."},
+}, ["address", "hub", "accelerator", "action"], "Payload of an accelerator-request document (accelerators.md)")
+S["accelerator-state"] = {
+    "description": "The `200` answer of POST /v0/accelerators/cloudflared (accelerators.md). `token` only in the answer to `enable`.",
+    "type": "object", "required": ["state"],
+    "properties": {"state": {"type": "object", "required": ["enabled", "active", "tunnel_id", "hostnames"], "properties": {
+        "enabled": {"type": "boolean"}, "active": {"type": "boolean"},
+        "tunnel_id": {"oneOf": [{"type": "string"}, {"type": "null"}]},
+        "hostnames": {"type": "array", "items": {"type": "string"}},
+        "token": {"type": "string", "description": "The tunnel's run token: a secret"}},
+        "additionalProperties": True}},
+    "additionalProperties": True,
+}
 S["invite-response"] = {
     "type": "object", "required": ["v", "valid", "expires", "name_hint", "hub"],
     "properties": {"v": {"const": V}, "valid": {"const": True}, "expires": TIME,
@@ -139,7 +156,7 @@ S["tunnel-ready"] = {
     "properties": {"t": {"const": "ready"}, "session": {"type": "string"}, "limits": {"type": "object"}}, "additionalProperties": True,
 }
 
-PAYLOAD_TYPES = ["self", "rotation", "revocation", "moved", "hub", "registration", "leave", "reregistration", "tunnel-hello"]
+PAYLOAD_TYPES = ["self", "rotation", "revocation", "moved", "hub", "registration", "leave", "reregistration", "tunnel-hello", "accelerator-request"]
 
 
 def schema_files() -> dict[str, str]:
@@ -240,6 +257,18 @@ def openapi() -> dict:
                     "400": err("Bad signature or fields, or unsupported `v`.", "bad_leave", "unsupported_version"),
                     "404": err("Unknown name.", "no_such_member"),
                     "410": err("Already left.", "left")}}},
+            "/accelerators/cloudflared": {"post": {
+                "operationId": "cloudflaredAccelerator", "summary": "Use the `cloudflared` accelerator (accelerators.md)",
+                "description": "Body: an `accelerator-request` document signed by the member's current signing key. "
+                               "Only advertised when the hub lists the accelerator in its capabilities `extras`.",
+                "requestBody": {"required": True, "content": {"application/json": {"schema": sref("signed-document")}}},
+                "responses": {
+                    "200": json_resp("The member's accelerator state.", sref("accelerator-state")),
+                    "400": err("Malformed, unknown action, or bad `service`.", "bad_request"),
+                    "401": err("Signature, `iat`, `hub`, `accelerator` or address check failed.", "bad_sig"),
+                    "403": err("Not an active tunnel-mode member.", "not_member"),
+                    "409": err("`stale` (body has `last_iat`), `not_enabled`, or `not_connected`.", "stale", "not_enabled", "not_connected"),
+                    "502": err("The hub's provider failed.", "upstream")}}},
         },
     }
 

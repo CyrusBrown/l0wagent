@@ -79,4 +79,32 @@ describe('Settings → Hub', () => {
     expect(screen.getByText(/connected/)).toBeTruthy()
     expect(screen.getByText('Check now')).toBeTruthy()
   })
+
+  const joined = (tunnel: object, accelerator: object | null) => ({
+    ...base, state: 'joined', address: 'fern@hub.example', mode: 'tunnel', hub,
+    urls: { instance: 'https://fern.hub.example', files: 'https://fern-files.hub.example' }, tunnel, accelerator,
+    sign_key: { kid: 'abcdef0123456789', created: '2026-11-18T09:00:00Z' },
+  })
+
+  it('shows the cloudflared switch and "via cloudflared", and saves on change', async () => {
+    overrides['/api/membership'] = joined({ state: 'connected', since: '2026-11-18T10:00:00Z', accelerator: { state: 'active', since: '2026-11-18T10:00:00Z' } }, { offered: true, enabled: true })
+    overrides['/api/membership/accelerator'] = { ...(overrides['/api/membership'] as object) }
+    renderAt('/settings/hub')
+    expect(await screen.findByText(/Connected · via cloudflared/)).toBeTruthy()
+    const sw = screen.getByRole('switch', { name: /faster connection/ })
+    expect(sw.getAttribute('aria-checked')).toBe('true')
+    fireEvent.click(sw)
+    await vi.waitFor(() => {
+      const c = calls.find((x) => x.url.includes('/api/membership/accelerator'))
+      expect(c?.method).toBe('PUT')
+    })
+  })
+
+  it('hides the switch when the hub does not offer it, and shows a cloudflared error', async () => {
+    overrides['/api/membership'] = joined({ state: 'connected', accelerator: { state: 'error', error: 'no token' } }, { offered: false, enabled: true })
+    renderAt('/settings/hub')
+    await screen.findByText('Check now')
+    expect(screen.queryByRole('switch')).toBeNull()
+    expect(screen.getByText(/cloudflared isn't working: no token/)).toBeTruthy()
+  })
 })

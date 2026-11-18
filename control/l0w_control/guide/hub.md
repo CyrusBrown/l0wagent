@@ -24,6 +24,10 @@ assistant made open from your **files hostname** (a separate site, so they can't
 
 ## Afterwards
 - **Tunnel**: connected, connecting or offline. It reconnects by itself.
+- **Faster connection**: if the hub offers it (Cloudflare hubs may), the app and files then reach you
+  through `cloudflared` instead of the hub's tunnel, which is quicker. The switch is in Settings → Hub
+  ("Use the hub's faster connection") and is on by default. If it can't start or drops, the normal
+  tunnel keeps serving you by itself; the Tunnel line says "via cloudflared" while it's in use.
 - **Self-check** (daily, or **Check now**): the hub's directory serves your current key, and both
   hostnames answer from outside. A failed check sends a notification and shows a card on Home.
 - **Hub key alarm**: the hub's own key changed without a rotation from the one you joined with.

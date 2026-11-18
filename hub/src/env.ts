@@ -20,8 +20,15 @@ export interface Env {
   OWN_URL?: string;
   INVITE_DAYS?: string;
   HUB_KEY_CREATED?: string;
+  CF_ACCELERATOR?: string;
+  CF_ACCOUNT_ID?: string;
+  CF_ZONE_ID?: string;
+  CF_FILES_ZONE_ID?: string;
+  CF_API_BASE?: string;
+  CF_ACCELERATOR_DOC?: string;
 
   // secrets
   HUB_SIGNING_SEED: string;
   ADMIN_TOKEN?: string;
+  CF_API_TOKEN?: string;
 }
