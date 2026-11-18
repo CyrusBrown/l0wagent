@@ -59,8 +59,11 @@ bytes 6-    payload
 - **Bodies stream** in both directions: a response may send DATA for as long as it likes (live event
   streams, downloads). Request bodies over `limits.request_body_bytes` are refused by the hub with `413`.
 - **WebSocket upgrades** through the tunnel are not part of 0.1 (the hub answers them `501`).
-- **Liveness**: either side sends PING every 30 s of silence; a connection with nothing received for
-  90 s is dead. The instance reconnects with exponential backoff from 1 s to 60 s, with jitter.
+- **Liveness**: the instance MUST send PING after 30 s with nothing received; the hub MAY (a hub that
+  lets idle connections sleep pings only while streams are open, and relies on the instance's PINGs
+  otherwise). A connection with nothing received for 90 s is dead; the hub may notice that late (at
+  the next visitor request) and then treats the member as offline. The instance reconnects with
+  exponential backoff from 1 s to 60 s, with jitter.
 
 ## What the hub answers
 - While the member is connected: whatever the instance answers, adding nothing but standard proxy

@@ -2,6 +2,14 @@
 
 Tags are `hub-X.Y.Z`. Changes to the hub core only; the instance has its own changelog at the repo root.
 
+## 0.2.0
+
+- The tunnel uses the WebSocket Hibernation API: an idle member's connection costs no Durable Object duration (it was
+  about 10 800 GB-s a day per always-connected member, most of the Workers Free allowance). The session survives a wake in
+  the socket's attachment; while streams are open a timer keeps the object awake and does the hub's PINGs and the 90 s dead
+  rule; while idle the dead rule is checked at the next visitor request. The spec's liveness rule now requires PINGs of the
+  instance only (protocol/tunnel.md).
+
 ## 0.1.0
 
 First version: the generic hub core on Cloudflare (stage H4), passing the `l0w/0.1` conformance suite against `wrangler dev`.

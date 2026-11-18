@@ -130,20 +130,28 @@ The WebSocket has to stay in one Durable Object for its whole life, and the memb
 - Offline (no connection, or a stream reset before its RESPONSE) answers `502` with `Retry-After: 30`; over `tunnel_streams`
   `503`; a declared or streamed body over `request_body_bytes` `413`; WebSocket upgrades `501`; leaving closes the tunnel
   (close `1000`) and the hostnames answer `410`.
-- The standard (non-hibernating) WebSocket API is used because streams are live in memory.
+- **Hibernation.** The socket is accepted with the WebSocket Hibernation API, so an idle connection costs no duration:
+  the runtime may evict `TunnelConn` and wake it for the next frame or visitor. What the connection needs after a wake
+  (member, session id, next stream id, draining, last receive time) is in the socket's attachment. Open streams live
+  only in memory, so an interval timer runs exactly while streams are open (timers keep the object awake); it also does
+  the hub's PINGs and the 90 s dead rule. While idle, the instance's PING every 30 s wakes the object briefly to answer
+  it, and the dead rule is checked when the next visitor arrives (tunnel.md lets the hub's PINGs be optional). The
+  handshake's 10 s timer keeps it awake until `ready`.
 
 ## Cost and limits to know about
 
-- **Duration billing.** A non-hibernating Durable Object is billed for wall-clock time while it holds a socket: one always
-  connected member is about 128 MB × 2.6 M s ≈ 330 000 GB-s a month, close to the 400 000 GB-s included in the Workers Paid
-  plan, then $12.50 per million GB-s. Budget about $4 per always-connected member per month beyond the allowance. Incoming
-  WebSocket messages bill as requests at 20:1 (frames from the instance); outgoing messages are free. If this matters, the
-  plan's optional `cloudflared` accelerator (H4) or the WebSocket Hibernation API (which would drop open-stream state) are
-  the ways out; neither is built.
+- **Duration billing.** A Durable Object is billed (at 128 MB) for wall-clock time while it is awake, not while it is idle
+  and able to hibernate. `TunnelConn` is awake while visitor requests are open (a UI tab's live event stream counts) and for
+  a moment every 30 s to answer the instance's PING; an idle member costs a few seconds a day. Before hibernation (0.1.0)
+  an always-connected member cost about 10 800 GB-s a day. The allowances: 13 000 GB-s a day on Workers Free (exceeding
+  any Free limit makes further operations fail until 00:00 UTC), 400 000 GB-s a month on Paid, then $12.50 per million.
+  Watch the duration graph in the dashboard: a member with a browser tab left open all day is awake all day.
+- **Requests.** Workers Free allows 100 000 Worker requests and 100 000 Durable Object requests a day. A visitor request
+  is one Worker request and two Durable Object requests; incoming WebSocket messages count at 20:1 (about 150 a day per
+  idle member for PINGs). That is enough for a few people's personal use; heavy use wants Workers Paid.
 - **Request bodies**: Cloudflare caps inbound bodies by plan (100 MB Free/Pro, 200 MB Business, 500 MB Enterprise).
   The default `request_body_bytes` is 100 MiB, above Free/Pro's 100 MB, so Cloudflare answers first there.
-- **Subrequests**: a visitor request costs three (D1, `MemberRoute`, `TunnelConn`), well inside 1000 (50 on Free). The Free
-  plan's 100 000 requests a day is too small for real use; run on Workers Paid.
+- **Subrequests**: a visitor request costs three (D1, `MemberRoute`, `TunnelConn`), well inside 1000 (50 on Free).
 - **Per-request lookups**: member lookups are cached per isolate for 10 s; a member that left answers `410` from its
   `MemberRoute` immediately and the cached row only matters for those seconds.
 - A visitor that disconnects mid-download: the hub resets the stream (RESET `cancelled`) when the runtime cancels the response

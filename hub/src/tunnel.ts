@@ -3,6 +3,15 @@
 // against the member's key in D1, and then registered with the member's MemberRoute, which makes
 // it the member's current connection. Visitor requests arrive here by fetch() from the Worker (with
 // the x-l0w-tunnel-meta header) and are carried over the socket as frames with per-stream flow control.
+//
+// Hibernation: the socket is accepted with the Hibernation API, so an idle connection costs no
+// duration. The runtime may evict this object whenever nothing is in flight and wake it for the next
+// frame or visitor; what the connection needs after a wake (member, session id, next stream id,
+// draining, last receive time) lives in the socket's attachment. Open streams live only in memory, so
+// the object must not hibernate while one is open: an interval timer runs exactly while streams are
+// open (timers keep a Durable Object awake), doing the hub's liveness pings and the 90 s dead rule.
+// While idle the instance's PINGs keep the connection alive (tunnel.md) and the dead rule is checked
+// when the next visitor arrives.
 import { DurableObject } from "cloudflare:workers";
 import { ConfigError, type Config, loadConfig, releaseLess } from "./config";
 import { getMember } from "./db";
@@ -34,6 +43,7 @@ const PING_AFTER_MS = 30_000;
 const DEAD_AFTER_MS = 90_000;
 const DRAIN_MS = 30_000;
 const TICK_MS = 5_000;
+const SAVE_RECV_EVERY_MS = 10_000;
 const CREDIT_STEP = 16_384;
 
 const END = Symbol("end");
@@ -91,12 +101,22 @@ class Stream {
   }
 }
 
+/** The socket's attachment: what an open connection needs after the object wakes from hibernation. */
+export interface Attached {
+  name: string;
+  sid: string;
+  nextId: number;
+  draining: boolean;
+  lastRecv: number;
+}
+
 class Session {
   streams = new Map<number, Stream>();
   nextId = 1;
   draining = false;
   closed = false;
   lastRecv = Date.now();
+  lastSaved = 0;
   lastPing = 0;
   constructor(
     readonly name: string,
@@ -129,17 +149,59 @@ export class TunnelConn extends DurableObject<Env> {
   private session: Session | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private drainTimer: ReturnType<typeof setTimeout> | null = null;
+  private helloTimer: ReturnType<typeof setTimeout> | null = null;
   private cfg!: Config;
 
-  // --- entry point --------------------------------------------------------------------------
+  // --- entry points ---------------------------------------------------------------------------
 
-  async fetch(request: Request): Promise<Response> {
+  /** Load the configuration once per object life. False if the hub is misconfigured. */
+  private configured(): boolean {
+    if (this.cfg) return true;
     try {
       this.cfg = loadConfig(this.env);
+      return true;
     } catch (e) {
-      if (e instanceof ConfigError) return errorResponse(500, "misconfigured", "the hub is not configured");
+      if (e instanceof ConfigError) return false;
       throw e;
     }
+  }
+
+  /** After a wake from hibernation: pick the socket and the session back up from the runtime. */
+  private restore(): void {
+    if (this.ws) return;
+    const ws = this.ctx.getWebSockets()[0];
+    if (!ws) return;
+    this.ws = ws;
+    const a = ws.deserializeAttachment() as Attached | null;
+    if (!a) {
+      // a handshake never hibernates (its timer keeps the object awake), so this socket is unusable
+      this.phase = "closed";
+      safeClose(ws, lt.CLOSE_UNAUTHORIZED);
+      return;
+    }
+    const s = new Session(a.name, a.sid);
+    s.nextId = a.nextId;
+    s.draining = a.draining;
+    s.lastRecv = s.lastSaved = a.lastRecv;
+    this.session = s;
+    this.phase = "open";
+  }
+
+  /** Write the session to the socket's attachment (cheap, in memory, kept across hibernation). */
+  private save(): void {
+    const s = this.session;
+    if (!this.ws || !s || s.closed) return;
+    s.lastSaved = s.lastRecv;
+    try {
+      this.ws.serializeAttachment({ name: s.name, sid: s.id, nextId: s.nextId, draining: s.draining, lastRecv: s.lastRecv } satisfies Attached);
+    } catch {
+      /* the socket is closing */
+    }
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    if (!this.configured()) return errorResponse(500, "misconfigured", "the hub is not configured");
+    this.restore();
     const meta = request.headers.get(META);
     if (meta === null) return this.upgrade(request);
     return this.proxy(request, JSON.parse(meta) as Meta);
@@ -157,26 +219,35 @@ export class TunnelConn extends DurableObject<Env> {
 
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
-    server.accept();
-    server.binaryType = "arraybuffer";
+    this.ctx.acceptWebSocket(server); // the Hibernation API: the runtime holds the socket while we sleep
     this.ws = server;
     this.phase = "hello";
     this.nonce = crypto.getRandomValues(new Uint8Array(32));
     this.nonceAt = Date.now();
     server.send(lt.challengeMessage(this.nonce, this.cfg.domain));
-    const t = setTimeout(() => {
+    // also keeps the object awake through the handshake, whose state (the nonce) is only in memory
+    this.helloTimer = setTimeout(() => {
+      this.helloTimer = null;
       if (this.phase === "hello") this.refuse();
     }, HANDSHAKE_TIMEOUT_MS);
-    server.addEventListener("message", (ev: MessageEvent) => {
-      this.onMessage(ev.data as string | ArrayBuffer).catch(() => this.refuse());
-    });
-    const gone = () => {
-      clearTimeout(t);
-      this.onClosed();
-    };
-    server.addEventListener("close", gone);
-    server.addEventListener("error", gone);
     return new Response(null, { status: 101, webSocket: client, headers: { "sec-websocket-protocol": lt.SUBPROTOCOL } });
+  }
+
+  async webSocketMessage(ws: WebSocket, data: string | ArrayBuffer): Promise<void> {
+    this.restore();
+    if (!this.configured()) return void safeClose(ws, 1011);
+    await this.onMessage(data).catch(() => this.refuse());
+  }
+
+  async webSocketClose(ws: WebSocket, code: number): Promise<void> {
+    this.restore();
+    this.onClosed();
+    safeClose(ws, code); // answer the close (a no-op where the runtime already did)
+  }
+
+  async webSocketError(): Promise<void> {
+    this.restore();
+    this.onClosed();
   }
 
   /** A failed handshake closes with 4401 and no detail. */
@@ -195,7 +266,9 @@ export class TunnelConn extends DurableObject<Env> {
       if (this.phase === "verifying") this.refuse(); // nothing is allowed before `ready`
       return;
     }
-    this.session.lastRecv = Date.now();
+    const now = Date.now();
+    this.session.lastRecv = now;
+    if (now - this.session.lastSaved >= SAVE_RECV_EVERY_MS) this.save();
     if (typeof data === "string") return void this.closeSocket(1003); // text after ready is not part of the protocol
     let f: lt.Frame;
     try {
@@ -232,7 +305,9 @@ export class TunnelConn extends DurableObject<Env> {
     this.ws.send(lt.readyMessage(sid, cfg.limits));
     this.session = session;
     this.phase = "open";
-    this.timer = setInterval(() => this.tick(session), TICK_MS);
+    if (this.helloTimer) clearTimeout(this.helloTimer);
+    this.helloTimer = null;
+    this.save();
     const ok = await this.env.MEMBER.get(this.env.MEMBER.idFromName(name)).register(this.ctx.id.toString());
     if (!ok) this.refuse(); // the member left while we were verifying
   }
@@ -246,7 +321,8 @@ export class TunnelConn extends DurableObject<Env> {
     this.phase = "closed";
     if (this.timer) clearInterval(this.timer);
     if (this.drainTimer) clearTimeout(this.drainTimer);
-    this.timer = this.drainTimer = null;
+    if (this.helloTimer) clearTimeout(this.helloTimer);
+    this.timer = this.drainTimer = this.helloTimer = null;
     if (s && !s.closed) {
       s.closed = true;
       for (const st of [...s.streams.values()]) st.abort();
@@ -263,14 +339,33 @@ export class TunnelConn extends DurableObject<Env> {
     }
   }
 
-  /** Liveness (tunnel.md): PING after 30 s of silence, dead after 90 s. */
-  private tick(s: Session): void {
+  /** Runs the interval timer exactly while streams are open: it keeps the object from hibernating
+   * with stream state in memory, and does the hub's side of liveness while it runs. */
+  private keepAwake(): void {
+    const s = this.session;
+    const want = !!s && !s.closed && s.streams.size > 0;
+    if (want && !this.timer) this.timer = setInterval(() => this.tick(), TICK_MS);
+    else if (!want && this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+  }
+
+  /** Nothing received for 90 s: the connection is dead (tunnel.md). True if it was closed. */
+  private reapIfDead(s: Session): boolean {
+    if (Date.now() - s.lastRecv <= DEAD_AFTER_MS) return false;
+    this.closeSocket(1001);
+    this.onClosed();
+    return true;
+  }
+
+  /** Liveness (tunnel.md) while streams are open: PING after 30 s of silence, dead after 90 s. */
+  private tick(): void {
+    const s = this.session;
+    if (!s || s.closed || this.reapIfDead(s)) return;
     const now = Date.now();
     const idle = now - s.lastRecv;
-    if (idle > DEAD_AFTER_MS) {
-      this.closeSocket(1001);
-      this.onClosed();
-    } else if (idle >= PING_AFTER_MS && now - s.lastPing >= PING_AFTER_MS - 1000) {
+    if (idle >= PING_AFTER_MS && now - s.lastPing >= PING_AFTER_MS - 1000) {
       s.lastPing = now;
       this.send(lt.pingFrame(crypto.getRandomValues(new Uint8Array(8))));
     }
@@ -316,9 +411,11 @@ export class TunnelConn extends DurableObject<Env> {
 
   /** A newer connection replaced this one: no new streams; close 4409 once open streams end (at most 30 s). */
   drain(): void {
+    this.restore();
     const s = this.session;
     if (!s || s.closed) return;
     s.draining = true;
+    this.save();
     if (!this.drainTimer) this.drainTimer = setTimeout(() => this.finishDrain(true), DRAIN_MS);
     this.finishDrain(false);
   }
@@ -334,6 +431,7 @@ export class TunnelConn extends DurableObject<Env> {
 
   /** Leave or re-registration: close now. */
   closeNow(code: number): void {
+    this.restore();
     this.closeSocket(code);
     this.onClosed();
   }
@@ -344,6 +442,7 @@ export class TunnelConn extends DurableObject<Env> {
     const cfg = this.cfg;
     const accept = request.headers.get("accept") ?? "";
     const s = this.session;
+    if (s && !s.closed && this.reapIfDead(s)) return offlineResponse(accept); // idle checks happen here
     if (!s || !s.usable || this.phase !== "open") {
       if (!s) this.ctx.waitUntil(this.env.MEMBER.get(this.env.MEMBER.idFromName(meta.name)).unregister(this.ctx.id.toString()));
       return offlineResponse(accept);
@@ -357,8 +456,10 @@ export class TunnelConn extends DurableObject<Env> {
     }
     const sid = s.nextId;
     s.nextId += 2;
+    this.save();
     const st = new Stream(sid);
     s.streams.set(sid, st);
+    this.keepAwake();
 
     const url = new URL(request.url);
     const headers = lt.filterRequestHeaders(request.headers as unknown as Iterable<[string, string]>).filter(([k]) => k !== "host");
@@ -460,6 +561,7 @@ export class TunnelConn extends DurableObject<Env> {
     if (st.reqReader && !st.requestEnded) void st.reqReader.cancel().catch(() => undefined);
     if (!(st.requestEnded && st.responseEnded) && !st.reset && !s.closed) this.send(lt.resetFrame(st.id, "cancelled"));
     s.streams.delete(st.id);
+    this.keepAwake();
     this.finishDrain(false);
   }
 
