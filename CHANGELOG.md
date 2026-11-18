@@ -3,7 +3,7 @@
 Each release's section becomes its GitHub release notes, which the app shows in the
 "Update available" banner. Versions follow the milestones until 1.0.
 
-## Unreleased
+## 0.8.0
 
 - Extensions (SDK v1): put an extension in `extensions/<name>/` next to `compose.yaml` and switch it on in
   Settings → Extensions (or `./l0w extensions …`). They can add pages, sidebar sections, project tabs,
