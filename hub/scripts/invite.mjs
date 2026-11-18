@@ -2,7 +2,9 @@
 // Print a fresh invite line from a running hub (calls POST /v0/admin/invites).
 //
 //   HUB_ADMIN_TOKEN=... node scripts/invite.mjs --hub https://hub.example [--name-hint mara] [--days 7]
-//                                               [--reregister NAME] [--connect 127.0.0.1:8787]
+//                                               [--reregister NAME] [--bind NAME] [--connect 127.0.0.1:8787]
+// --bind NAME makes an invite for exactly that name; it may be a name the hub reserved itself (its own name or
+// one in RESERVED_NAMES), never one from the spec's list or a taken one.
 //
 // --connect HOST:PORT opens the connection to that address while keeping the Host header (for a hub
 // whose hostname does not resolve from here, such as hub.localhost in the conformance suite).
@@ -52,13 +54,14 @@ async function main() {
   const a = parseArgs(process.argv.slice(2));
   const token = process.env.HUB_ADMIN_TOKEN;
   if (!a.hub || !token) {
-    console.error("usage: HUB_ADMIN_TOKEN=... invite.mjs --hub URL [--name-hint NAME] [--days N] [--reregister NAME] [--connect HOST:PORT]");
+    console.error("usage: HUB_ADMIN_TOKEN=... invite.mjs --hub URL [--name-hint NAME] [--days N] [--reregister NAME] [--bind NAME] [--connect HOST:PORT]");
     return 2;
   }
   const payload = {};
   if (a["name-hint"]) payload.name_hint = a["name-hint"];
   if (a.days) payload.days = Number(a.days);
   if (a.reregister) payload.reregister = a.reregister;
+  if (a.bind) payload.bind = a.bind;
   const r = await post(
     a.hub.replace(/\/+$/, "") + "/v0/admin/invites",
     { authorization: `Bearer ${token}`, "content-type": "application/json" },

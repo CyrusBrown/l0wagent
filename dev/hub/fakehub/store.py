@@ -11,6 +11,8 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from l0wproto import keys as lkeys
+from l0wproto.errors import NameRuleError
+from l0wproto.names import check_name
 from l0wproto.times import now
 
 
@@ -76,11 +78,25 @@ class Store:
         with self.read() as s:
             return list(s["members"])
 
-    def make_invite(self, *, days: int = 7, name_hint: str | None = None, reregister: str | None = None) -> str:
+    def make_invite(self, *, days: int = 7, name_hint: str | None = None, reregister: str | None = None,
+                    bind: str | None = None, reserved_extra: list[str] = ()) -> str:
+        """`bind`: an invite for exactly that name, which may be one the hub reserved itself (membership.md).
+        Raises ValueError for a bind that no invite could carry."""
+        if bind is not None:
+            if reregister:
+                raise ValueError("bind and reregister cannot be combined")
+            if name_hint is not None and name_hint != bind:
+                raise ValueError("name_hint and bind must be equal")
+            name_hint = bind
         code = secrets.token_urlsafe(24)  # 192 bits, URL-safe alphabet
         with self.write() as s:
+            if bind is not None:
+                try:
+                    check_name(bind, taken=list(s["members"]), reserved_extra=reserved_extra, bound=True)
+                except NameRuleError as e:
+                    raise ValueError(f"cannot bind {bind!r}: {e.detail}") from e
             s["invites"][code] = {"expires": now() + days * 86400, "used_by": None, "name_hint": name_hint,
-                                  "reregister": reregister}
+                                  "reregister": reregister, "bind": bind}
         return code
 
 

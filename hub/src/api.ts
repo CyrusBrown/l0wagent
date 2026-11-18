@@ -132,7 +132,7 @@ function inviteState(inv: db.Invite | null): db.Invite {
 
 async function getInvite(env: Env, cfg: Config, code: string): Promise<Response> {
   const inv = inviteState(await db.getInvite(env.DB, code));
-  return jsonResponse(P.buildInviteResponse(formatTime(inv.expires), cfg.name, inv.nameHint));
+  return jsonResponse(P.buildInviteResponse(formatTime(inv.expires), cfg.name, inv.nameHint, inv.bind !== null));
 }
 
 // --- joining -----------------------------------------------------------------------------------
@@ -150,8 +150,10 @@ async function admissionChecks(env: Env, cfg: Config, p: Obj): Promise<void> {
     }
     return;
   }
+  if (inv.bind !== null && inv.bind !== name) throw new HubError(409, "name_bound", "this invite is bound to another name");
   try {
     await checkName(name, {
+      bound: inv.bind !== null,
       reservedExtra: cfg.reservedExtra,
       isTaken: (n) => db.nameExists(env.DB, n),
       lookalikeTaken: (k) => db.lookalikeExists(env.DB, k),
@@ -390,9 +392,32 @@ async function adminInvite(request: Request, env: Env, cfg: Config): Promise<Res
     if (!m || m.status !== "active") throw new HubError(400, "bad_request", "reregister must name an active member");
     rereg = m.name;
   }
+  let bind: string | null = null;
+  if (o.bind !== undefined && o.bind !== null) {
+    if (rereg) throw new HubError(400, "bad_request", "bind and reregister cannot be combined");
+    if (nameHint !== null && nameHint !== o.bind) throw new HubError(400, "bad_request", "name_hint and bind must be equal");
+    try {
+      bind = validateName(o.bind);
+    } catch {
+      throw new HubError(400, "bad_request", "bind is not a valid name");
+    }
+    try {
+      // the hub's own and extra reserved names may be bound; the spec's list and taken names (and lookalikes) may not
+      await checkName(bind, {
+        bound: true,
+        reservedExtra: cfg.reservedExtra,
+        isTaken: (n) => db.nameExists(env.DB, n),
+        lookalikeTaken: (k) => db.lookalikeExists(env.DB, k),
+      });
+    } catch (e) {
+      if (e instanceof NameRuleError) throw new HubError(400, "bad_request", `cannot bind that name: ${e.detail}`);
+      throw e;
+    }
+    nameHint = bind;
+  }
   const code = b64.encode(crypto.getRandomValues(new Uint8Array(24))); // 192 bits
   const t = now();
-  await db.createInvite(env.DB, code, t + days * 86400, t, { nameHint, reregister: rereg });
+  await db.createInvite(env.DB, code, t + days * 86400, t, { nameHint, reregister: rereg, bind });
   return jsonResponse({ invite: formatInvite(cfg.baseUrl, code), expires: formatTime(t + days * 86400) }, 201);
 }
 

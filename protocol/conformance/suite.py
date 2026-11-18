@@ -7,6 +7,7 @@ import asyncio
 import ipaddress
 import json
 import os
+import shlex
 import time
 
 import httpx
@@ -21,8 +22,9 @@ from .harness import (Failure, Inst, Net, Peer, Report, connect_tunnel, expect, 
 
 
 class Suite:
-    def __init__(self, net: Net, invite_cmd: str, report: Report):
+    def __init__(self, net: Net, invite_cmd: str, report: Report, bind_name: str | None = "opsname"):
         self.net, self.cmd, self.r = net, invite_cmd, report
+        self.bind_name = bind_name
         self.caps: dict = {}
         self.hub_key: Key | None = None
         self.api = ""
@@ -30,8 +32,10 @@ class Suite:
 
     # --- helpers --------------------------------------------------------------------------
 
-    async def invite(self) -> str:
-        p = await asyncio.create_subprocess_shell(self.cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    async def invite(self, bind: str | None = None) -> str:
+        """A fresh invite's code. `bind`: run the command with `--bind NAME` appended."""
+        cmd = self.cmd if bind is None else f"{self.cmd} --bind {shlex.quote(bind)}"
+        p = await asyncio.create_subprocess_shell(cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         out, err = await asyncio.wait_for(p.communicate(), 60)
         expect(p.returncode == 0, f"invite command failed ({p.returncode}): {err.decode()[:200]}")
         lines = [ln.strip() for ln in out.decode().splitlines() if "l0w-invite:" in ln]
@@ -94,13 +98,66 @@ class Suite:
                 r = await self.net.http.get(self.api + f"invites/{code}")
                 expect(r.status_code == 200, f"lookup {i + 1}: status {r.status_code} {r.text[:120]}")
                 b = r.json()
-                expect(b.get("valid") is True and isinstance(b.get("expires"), str) and "name_hint" in b and isinstance(b.get("hub"), str),
+                expect(b.get("valid") is True and isinstance(b.get("expires"), str) and "name_hint" in b and b.get("name_bound") is False and isinstance(b.get("hub"), str),
                        f"lookup {i + 1}: bad body {b}")
         await self.r.step("invite lookup is valid and does not consume the invite", lookup_twice)
 
         async def unknown():
             expect_error(await self.net.http.get(self.api + "invites/no-such-invite-0123456789"), 404, "no_such_invite")
         await self.r.step("unknown invite -> 404 no_such_invite", unknown)
+
+    async def bound_invites(self) -> None:
+        """Bound invites (membership.md): the command is run with `--bind NAME` for a name the hub reserved itself
+        (its own name or one of its extra reserved names; `--bind-name`, default `opsname`)."""
+        name = self.bind_name
+        if not name:
+            self.r.add("SKIP", "bound invite checks", "no --bind-name given")
+            return
+        try:
+            probe = await self.invite(bind=name)
+        except Failure as e:
+            self.r.add("SKIP", "bound invite checks", f"the invite command cannot bind {name!r} (unsupported, or the hub does not reserve it): {e}")
+            return
+
+        async def lookup():
+            r = await self.net.http.get(self.api + f"invites/{probe}")
+            expect(r.status_code == 200, f"status {r.status_code} {r.text[:150]}")
+            b = r.json()
+            expect(b.get("name_bound") is True and b.get("name_hint") == name, f"lookup of a bound invite: {b}")
+        await self.r.step("bound invite: lookup shows name_bound true and the name as name_hint", lookup)
+
+        async def unbound():
+            expect_error(await self.post_reg(Inst(self.domain, name).registration(await self.invite())), 409, "name_reserved")
+        await self.r.step(f"a reserved name ({name!r}) with an unbound invite -> 409 name_reserved", unbound)
+
+        async def other():
+            expect_error(await self.post_reg(Inst(self.domain, new_name()).registration(probe)), 409, "name_bound")
+        await self.r.step("a bound invite used with another name -> 409 name_bound", other)
+
+        async def fixed():
+            try:
+                await self.invite(bind="admin")
+            except Failure:
+                return
+            raise Failure("an invite bound to the spec's reserved name 'admin' was created")
+        await self.r.step("binding a name from the spec's reserved list ('admin') is refused at creation", fixed)
+
+        async def register():
+            r = await self.post_reg(Inst(self.domain, name).registration(await self.invite(bind=name)))
+            if r.status_code == 409 and r.json().get("error") == "name_taken":
+                return "taken"
+            expect(r.status_code == 201, f"status {r.status_code} {r.text[:200]}")
+        res = await self.r.step(f"a bound invite registers the reserved name {name!r} -> 201", register)
+        if res == "taken":
+            self.r.add("SKIP", f"bound invite registers {name!r}", "the name is already taken (this hub was used before); use a fresh hub or --bind-name")
+        elif res:
+            async def taken():
+                try:
+                    await self.invite(bind=name)
+                except Failure:
+                    return
+                raise Failure("an invite bound to a taken name was created")
+            await self.r.step("binding a taken name is refused at creation", taken)
 
     # --- 2. registration ------------------------------------------------------------------
 
@@ -698,6 +755,7 @@ class Suite:
             self.r.add("FAIL", "the remaining checks need a verified capabilities document", "not run")
             return
         await self.invites()
+        await self.bound_invites()
         m1 = await self.register("member 1")
         if m1 is None or not await self.after_join(m1):
             self.r.add("FAIL", "checks on a registered member", "not run: registration or the first self failed")

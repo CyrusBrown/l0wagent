@@ -13,7 +13,7 @@ from .store import Store
 
 def build_config(a: argparse.Namespace) -> Config:
     return Config.from_env(base_url=a.base_url, domain=a.domain, files_domain=a.files_domain, state_path=a.state,
-                           seed_path=a.key, listen_host=getattr(a, "listen", None), listen_port=getattr(a, "port", None))
+                           seed_path=a.key, reserved=[n.strip().lower() for n in a.reserved.split(",") if n.strip()] if a.reserved else None, listen_host=getattr(a, "listen", None), listen_port=getattr(a, "port", None))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -22,6 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--domain", help="the hub domain in addresses (default: the host of the base URL)")
     ap.add_argument("--files-domain", help="parent domain of the files hostnames (default hubfiles.localhost)")
     ap.add_argument("--state", help="state file (default ./fakehub-state.json)")
+    ap.add_argument("--reserved", help="comma-separated extra reserved names (besides the hub's own)")
     ap.add_argument("--key", help="hub key seed file (default: next to the state file)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sv = sub.add_parser("serve", help="run the hub")
@@ -30,11 +31,17 @@ def main(argv: list[str] | None = None) -> int:
     iv = sub.add_parser("invite", help="print a new invite string")
     iv.add_argument("--name-hint")
     iv.add_argument("--reregister", metavar="NAME", help="an invite that approves re-registering NAME (both keys lost)")
+    iv.add_argument("--bind", metavar="NAME", help="an invite that registers exactly NAME (it may be a name the hub reserved)")
     iv.add_argument("--days", type=int, default=7)
     a = ap.parse_args(argv)
     cfg = build_config(a)
     if a.cmd == "invite":
-        code = Store(cfg.state_path).make_invite(days=a.days, name_hint=a.name_hint, reregister=a.reregister)
+        try:
+            code = Store(cfg.state_path).make_invite(days=a.days, name_hint=a.name_hint, reregister=a.reregister,
+                                                     bind=a.bind, reserved_extra=cfg.reserved_extra())
+        except ValueError as e:
+            print(f"fakehub: {e}", file=sys.stderr)
+            return 1
         print(format_invite(cfg.base_url, code))
         return 0
     import uvicorn

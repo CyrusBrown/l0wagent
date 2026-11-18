@@ -2,6 +2,14 @@
 
 Tags are `hub-X.Y.Z`. Changes to the hub core only; the instance has its own changelog at the repo root.
 
+## 0.3.1
+
+- Bound invites (protocol/membership.md): `POST /v0/admin/invites` takes `bind: "<name>"`. Registration must use exactly that
+  name (`409 name_bound`) and may then take a name the hub reserved itself (its own name, `RESERVED_NAMES`, and their
+  lookalikes); the spec's fixed list and taken names stay refused. Creation answers `400 bad_request` for an invalid,
+  spec-reserved or taken name, for `bind` with `reregister`, or for a `name_hint` that differs. The invite lookup answers
+  `name_bound`. `scripts/invite.mjs --bind NAME`. Migration `0003_bound_invites.sql` (apply it before deploying).
+
 ## 0.3.0
 
 - The `cloudflared` accelerator (protocol/accelerators.md): `POST /v0/accelerators/cloudflared` takes a signed

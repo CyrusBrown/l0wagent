@@ -36,12 +36,21 @@ def is_reserved(name: str, extra: Iterable[str] = ()) -> bool:
     return name in RESERVED or name in set(extra)
 
 
-def check_name(name: str, *, taken: Iterable[str] = (), reserved_extra: Iterable[str] = ()) -> str:
+def is_spec_reserved(name: str) -> bool:
+    """Reserved by the spec's fixed list (exactly, or as a lookalike). No invite can bind such a name."""
+    key = lookalike_key(name)
+    return any(lookalike_key(r) == key for r in RESERVED)
+
+
+def check_name(name: str, *, taken: Iterable[str] = (), reserved_extra: Iterable[str] = (), bound: bool = False) -> str:
     """Full hub-side check. Codes: bad_registration (syntax), name_reserved, name_taken.
-    `taken` includes names that left (never reused). `reserved_extra` is the hub's services and its own name."""
+    `taken` includes names that left (never reused). `reserved_extra` is the hub's services and its own name.
+    `bound=True` (a bound invite for this name, membership.md) ignores `reserved_extra` (and lookalikes of it);
+    the spec's fixed list and taken names still refuse."""
     validate_name(name)
-    reserved = set(RESERVED) | set(reserved_extra)
-    if name in reserved:
+    fixed = set(RESERVED)
+    reserved = fixed | (set() if bound else set(reserved_extra))
+    if name in fixed or (name in reserved):
         raise NameRuleError("name is reserved", code="name_reserved")
     if name in set(taken):
         raise NameRuleError("name is taken", code="name_taken")

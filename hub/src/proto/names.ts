@@ -37,14 +37,23 @@ export interface NameChecks {
   reservedExtra?: Iterable<string>;
   /** Is this exact name a member's (including members that left: names are never reused)? */
   isTaken: (name: string) => Promise<boolean>;
+  /** A bound invite for this name (membership.md): the hub's own and extra reserved names don't refuse it. */
+  bound?: boolean;
   /** Does any member's name map to this lookalike key? */
   lookalikeTaken: (key: string) => Promise<boolean>;
+}
+
+/** Reserved by the spec's fixed list, exactly or as a lookalike: no invite can bind such a name. */
+export function isSpecReserved(name: string): boolean {
+  const key = lookalikeKey(name);
+  for (const r of RESERVED) if (lookalikeKey(r) === key) return true;
+  return false;
 }
 
 /** Full hub-side check. Codes: bad_registration (syntax), name_reserved, name_taken. */
 export async function checkName(name: string, c: NameChecks): Promise<string> {
   validateName(name);
-  const reserved = new Set([...RESERVED, ...(c.reservedExtra ?? [])]);
+  const reserved = new Set([...RESERVED, ...(c.bound ? [] : (c.reservedExtra ?? []))]);
   if (reserved.has(name)) throw new NameRuleError("name is reserved", "name_reserved");
   if (await c.isTaken(name)) throw new NameRuleError("name is taken", "name_taken");
   const key = lookalikeKey(name);

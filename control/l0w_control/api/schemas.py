@@ -1645,6 +1645,7 @@ class InvitePreviewRequest(Model):
 class InvitePreview(Model):
     hub: HubInfo
     name_hint: str | None = None
+    name_bound: bool = Field(False, description="The invite is bound to name_hint: the name can't be changed.")
     expires: datetime | None = None
     own_url_allowed: bool
     example: MemberHostnames | None = None

@@ -470,8 +470,8 @@ def verify_accelerator_request(doc: dict, signing_key: Key, *, hub: str, address
 # --- other bodies ----------------------------------------------------------------------------
 
 
-def build_invite_response(expires: str, hub_name: str, name_hint: str | None = None) -> dict:
-    return {"v": VERSION, "valid": True, "expires": expires, "name_hint": name_hint, "hub": hub_name}
+def build_invite_response(expires: str, hub_name: str, name_hint: str | None = None, name_bound: bool = False) -> dict:
+    return {"v": VERSION, "valid": True, "expires": expires, "name_hint": name_hint, "name_bound": name_bound, "hub": hub_name}
 
 
 def build_join_response(address: str, hostnames: dict, hub_key: Key, tunnel: str | None) -> dict:

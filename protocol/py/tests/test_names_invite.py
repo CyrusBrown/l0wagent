@@ -61,3 +61,16 @@ def test_invite():
 def test_bad_invites(s):
     with pytest.raises(InviteError):
         parse_invite(s)
+
+
+def test_bound_names():
+    # the hub's own / extra reserved names (and lookalikes) pass when bound; the fixed list and taken names never do
+    assert names.check_name("myhub", reserved_extra=["myhub"], bound=True) == "myhub"
+    assert names.check_name("my-hub", reserved_extra=["myhub"], bound=True) == "my-hub"
+    for n, code in (("admin", "name_reserved"), ("adm1n", "name_reserved"), ("w-ww", "name_reserved"), ("myhub", "name_taken"), ("my-hub", "name_taken")):
+        with pytest.raises(NameRuleError) as e:
+            names.check_name(n, taken=["myhub"], reserved_extra=["myhub", "admin"], bound=True)
+        assert e.value.code == code
+    with pytest.raises(NameRuleError):
+        names.check_name("myhub", reserved_extra=["myhub"])
+    assert names.is_spec_reserved("admin") and names.is_spec_reserved("adm1n") and not names.is_spec_reserved("myhub")

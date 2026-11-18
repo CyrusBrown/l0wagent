@@ -10,6 +10,12 @@
 - **Lookalikes**: a hub MUST refuse a name that equals an existing or reserved name after mapping
   `0→o`, `1→l`, `i→l`, `5→s` and removing dashes (answer `409 name_reserved` or `409 name_taken`, whichever it collides with).
 - **Never reused.** A name that left stays taken forever (its directory answers `410`).
+- **Bound invites**: the hub's operator MAY issue an invite **bound to one name**. A registration with a
+  bound invite MUST use exactly that name (otherwise `409 name_bound`), and the hub MAY then accept it
+  even though it is reserved, **only** when the reservation comes from the hub's own name (or a lookalike
+  of it) or from names the hub reserved itself. Names in the list above, and names that are taken (or
+  lookalikes of taken names), are refused as always. This is how an operator takes their hub's own
+  name, which no one else can.
 
 ## Invites
 An invite is a string the owner pastes into their instance: `l0w-invite:<hub base URL>#<code>`, e.g.
@@ -17,8 +23,10 @@ An invite is a string the owner pastes into their instance: `l0w-invite:<hub bas
 use, and expires (the hub decides when; 7 days is RECOMMENDED). The instance fetches the hub's
 capabilities from the base URL before showing the owner anything.
 
-`GET {api}invites/{code}` → `{"v", "valid": true, "expires": "…", "name_hint": "mara" | null, "hub": "<hub name>"}`
+`GET {api}invites/{code}` → `{"v", "valid": true, "expires": "…", "name_hint": "mara" | null, "name_bound": false, "hub": "<hub name>"}`
 or `404 {"error": "no_such_invite"}` / `410 {"error": "invite_used" | "invite_expired"}`. It doesn't use the invite.
+For a bound invite, `name_hint` is the bound name and `name_bound` is `true`; instances SHOULD fill the
+name in and not let the owner change it (older instances ignore `name_bound` and get `409 name_bound`).
 
 ## Joining (`POST {api}members`)
 Before sending anything the instance MUST check: 2FA is on for its owner, a backup has been made

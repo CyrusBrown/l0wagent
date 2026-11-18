@@ -112,10 +112,17 @@ checking the hostname it stored.
 ```
 HUB_ADMIN_TOKEN=... node scripts/invite.mjs --hub https://hub.example [--name-hint mara] [--days 7]
 HUB_ADMIN_TOKEN=... node scripts/invite.mjs --hub https://hub.example --reregister mara   # a member lost both keys
+HUB_ADMIN_TOKEN=... node scripts/invite.mjs --hub https://hub.example --bind yourhub     # take a name the hub reserved
 ```
 
-The body is `{name_hint?, days?, reregister?}` and the answer `201 {invite: "l0w-invite:…", expires}`. A re-registration invite
+The body is `{name_hint?, days?, reregister?, bind?}` and the answer `201 {invite: "l0w-invite:…", expires}`. A re-registration invite
 only approves that one name; the hub then issues the signed `reregistration` document (membership.md).
+
+A **bound** invite (`bind`) registers exactly that name (`409 name_bound` otherwise) and may take a name the hub reserved
+itself: the first label of its domain or one in `RESERVED_NAMES` (this is how you take your hub's own name). Names from the
+spec's fixed list (`admin`, `www`, …) and taken names, or their lookalikes, can't be bound: creation answers `400 bad_request`,
+as it does for `bind` together with `reregister` or with a different `name_hint`. The lookup shows `name_hint` and
+`name_bound: true`.
 
 ## The cloudflared accelerator
 

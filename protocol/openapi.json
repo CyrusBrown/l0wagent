@@ -323,7 +323,7 @@
             }
           },
           "409": {
-            "description": "The name is taken or reserved. Codes: `name_taken`, `name_reserved`.",
+            "description": "The name is taken or reserved, or the invite is bound to another name. Codes: `name_taken`, `name_reserved`, `name_bound`.",
             "content": {
               "application/json": {
                 "schema": {

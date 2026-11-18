@@ -241,6 +241,7 @@ def test_schema_directory_entry_join_error_invite():
     validator("join-response").validate(P.build_join_response("mara@hub.example", {"instance": "a", "files": "b"}, keys.Key.from_dict(hubkey), "wss://t"))
     validator("invite-response").validate(P.build_invite_response("2026-11-24T21:30:00Z", "Example hub"))
     validator("invite-response").validate(P.build_invite_response("2026-11-24T21:30:00Z", "Example hub", "mara"))
+    validator("invite-response").validate(P.build_invite_response("2026-11-24T21:30:00Z", "Example hub", "mara", True))
     e = validator("error")
     for code in ("no_such_invite", "bad_registration", "name_taken"):
         e.validate(SignatureError("x", code=code).body())
@@ -262,7 +263,7 @@ def test_openapi_structure_and_refs():
         assert p in paths, p
     codes = json.dumps(api)
     for c in ("no_such_member", "left", "no_such_invite", "invite_used", "invite_expired", "bad_registration", "needs_invite",
-              "name_taken", "name_reserved", "own_url_unreachable", "instance_too_old", "unsupported_version"):
+              "name_taken", "name_reserved", "name_bound", "own_url_unreachable", "instance_too_old", "unsupported_version"):
         assert c in codes, c
 
     def refs(o):

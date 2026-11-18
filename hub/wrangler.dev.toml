@@ -14,6 +14,8 @@ MIN_RELEASE = "0.8.0"
 OWN_URL = "true"
 HUB_SIGNING_SEED = "lecYjx28aUdQ7GyN8sVZ3kZZdkBrMHqfDC8drU5zC9M"
 ADMIN_TOKEN = "dev-admin-token"
+# a name the conformance suite binds an invite to (bound invites, protocol/membership.md)
+RESERVED_NAMES = "opsname"
 # the cloudflared accelerator against the mock Cloudflare API (scripts/mock-cf-api.mjs, started by scripts/conformance.sh)
 CF_ACCELERATOR = "true"
 CF_ACCOUNT_ID = "dev-account"

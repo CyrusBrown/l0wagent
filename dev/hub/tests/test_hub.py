@@ -16,7 +16,7 @@ from .conftest import Running
 
 
 def invite_cmd(r: Running) -> str:
-    return f"{sys.executable} -m fakehub --base-url {r.url} --state {r.cfg.state_path} invite"
+    return f"{sys.executable} -m fakehub --base-url {r.url} --state {r.cfg.state_path} --reserved {','.join(r.cfg.reserved)} invite"
 
 
 def test_whole_conformance_suite(running, capsys):
@@ -27,6 +27,7 @@ def test_whole_conformance_suite(running, capsys):
     assert code == 0, out
     assert "FAIL" not in out
     assert out.count("PASS") >= 70
+    assert "PASS  a bound invite registers the reserved name 'opsname'" in out, out  # not skipped
     assert out.count(" cloudflared: ") >= 7, out  # the accelerator checks ran (not skipped)
 
 
@@ -220,3 +221,36 @@ def test_suite_fails_a_hub_that_forwards_smuggled_headers(tmp_path, monkeypatch,
     out = capsys.readouterr().out
     assert code == 1
     assert "FAIL  tunnel: GET by the instance hostname" in out
+
+
+def test_bound_invites(running):
+    import subprocess
+
+    def cli(*args):
+        return subprocess.run(invite_cmd(running).split() + list(args), capture_output=True, text=True)
+
+    assert cli("--bind", "admin").returncode == 1
+    assert cli("--bind", "adm1n").returncode == 1
+    assert cli("--bind", "opsname", "--reregister", "x").returncode == 1
+    assert cli("--bind", "opsname", "--name-hint", "other").returncode == 1
+    ok = cli("--bind", "opsname", "--name-hint", "opsname")
+    assert ok.returncode == 0
+    inv = parse_invite(ok.stdout.strip(), allow_insecure=True)
+    other = parse_invite(cli("--bind", "hub-ops2").stdout.strip(), allow_insecure=True)  # an unreserved name binds too
+
+    async def go():
+        net = Net(running.url, running.connect)
+        try:
+            r = await net.http.get(f"{running.url}/v0/invites/{inv.code}")
+            assert r.json()["name_bound"] is True and r.json()["name_hint"] == "opsname"
+            reg = lambda n, code: Inst("hub.localhost", n).registration(code)  # noqa: E731
+            r = await net.http.post(f"{running.url}/v0/members", json=reg("mara", inv.code))
+            assert (r.status_code, r.json()["error"]) == (409, "name_bound")
+            r = await net.http.post(f"{running.url}/v0/members", json=reg("opsname", inv.code))
+            assert r.status_code == 201, r.text
+            r = await net.http.post(f"{running.url}/v0/members", json=reg("hub", other.code))
+            assert (r.status_code, r.json()["error"]) == (409, "name_bound")
+        finally:
+            await net.close()
+    asyncio.run(go())
+    assert cli("--bind", "opsname").returncode == 1  # taken now

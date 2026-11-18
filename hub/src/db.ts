@@ -34,6 +34,8 @@ export interface Invite {
   usedBy: string | null;
   nameHint: string | null;
   reregister: string | null;
+  /** Bound to this name (membership.md), or null */
+  bind: string | null;
 }
 
 type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -77,7 +79,7 @@ export async function lookalikeExists(db: D1Database, key: string): Promise<bool
 
 export async function getInvite(db: D1Database, code: string): Promise<Invite | null> {
   const r = await db.prepare("SELECT * FROM invites WHERE code = ?1").bind(code).first<Row>();
-  return r ? { code: r.code, expires: r.expires, usedBy: r.used_by ?? null, nameHint: r.name_hint ?? null, reregister: r.reregister ?? null } : null;
+  return r ? { code: r.code, expires: r.expires, usedBy: r.used_by ?? null, nameHint: r.name_hint ?? null, reregister: r.reregister ?? null, bind: r.bind ?? null } : null;
 }
 
 export async function createInvite(
@@ -85,11 +87,11 @@ export async function createInvite(
   code: string,
   expires: number,
   now: number,
-  opts: { nameHint?: string | null; reregister?: string | null },
+  opts: { nameHint?: string | null; reregister?: string | null; bind?: string | null },
 ): Promise<void> {
   await db
-    .prepare("INSERT INTO invites (code, expires, used_by, name_hint, reregister, created) VALUES (?1, ?2, NULL, ?3, ?4, ?5)")
-    .bind(code, expires, opts.nameHint ?? null, opts.reregister ?? null, now)
+    .prepare("INSERT INTO invites (code, expires, used_by, name_hint, reregister, created, bind) VALUES (?1, ?2, NULL, ?3, ?4, ?5, ?6)")
+    .bind(code, expires, opts.nameHint ?? null, opts.reregister ?? null, now, opts.bind ?? null)
     .run();
 }
 

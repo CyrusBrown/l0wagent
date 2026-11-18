@@ -68,6 +68,7 @@ function Join({ m, onJoined }: { m: S['Membership']; onJoined: (key: string) => 
   const join = useJoinHub()
   const [invite, setInvite] = useState('')
   const [name, setName] = useState('')
+  const [locked, setLocked] = useState(false)
   const [mode, setMode] = useState<'tunnel' | 'own-url'>('tunnel')
   const [urls, setUrls] = useState({ instance: '', files: '' })
   const [backup, setBackup] = useState<'made' | 'skipped' | null>(null)
@@ -87,7 +88,7 @@ function Join({ m, onJoined }: { m: S['Membership']; onJoined: (key: string) => 
         </div>
         <form className="set-form" style={{ maxWidth: 520 }} onSubmit={(e) => {
           e.preventDefault()
-          preview.mutate(invite.trim(), { onSuccess: (r) => { if (r.name_hint) setName(r.name_hint); if (!r.own_url_allowed) setMode('tunnel') } })
+          preview.mutate(invite.trim(), { onSuccess: (r) => { if (r.name_hint) setName(r.name_hint); setLocked(!!r.name_bound && !!r.name_hint); if (!r.own_url_allowed) setMode('tunnel') } })
         }}>
           <input className="input mono" autoComplete="off" spellCheck={false} placeholder="l0w-invite:…" aria-label="Invite" value={invite} onChange={(e) => setInvite(e.target.value)} />
           {preview.error && <div className="error" role="alert">{problem(preview.error)}</div>}
@@ -120,8 +121,8 @@ function Join({ m, onJoined }: { m: S['Membership']; onJoined: (key: string) => 
           }}>
             <label className="stack" style={{ gap: 4 }}>
               <span className="k" style={{ fontWeight: 500, fontSize: 13.5 }}>Name</span>
-              <input className="input" autoComplete="off" spellCheck={false} maxLength={32} value={name} onChange={(e) => setName(e.target.value.toLowerCase())} />
-              <span className="sub" style={{ fontSize: 12.5 }}>3–32 lowercase letters, digits and single dashes. A name can never be reused, even after you leave.</span>
+              <input className="input" autoComplete="off" spellCheck={false} maxLength={32} value={name} readOnly={locked} onChange={(e) => setName(e.target.value.toLowerCase())} />
+              <span className="sub" style={{ fontSize: 12.5 }}>{locked ? 'This invite is for this name only.' : '3–32 lowercase letters, digits and single dashes.'} A name can never be reused, even after you leave.</span>
             </label>
             {p.own_url_allowed && (
               <div className="stack" style={{ gap: 6 }}>

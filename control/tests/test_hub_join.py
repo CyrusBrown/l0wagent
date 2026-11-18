@@ -89,6 +89,7 @@ def test_join_reach_check_rotate_leave_rejoin(hs: HubStack):
 
     invite = hs.invite()
     pv = c.post("/api/membership/preview", json={"invite": invite}).json()
+    assert pv["name_bound"] is False
     assert pv["hub"]["domain"] == f"hub.localhost:{hs.hub_port}" or pv["hub"]["domain"].startswith("hub.localhost")
     assert pv["two_factor_ready"] is False and pv["problems"]
     r = c.post("/api/membership/join", json={"invite": invite, "name": "mara", "backup": "skipped", "idempotency_key": "j1"})

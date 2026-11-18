@@ -3691,6 +3691,12 @@ export interface components {
             hub: components["schemas"]["HubInfo"];
             /** Name Hint */
             name_hint?: string | null;
+            /**
+             * Name Bound
+             * @description The invite is bound to name_hint: the name can't be changed.
+             * @default false
+             */
+            name_bound?: boolean;
             /** Expires */
             expires?: string | null;
             /** Own Url Allowed */

@@ -438,8 +438,8 @@ export async function verifyAcceleratorRequest(
 
 // --- other bodies ------------------------------------------------------------------------------
 
-export function buildInviteResponse(expires: string, hubName: string, nameHint: string | null = null): Obj {
-  return { v: VERSION, valid: true, expires, name_hint: nameHint, hub: hubName };
+export function buildInviteResponse(expires: string, hubName: string, nameHint: string | null = null, nameBound = false): Obj {
+  return { v: VERSION, valid: true, expires, name_hint: nameHint, name_bound: nameBound, hub: hubName };
 }
 
 export function buildJoinResponse(address: string, hostnames: Obj, hubKey: Key, tunnel: string | null): Obj {

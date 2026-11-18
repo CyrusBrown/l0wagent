@@ -11309,6 +11309,12 @@
             ],
             "title": "Name Hint"
           },
+          "name_bound": {
+            "type": "boolean",
+            "title": "Name Bound",
+            "description": "The invite is bound to name_hint: the name can't be changed.",
+            "default": false
+          },
           "expires": {
             "anyOf": [
               {

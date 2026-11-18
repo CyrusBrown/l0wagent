@@ -20,7 +20,7 @@ class Running:
     def __init__(self, tmp: Path, **cfg_kw):
         self.port = free_port()
         self.cfg = Config(base_url=f"http://hub.localhost:{self.port}", state_path=tmp / "state.json", listen_port=self.port,
-                          **cfg_kw)
+                          **{"reserved": ["opsname"], **cfg_kw})
         self.app = create_app(self.cfg)
         self.server = uvicorn.Server(uvicorn.Config(self.app, host="127.0.0.1", port=self.port, log_level="critical"))
         self.thread = threading.Thread(target=self.server.run, daemon=True)

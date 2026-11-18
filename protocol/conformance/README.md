@@ -12,7 +12,12 @@ uv run python -m conformance --hub https://hub.example --invite-cmd "<shell comm
   its join answers.
 - `--invite-cmd`: run once per registration attempt (about twenty times), each time it must print a fresh
   `l0w-invite:...` string (the last such line is used). A refused registration is not assumed to leave the invite
-  usable.
+  usable. The command should also accept `--bind NAME` (appended) and print a bound invite (membership.md), or fail
+  when it can't (a spec-reserved name, a taken name); a command that fails for the `--bind-name` makes the bound-invite
+  checks SKIP.
+- `--bind-name NAME` (default `opsname`): a name the hub reserved itself (its own name, or an extra reserved name).
+  The suite registers it with a bound invite, so on a hub that was used before it reports a SKIP (the name is taken).
+  `--bind-name ""` skips the bound-invite checks.
 - `--connect HOST:PORT`: open every connection (HTTP, WebSocket, raw) to that address while keeping the `Host`
   header and TLS name. For a hub whose hostnames do not resolve from where you run the suite.
 - `--insecure`: do not verify TLS certificates. `-v`: print the detail of passing checks too.

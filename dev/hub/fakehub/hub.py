@@ -134,7 +134,7 @@ class Hub:
     async def get_invite(self, request: Request):
         with self.store.read() as s:
             inv = self.invite_state(s, request.path_params["code"])
-            return JSONResponse(payloads.build_invite_response(format_time(inv["expires"]), self.cfg.name, inv["name_hint"]))
+            return JSONResponse(payloads.build_invite_response(format_time(inv["expires"]), self.cfg.name, inv["name_hint"], bool(inv.get("bind"))))
 
     # --- joining --------------------------------------------------------------------------
 
@@ -150,8 +150,11 @@ class Hub:
             if inv.get("reregister") != name or m is None or m["status"] != "active":
                 raise HubError(403, "needs_invite", "this invite does not approve re-registering that name")
         else:
+            bound = inv.get("bind")
+            if bound and bound != name:
+                raise HubError(409, "name_bound", "this invite is bound to another name")
             try:
-                check_name(name, taken=list(s["members"]), reserved_extra=self.cfg.reserved_extra())
+                check_name(name, taken=list(s["members"]), reserved_extra=self.cfg.reserved_extra(), bound=bool(bound))
             except NameRuleError as e:
                 raise HubError(409, e.code, e.detail) from e
         return inv

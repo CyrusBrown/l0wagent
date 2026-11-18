@@ -164,6 +164,7 @@ class Membership:
         friendly = {
             "name_taken": "That name is taken on this hub. Names are never reused; pick another.",
             "name_reserved": "That name is reserved on this hub (or looks too much like one that is). Pick another.",
+            "name_bound": "This invite is for one particular name. Use the name it came with.",
             "invite_used": "That invite was already used. Ask the hub's operator for a new one.",
             "invite_expired": "That invite has expired. Ask the hub's operator for a new one.",
             "no_such_invite": "The hub doesn't know that invite.",
@@ -261,7 +262,8 @@ class Membership:
         ex = (caps.get("hostnames") or {}).get("example") or {}
         return s.InvitePreview(
             hub=s.HubInfo(name=caps["name"], domain=caps["domain"], base_url=inv.base_url, policies=caps.get("policies") or {}),
-            name_hint=info.get("name_hint"), expires=parse(info.get("expires")), own_url_allowed=bool(caps["membership"].get("own_url")),
+            name_hint=info.get("name_hint"), name_bound=info.get("name_bound") is True and bool(info.get("name_hint")),
+            expires=parse(info.get("expires")), own_url_allowed=bool(caps["membership"].get("own_url")),
             example=s.MemberHostnames(**ex) if ex.get("instance") and ex.get("files") else None,
             two_factor_ready=self.two_factor(), problems=problems,
         )

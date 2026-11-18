@@ -129,9 +129,11 @@ S["accelerator-state"] = {
     "additionalProperties": True,
 }
 S["invite-response"] = {
-    "type": "object", "required": ["v", "valid", "expires", "name_hint", "hub"],
+    "type": "object", "required": ["v", "valid", "expires", "name_hint", "name_bound", "hub"],
     "properties": {"v": {"const": V}, "valid": {"const": True}, "expires": TIME,
-                   "name_hint": {"oneOf": [NAME, {"type": "null"}]}, "hub": {"type": "string"}},
+                   "name_hint": {"oneOf": [NAME, {"type": "null"}]},
+                   "name_bound": {"type": "boolean", "description": "True: the invite is bound to `name_hint`; registration must use exactly it"},
+                   "hub": {"type": "string"}},
     "additionalProperties": True,
 }
 S["join-response"] = {
@@ -234,7 +236,7 @@ def openapi() -> dict:
                     "201": json_resp("Joined. `hostnames` are authoritative.", sref("join-response")),
                     "400": err("Bad signature or fields, or an unsupported `v`.", "bad_registration", "unsupported_version"),
                     "403": err("An invite is required.", "needs_invite"),
-                    "409": err("The name is taken or reserved.", "name_taken", "name_reserved"),
+                    "409": err("The name is taken or reserved, or the invite is bound to another name.", "name_taken", "name_reserved", "name_bound"),
                     "410": err("The invite was used or has expired.", "invite_used", "invite_expired"),
                     "422": err("Own-URL mode: the URLs failed the hub's checks.", "own_url_unreachable"),
                     "426": err("The instance release is older than `instance_releases.min`.", "instance_too_old")}}},

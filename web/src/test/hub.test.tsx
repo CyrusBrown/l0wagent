@@ -66,6 +66,21 @@ describe('Settings → Hub', () => {
     expect((screen.getByRole('button', { name: 'Join' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
+  it('a bound invite prefills the name and locks it; an unbound one leaves it editable', async () => {
+    overrides['/api/membership'] = base
+    const pv = { hub, name_hint: 'opsname', name_bound: true, expires: null, own_url_allowed: false, two_factor_ready: true, problems: [] }
+    overrides['/api/membership/preview'] = pv
+    renderAt('/settings/hub')
+    fireEvent.change(await screen.findByLabelText('Invite'), { target: { value: 'l0w-invite:abc' } })
+    fireEvent.click(screen.getByText('Read invite'))
+    const name = (await screen.findByLabelText(/^Name/)) as HTMLInputElement
+    expect(name.value).toBe('opsname')
+    expect(name.readOnly).toBe(true)
+    overrides['/api/membership/preview'] = { ...pv, name_bound: false }
+    fireEvent.click(screen.getByText('Read invite'))
+    await vi.waitFor(() => expect((screen.getByLabelText(/^Name/) as HTMLInputElement).readOnly).toBe(false))
+  })
+
   it('joined shows the address and the tunnel state', async () => {
     overrides['/api/membership'] = {
       ...base, state: 'joined', address: 'fern.hub.example', mode: 'tunnel', hub,

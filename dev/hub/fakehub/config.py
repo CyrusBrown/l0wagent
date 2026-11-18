@@ -26,6 +26,8 @@ class Config:
     min_release: str = "0.8.0"
     limits: dict = field(default_factory=lambda: dict(DEFAULT_LIMITS))
     invite_days: int = 7
+    #: extra reserved names besides the hub's own (the equivalent of the Cloudflare hub's RESERVED_NAMES)
+    reserved: list = field(default_factory=list)
     #: tunnel liveness: PING after this many seconds of silence; dead after dead_after
     ping_interval: float = 30.0
     dead_after: float = 90.0
@@ -70,7 +72,7 @@ class Config:
 
     def reserved_extra(self) -> list[str]:
         """The hub's own name and its services (membership.md)."""
-        return [self.domain.split(".")[0]]
+        return [self.domain.split(".")[0], *self.reserved]
 
     @classmethod
     def from_env(cls, **overrides) -> Config:
@@ -81,6 +83,8 @@ class Config:
                          ("listen_host", "FAKEHUB_LISTEN")):
             if env(var):
                 kw[key] = env(var)
+        if env("FAKEHUB_RESERVED"):
+            kw["reserved"] = [n.strip().lower() for n in env("FAKEHUB_RESERVED").split(",") if n.strip()]
         if env("FAKEHUB_PORT"):
             kw["listen_port"] = int(env("FAKEHUB_PORT"))
         kw.update({k: v for k, v in overrides.items() if v is not None})
