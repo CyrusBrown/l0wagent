@@ -247,13 +247,13 @@ function Sidebar() {
         const pts = (threads.data ?? []).filter((t) => t.project === p.slug)
         return (
           <div key={p.slug}>
-            <div style={{ display: 'flex' }}>
+            <div className="side-proj">
               <button className="row" onClick={() => setOpen({ ...open, [p.slug]: !isOpen })} aria-expanded={isOpen}>
                 <Caret open={isOpen} />
                 <span className="grow">{p.name}</span>
                 {p.unread > 0 && <span className="badge">{p.unread}</span>}
               </button>
-              <Link to={`/p/${p.slug}`} className="sub" style={{ width: 'auto', padding: '6px 8px' }} title="Open project">›</Link>
+              <Link to={`/p/${p.slug}`} className="sub open" title="Open project" aria-label={`Open ${p.name}`}>›</Link>
             </div>
             {isOpen && pts.map((t) => <ThreadLink key={t.id} t={t} indent />)}
           </div>

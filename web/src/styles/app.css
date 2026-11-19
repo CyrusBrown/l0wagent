@@ -69,6 +69,10 @@ h2 { margin: 0; font: 500 18px/1.3 var(--serif) }
 .side .side-label a { display: inline; width: auto; padding: 0; font: 400 12px var(--sans); color: var(--faint) }
 .side .side-label a:hover { background: none; color: var(--fg) }
 .side .caret { width: 12px; color: var(--faint); font-size: 10px }
+/* A project's row and its "open" link: the row shrinks (its name ellipsizes) so a long name never pushes the link out. */
+.side-proj { display: flex; min-width: 0 }
+.side-proj > button.row { flex: 1; min-width: 0 }
+.side-proj > a.open { flex: none; width: auto; padding: 6px 8px }
 .side .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
 .badge { font: 500 11px var(--sans); color: #fff; background: var(--accent); border-radius: 10px; padding: 1px 7px; line-height: 1.3 }
 .side button.row .badge { background: none; color: var(--accentInk); font-weight: 600; padding: 0 }
