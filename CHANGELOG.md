@@ -11,6 +11,8 @@ Each release's section becomes its GitHub release notes, which the app shows in 
 - Fixed: runs were charged far too many points. Claude Code reports a conversation's running total, and a run resumes its
   conversation for every step (the reviewer keeps one a day), so each step was charged everything before it too. Each
   turn now counts only what it added. Points recorded before this update stay as they were.
+- Fixed: over a hub, chat replies could stop after their first words until a refresh (the live stream now tells
+  Cloudflare not to compress it, which held small updates back).
 - Fixed: push notifications never reached iPhones, iPads or Safari. Apple refused them because of the made-up contact
   address they were signed with; they're now signed with your public URL (your hub hostname).
 - A running run has a "+10 pts" button beside Stop to give it more points.

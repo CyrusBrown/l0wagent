@@ -218,7 +218,9 @@ async def events(be: Be) -> StreamingResponse:
         async for event in be.events():
             yield json.dumps(event.model_dump(mode="json")) + "\n"
 
-    return StreamingResponse(lines(), media_type="application/x-ndjson", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+    # no-transform: a proxy that compresses (Cloudflare, in front of a hub member) holds small writes back until it has a
+    # block to compress, so chat replies stalled after their first words. Nothing may transform or buffer this stream.
+    return StreamingResponse(lines(), media_type="application/x-ndjson", headers={"Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no"})
 
 
 # ── Projects ───────────────────────────────────────────────────────────────
