@@ -19,6 +19,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import io
 import secrets
 import struct
 import time
@@ -387,7 +388,11 @@ class Auth:
         self._kv("totp_pending", f"{int(time.time()) + PENDING_TOTP_TTL}|{self._seal_secret(secret)}")
         label = quote(f"l0wagent:{u['username']}")  # type: ignore[index]
         uri = f"otpauth://totp/{label}?secret={secret}&issuer=l0wagent"
-        svg = segno.make(uri, error="m").svg_inline(scale=4, dark="#1f1e1d", light="#ffffff")
+        buf = io.BytesIO()
+        # The web app shows this as an <img>, which only renders an SVG that names its namespace
+        # (svg_inline() leaves it out).
+        segno.make(uri, error="m").save(buf, kind="svg", xmldecl=False, svgns=True, nl=False, scale=4, dark="#1f1e1d", light="#ffffff")
+        svg = buf.getvalue().decode()
         return s.TotpSetup(secret=secret, otpauth_uri=uri, qr_svg=svg)
 
     def totp_enable(self, req: s.TotpEnable) -> s.TotpEnabled:

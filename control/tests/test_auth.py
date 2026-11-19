@@ -126,7 +126,7 @@ def test_totp(be):
         login(c)
         assert c.post("/api/account/totp/enable", json={"code": "000000"}).status_code == 400  # no setup yet
         setup_ = c.post("/api/account/totp/setup").json()
-        assert setup_["qr_svg"].startswith("<svg") and "otpauth://totp/" in setup_["otpauth_uri"]
+        assert setup_["qr_svg"].startswith("<svg") and 'xmlns="http://www.w3.org/2000/svg"' in setup_["qr_svg"] and "otpauth://totp/" in setup_["otpauth_uri"]
         # Kept server-side, sealed.
         assert setup_["secret"] not in be.db.q1("SELECT value FROM kv WHERE key='totp_pending'")["value"]
         assert c.post("/api/account/totp/enable", json={"secret": setup_["secret"], "code": "000000"}).status_code == 400
