@@ -48,6 +48,9 @@ EVENTS = {
 ASKS = ("approval", "question", "task")  # what an agent can raise; capped per hour so a loop can't flood the owner
 NTFY_TOKEN = "NTFY_TOKEN"
 ALWAYS = ("approval", "new_device")  # not held back by quiet hours
+# Every push carries a contact (the VAPID "sub" claim). Apple's push service refuses one that isn't a real
+# mailto: or https: address (403 BadJwtToken), so it's this install's public URL, or failing that the project's.
+VAPID_FALLBACK_SUB = "https://github.com/cyrusbrown/l0wagent"
 
 
 class Notifier:
@@ -176,12 +179,16 @@ class Notifier:
             self.db.ex("UPDATE notifications SET sent_at=? WHERE id=?", (self.db.now(), nid))
         return sent
 
+    def vapid_sub(self) -> str:
+        origin = (self.public_origin() or "") if self.public_origin else ""
+        return origin.rstrip("/") if origin.startswith("https://") else VAPID_FALLBACK_SUB
+
     def _push(self, sub: dict, payload: dict) -> bool:
         from pywebpush import WebPushException, webpush
 
         try:
             webpush(subscription_info={"endpoint": sub["endpoint"], "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]}}, data=json.dumps(payload),
-                    vapid_private_key=self.vapid(), vapid_claims={"sub": "mailto:owner@l0wagent.invalid"}, ttl=24 * 3600, timeout=10)
+                    vapid_private_key=self.vapid(), vapid_claims={"sub": self.vapid_sub()}, ttl=24 * 3600, timeout=10)
         except WebPushException as e:
             gone = e.response is not None and e.response.status_code in (404, 410)
             if gone:

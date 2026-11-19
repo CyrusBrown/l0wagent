@@ -144,12 +144,19 @@ def test_notifications_follow_the_owners_settings(tmp_path, monkeypatch):
     n = Notifier(db, tmp_path)
     assert len(base64.urlsafe_b64decode(n.public_key() + "==")) == 65  # an uncompressed P-256 point
     assert Notifier(db, tmp_path).public_key() == n.public_key()  # kept on disk
+    # Apple refuses a push whose contact isn't a real https:/mailto: address: the public URL, else the project's
+    assert n.vapid_sub() == "https://github.com/cyrusbrown/l0wagent"
+    n.public_origin = lambda: "https://low.l0w.run/"
+    assert n.vapid_sub() == "https://low.l0w.run"
+    n.public_origin = lambda: "http://10.0.0.12:8000"
+    assert n.vapid_sub() == "https://github.com/cyrusbrown/l0wagent"
     sent = []
 
     class Gone(pywebpush.WebPushException):
         pass
 
     def fake_webpush(subscription_info, data, **kw):
+        assert kw["vapid_claims"]["sub"] == n.vapid_sub()
         if "gone" in subscription_info["endpoint"]:
             resp = type("R", (), {"status_code": 410})()
             raise Gone("expired", response=resp)
