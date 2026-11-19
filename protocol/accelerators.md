@@ -76,6 +76,12 @@ bad `service`), `401 bad_sig` (signature, `iat`, `hub`, `accelerator` or address
   (tunnel.md) does not apply there; the instance limits its own sign-ins, and the hub SHOULD add an
   edge rule for `/api/auth/*`.
 - When an `enable` reuses a tunnel, the token may be the same as before; a hub MAY rotate it.
+- **Watching active tunnels** (MAY): a member whose instance loses its internet connection can't call
+  `deactivate`, and while it is active its visitors get the provider's error instead of the spec
+  tunnel's offline answer (tunnel.md). A hub MAY therefore check each active member's tunnel with its
+  provider and deactivate it on its own once it has had no live connection for a while; a hub that does
+  SHOULD wait at least 60 s first, so a `cloudflared` restart doesn't move the hostnames. The tunnel, its
+  token and the DNS records stay; the next `activate` moves the hostnames back.
 
 ### What the instance does
 - Runs `cloudflared` with the token, its metrics server on loopback, and a listener on the `service`
@@ -85,6 +91,10 @@ bad `service`), `401 bad_sig` (signature, `iat`, `hub`, `accelerator` or address
 - Keeps the spec tunnel connected throughout.
 - Calls `activate` once `cloudflared` has been ready for 10 s, and `deactivate` when it has not been
   ready for 30 s while the spec tunnel is connected, so a broken `cloudflared` falls back on its own.
+- Doesn't assume it is still active: the hub may have deactivated it (above). When `cloudflared` becomes
+  ready again after not being ready, it calls `activate` again once it has been ready for 10 s, and while
+  ready it calls `activate` again at least every 15 min. `activate` is idempotent: on an active member
+  it changes nothing.
 - Calls `disable` when its owner turns the accelerator off.
 
 ### Security notes

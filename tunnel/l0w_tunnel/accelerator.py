@@ -142,11 +142,12 @@ class _Server(uvicorn.Server):
 class Accelerator:
     def __init__(self, request: Callable[[str, str | None], Awaitable[dict]], report: Callable[[dict], Awaitable[None]], control_url: str, files_url: str, *,
                  port: int = 8790, metrics: str = "127.0.0.1:20241", cloudflared: str = "cloudflared", tick: float = 2.0, ready_after: float = 10.0,
-                 down_after: float = 30.0, min_delay: float = 1.0, max_delay: float = 60.0, stale_delay: float = 1.0, http: httpx.AsyncClient | None = None):
+                 down_after: float = 30.0, reassert_every: float = 15 * 60, min_delay: float = 1.0, max_delay: float = 60.0, stale_delay: float = 1.0, http: httpx.AsyncClient | None = None):
         self.request, self.report = request, report  # request(action, service) -> signed doc (gateway); report({"state","since","error"})
         self.control_url, self.files_url = control_url, files_url
         self.port, self.metrics, self.cloudflared = port, metrics, cloudflared
         self.tick, self.ready_after, self.down_after = tick, ready_after, down_after
+        self.reassert_every = reassert_every  # the hub may deactivate us on its own (its sweep): activate again this often
         self.min_delay, self.max_delay, self.stale_delay = min_delay, max_delay, stale_delay
         self.http = http or httpx.AsyncClient(timeout=15.0)
         self._own_http = http is None
@@ -163,6 +164,8 @@ class Accelerator:
         self._server_task: asyncio.Task | None = None
         self._ready_since: float | None = None
         self._down_since: float | None = None
+        self._recheck = False  # cloudflared was down while active: the hub may have moved the hostnames back meanwhile
+        self._asserted_at = 0.0  # when the hub last said we are active
         self._retry_at = 0.0
         self._delay = min_delay
         self._proc_retry_at = 0.0
@@ -315,6 +318,7 @@ class Accelerator:
                 await self._set("error", "enable: the hub gave no token")
                 return
             self._enabled, self.active = True, bool(st.get("active"))
+            self._asserted_at = now
             await self._ensure_listener()
             await self._set("active" if self.active else "starting")
         await self._ensure_listener()
@@ -341,16 +345,29 @@ class Accelerator:
                 if self.spec_connected and now - self._ready_since >= self.ready_after:
                     st = await self._call("activate", api)
                     if st is not None:
-                        self.active = True
+                        self.active, self._recheck, self._asserted_at = True, False, now
                         await self._set("active")
                     return
                 await self._set("ready" if now - self._ready_since >= self.ready_after else "starting")
             else:
+                # The hub deactivates a member whose tunnel had no connection for a while (its sweep: an instance that
+                # lost its internet can't say so). So after an outage, and every so often anyway, activate again:
+                # on a member that is still active it changes nothing.
+                due = self._recheck or now - self._asserted_at >= self.reassert_every
+                if due and self.spec_connected and now - self._ready_since >= self.ready_after:
+                    st = await self._call("activate", api)
+                    if st is not None:
+                        self._recheck, self._asserted_at = False, now
+                        if not st.get("active", True):
+                            self.active = False
+                            await self._set("starting")
+                            return
                 await self._set("active")
         else:
             self._ready_since = None
             self._down_since = self._down_since or now
             if self.active:
+                self._recheck = True
                 if self.spec_connected and now - self._down_since >= self.down_after:
                     st = await self._call("deactivate", api)
                     if st is not None:
@@ -373,6 +390,7 @@ class Accelerator:
         await self._stop_proc()
         await self._stop_listener()
         self._ready_since = self._down_since = None
+        self._recheck, self._asserted_at = False, 0.0
         self._retry_at, self._delay = 0.0, self.min_delay
         await self._set("off")
 

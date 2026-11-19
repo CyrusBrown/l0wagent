@@ -36,7 +36,13 @@ OWN_URL = "true"
 # CF_ZONE_ID = "<zone id of hub.example>"
 # CF_FILES_ZONE_ID = "<zone id of hubfiles.example>"   # default: CF_ZONE_ID
 
+# ACCEL_DOWN_AFTER = "120"          # seconds with no tunnel connection before the sweep moves a member back (needs the cron below)
+
 # Secrets are not set here: `wrangler secret put HUB_SIGNING_SEED` and `wrangler secret put ADMIN_TOKEN` (and `CF_API_TOKEN` for the accelerator).
+
+# The accelerator sweep (README.md, "The cloudflared accelerator"): every minute. Harmless without the accelerator.
+[triggers]
+crons = ["* * * * *"]
 
 [[d1_databases]]
 binding = "DB"

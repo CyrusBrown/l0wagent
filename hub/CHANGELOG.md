@@ -2,6 +2,14 @@
 
 Tags are `hub-X.Y.Z`. Changes to the hub core only; the instance has its own changelog at the repo root.
 
+## 0.4.0
+
+- Watching active accelerators (protocol/accelerators.md): a cron trigger runs every minute and asks Cloudflare about each
+  active member's tunnel. One with no live connection for `ACCEL_DOWN_AFTER` seconds (default 120) is deactivated, so a
+  member whose internet went down shows the hub's offline page instead of Cloudflare's error 1033; its instance activates
+  again when `cloudflared` is back (instances from 0.8.0-edge after this change do; older ones on their next restart).
+- Migration `0004_accelerator_watch.sql` (apply it before deploying) and `[triggers] crons = ["* * * * *"]` in wrangler.toml.
+
 ## 0.3.2
 
 - The capabilities' example hostnames are made for the name `username` and say so (`hostnames.example.name`,

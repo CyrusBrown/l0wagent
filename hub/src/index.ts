@@ -1,5 +1,6 @@
 // The Worker: routes by Host. A member's instance or files hostname goes down that member's tunnel;
 // everything else is the hub (capabilities, the core API, the tunnel's WebSocket).
+import { sweepAccelerators } from "./accelerator";
 import { handleApi } from "./api";
 import { ConfigError, type Config, loadConfig, matchHost } from "./config";
 import { type Member, getMember } from "./db";
@@ -120,5 +121,17 @@ export default {
     }
     if (url.pathname === "/v0/tunnel") return tunnelSocket(request, env);
     return handleApi(request, env, cfg);
+  },
+
+  // The cron trigger (wrangler.toml `[triggers] crons`): watch active accelerators (protocol/accelerators.md).
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    let cfg: Config;
+    try {
+      cfg = loadConfig(env);
+    } catch (e) {
+      console.error("hub configuration error:", (e as Error).message);
+      return;
+    }
+    ctx.waitUntil(sweepAccelerators(env, cfg));
   },
 } satisfies ExportedHandler<Env>;

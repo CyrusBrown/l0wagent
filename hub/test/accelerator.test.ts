@@ -6,7 +6,7 @@ import * as docs from "../src/proto/docs";
 import { Key } from "../src/proto/keys";
 import * as P from "../src/proto/payloads";
 import { formatTime, parseTime } from "../src/proto/times";
-import { acceleratorExtra } from "../src/accelerator";
+import { acceleratorExtra, sweepOne } from "../src/accelerator";
 import { parseNow, vec, vectorKey } from "./util";
 
 const NOW = parseNow("2026-11-17T21:30:00Z");
@@ -86,12 +86,17 @@ describe("capabilities extra", () => {
     expect(cfg(all).accelerator?.filesZoneId).toBe("z");
     expect(cfg({ ...all, CF_FILES_ZONE_ID: "fz", CF_ACCELERATOR_DOC: "https://d" }).accelerator).toMatchObject({ filesZoneId: "fz", doc: "https://d" });
   });
+  it("ACCEL_DOWN_AFTER defaults to 120 s and refuses less than 60", () => {
+    expect(cfg(all).accelDownAfter).toBe(120);
+    expect(cfg({ ...all, ACCEL_DOWN_AFTER: "300" }).accelDownAfter).toBe(300);
+    expect(() => cfg({ ...all, ACCEL_DOWN_AFTER: "30" })).toThrow(/ACCEL_DOWN_AFTER/);
+  });
 });
 
 describe("Cloudflare call sequence", () => {
   const acfg = { accountId: "acct", zoneId: "z1", filesZoneId: "z2", apiBase: "https://cf.test/v4", token: "tok", doc: "", api: "" };
   const names = { member: "mara", instance: "mara.hub.example", files: "mara.files.example" };
-  const empty = (): Accel => ({ name: "mara", lastIat: 0, tunnelId: null, service: null, dnsInstance: null, dnsFiles: null, routeInstance: null, routeFiles: null, active: false });
+  const empty = (): Accel => ({ name: "mara", lastIat: 0, tunnelId: null, service: null, dnsInstance: null, dnsFiles: null, routeInstance: null, routeFiles: null, active: false, downSince: null });
   const calls: string[] = [];
   const bodies: Record<string, any>[] = [];
   let failOn: string | null = null;
@@ -231,6 +236,34 @@ describe("Cloudflare call sequence", () => {
     ]);
     expect(calls.slice(4)).toEqual(["DELETE /accounts/acct/cfd_tunnel/T1/connections", "DELETE /accounts/acct/cfd_tunnel/T1"]);
     expect(a).toMatchObject({ tunnelId: null, service: null, dnsInstance: null, dnsFiles: null, active: false });
+  });
+
+  it("the sweep marks a dead tunnel, waits, then moves the hostnames back; a live one clears the mark", async () => {
+    stub();
+    const a = empty();
+    await cf.enable(acfg, names, a, "http://127.0.0.1:8790", saver(a));
+    await cf.activate(acfg, names, a, saver(a));
+    const [ri, rf] = [a.routeInstance, a.routeFiles];
+    calls.length = 0;
+    expect(await sweepOne(acfg, a, 1000, 120, saver(a))).toBe("live");
+    expect(calls).toEqual(["GET /accounts/acct/cfd_tunnel/T1"]);
+    status = "down";
+    expect(await sweepOne(acfg, a, 1000, 120, saver(a))).toBe("marked");
+    expect(a.downSince).toBe(1000);
+    expect(await sweepOne(acfg, a, 1119, 120, saver(a))).toBe("waiting");
+    status = "healthy"; // a cloudflared restart: back before the wait ran out
+    expect(await sweepOne(acfg, a, 1100, 120, saver(a))).toBe("live");
+    expect(a).toMatchObject({ downSince: null, active: true });
+    status = "inactive";
+    await sweepOne(acfg, a, 2000, 120, saver(a));
+    calls.length = 0;
+    expect(await sweepOne(acfg, a, 2120, 120, saver(a))).toBe("deactivated");
+    expect(calls).toEqual(["GET /accounts/acct/cfd_tunnel/T1", `DELETE /zones/z1/workers/routes/${ri}`, `DELETE /zones/z2/workers/routes/${rf}`]);
+    expect(a).toMatchObject({ active: false, downSince: null, routeInstance: null, routeFiles: null, tunnelId: "T1", dnsInstance: "id1" });
+    // the instance's next activate moves them back
+    status = "healthy";
+    await cf.activate(acfg, names, a, saver(a));
+    expect(a.active).toBe(true);
   });
 
   it("the iat helper parses what the hub stores", () => {

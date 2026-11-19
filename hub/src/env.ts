@@ -26,6 +26,7 @@ export interface Env {
   CF_FILES_ZONE_ID?: string;
   CF_API_BASE?: string;
   CF_ACCELERATOR_DOC?: string;
+  ACCEL_DOWN_AFTER?: string;
 
   // secrets
   HUB_SIGNING_SEED: string;

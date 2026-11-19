@@ -2,7 +2,7 @@
 import { HubError } from "./api";
 import * as b64 from "./proto/b64";
 import * as cf from "./cloudflare";
-import type { Config } from "./config";
+import type { AcceleratorConfig, Config } from "./config";
 import * as db from "./db";
 import type { Env } from "./env";
 import * as docs from "./proto/docs";
@@ -105,5 +105,37 @@ export async function disableForMember(env: Env, cfg: Config, name: string): Pro
     await cf.disable(acc, a, (patch) => db.saveAccel(env.DB, name, patch));
   } catch (e) {
     console.error(`could not disable ${name}'s accelerator:`, e instanceof cf.CfError ? `${e.status} ${e.message}` : e);
+  }
+}
+
+/** One member in the sweep: a live tunnel clears the mark, a dead one is marked, and one dead for `downAfter`
+ * seconds is deactivated (its visitors then get the spec tunnel's answer: the instance, or the offline page).
+ * Returns what happened. */
+export async function sweepOne(acc: AcceleratorConfig, a: db.Accel, now: number, downAfter: number, save: cf.Save): Promise<"live" | "marked" | "waiting" | "deactivated"> {
+  if (!a.active || !a.tunnelId) return "live";
+  if (await cf.tunnelLive(acc, a.tunnelId)) {
+    if (a.downSince !== null) await save({ downSince: null });
+    return "live";
+  }
+  if (a.downSince === null) {
+    await save({ downSince: now });
+    return "marked";
+  }
+  if (now - a.downSince < downAfter) return "waiting";
+  await cf.deactivate(acc, a, save);
+  return "deactivated";
+}
+
+/** The scheduled sweep (protocol/accelerators.md, "Watching active tunnels"). One member's failure never stops the rest. */
+export async function sweepAccelerators(env: Env, cfg: Config, now = Math.floor(Date.now() / 1000)): Promise<void> {
+  const acc = cfg.accelerator;
+  if (!acc) return;
+  for (const a of await db.listActiveAccels(env.DB)) {
+    try {
+      const r = await sweepOne(acc, a, now, cfg.accelDownAfter, (patch) => db.saveAccel(env.DB, a.name, patch));
+      if (r === "deactivated") console.log(`accelerator: ${a.name}'s tunnel had no connection for ${cfg.accelDownAfter}s or more; hostnames moved back to the spec tunnel`);
+    } catch (e) {
+      console.error(`accelerator sweep for ${a.name} failed:`, e instanceof cf.CfError ? `${e.status} ${e.code ?? ""} ${e.message}` : e);
+    }
   }
 }

@@ -225,6 +225,7 @@ export interface Accel {
   routeInstance: string | null;
   routeFiles: string | null;
   active: boolean;
+  downSince: number | null; // unix seconds: when the sweep first saw an active tunnel with no live connection
 }
 
 const ACCEL_COLS = {
@@ -235,6 +236,7 @@ const ACCEL_COLS = {
   routeInstance: "route_instance",
   routeFiles: "route_files",
   active: "active",
+  downSince: "down_since",
 } as const;
 export type AccelPatch = Partial<Omit<Accel, "name" | "lastIat">>;
 
@@ -249,7 +251,14 @@ function toAccel(r: Row): Accel {
     routeInstance: r.route_instance ?? null,
     routeFiles: r.route_files ?? null,
     active: r.active === 1,
+    downSince: r.down_since ?? null,
   };
+}
+
+/** Every member whose accelerator is active (the hostnames go to its tunnel), for the scheduled sweep. */
+export async function listActiveAccels(db: D1Database): Promise<Accel[]> {
+  const r = await db.prepare("SELECT * FROM accelerators WHERE active = 1 AND tunnel_id IS NOT NULL").all<Row>();
+  return r.results.map(toAccel);
 }
 
 export async function getAccel(db: D1Database, name: string): Promise<Accel> {

@@ -47,6 +47,7 @@ worked examples (two domains, flat, nested), `wrangler.dev.toml` is the local se
 | `CF_FILES_ZONE_ID` | var, optional | The zone holding the files hostnames; default `CF_ZONE_ID` |
 | `CF_API_BASE` | var, optional | Default `https://api.cloudflare.com/client/v4`; tests point it at `scripts/mock-cf-api.mjs` |
 | `CF_ACCELERATOR_DOC` | var, optional | The `doc` URL in the advertised extra; default the accelerator's API URL |
+| `ACCEL_DOWN_AFTER` | var, optional | Seconds an active member's tunnel may have no connection before the sweep moves its hostnames back (default 120, at least 60) |
 | `CF_API_TOKEN` | **secret** | The Cloudflare API token (permissions below) |
 | `HUB_SIGNING_SEED` | **secret** | The hub's Ed25519 key: base64url of 32 random bytes. Changing it changes the hub's identity; instances treat that as an alarm |
 | `ADMIN_TOKEN` | **secret** | Bearer token for `POST /v0/admin/invites`. Unset: that endpoint answers 404 |
@@ -140,6 +141,12 @@ What the hub does per member, with `POST /v0/accelerators/cloudflared` and a sig
 | `activate` | refuse `409 not_connected` unless the tunnel is `healthy`/`degraded`; add a Worker route `<host>/*` **with no script** for each hostname. A script-less route overrides the wildcard Worker route, so the edge goes to the CNAME |
 | `deactivate` | delete the two routes |
 | `disable` | deactivate, delete the records, the tunnel's connections and the tunnel |
+
+**The sweep** (needs the cron trigger, `[triggers] crons = ["* * * * *"]`, and migration `0004_accelerator_watch.sql`): every
+minute the Worker asks Cloudflare about each active member's tunnel. One with no live connection for `ACCEL_DOWN_AFTER`
+seconds (a member whose internet went down can't say so itself) is deactivated, so its visitors get the spec tunnel's
+answer, the hub's offline page, instead of Cloudflare's error 1033. The member's instance activates again once its
+`cloudflared` is back. Without the cron trigger nothing is swept.
 
 Each Cloudflare id is stored the moment it is created (table `accelerators`), so after a `502 upstream` (with `Retry-After: 30`)
 the same request continues where it stopped. Leaving and re-registration disable the accelerator (best effort, logged).

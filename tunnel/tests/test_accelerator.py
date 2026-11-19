@@ -142,6 +142,38 @@ def test_not_ready_deactivates_and_reactivates(rig, run_service, fx):
     run_service(body)
 
 
+def test_activates_again_after_an_outage_the_hub_may_have_swept(rig, run_service, fx):
+    """An instance that lost its internet can't deactivate; the hub's sweep does it. Once cloudflared is back the
+    instance doesn't trust its own `active`: it activates again (idempotent on the hub)."""
+    fx.up()
+
+    async def body(svc):
+        fx.tune(svc, down_after=60.0)  # an outage: too short (or too offline) for the instance to deactivate itself
+        fx.enable()
+        await until(lambda: fx.hub.actions == ["enable", "activate"])
+        fx.up(False)
+        await asyncio.sleep(0.5)
+        assert fx.hub.actions == ["enable", "activate"] and svc.accel.active
+        fx.up(True)
+        await until(lambda: fx.hub.actions == ["enable", "activate", "activate"])
+        await asyncio.sleep(1.0)
+        assert fx.hub.actions == ["enable", "activate", "activate"]  # once, not every tick
+        assert rig.gw.accel_states[-1] == "active"
+    run_service(body)
+
+
+def test_activates_again_every_so_often(rig, run_service, fx):
+    fx.up()
+
+    async def body(svc):
+        fx.tune(svc, reassert_every=0.6)
+        fx.enable()
+        await until(lambda: fx.hub.actions == ["enable", "activate"])
+        await until(lambda: fx.hub.actions.count("activate") >= 3, timeout=5)
+        assert "deactivate" not in fx.hub.actions
+    run_service(body)
+
+
 def test_never_ready_never_activates(rig, run_service, fx):
     async def body(svc):
         fx.tune(svc)

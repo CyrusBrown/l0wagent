@@ -45,6 +45,7 @@ export interface Config {
   inviteDays: number;
   keyCreated: string;
   accelerator: AcceleratorConfig | null; // the cloudflared accelerator, when enabled and fully configured
+  accelDownAfter: number; // seconds an active member's tunnel may have no connection before the sweep deactivates it
 }
 
 const cache = new WeakMap<object, Config>();
@@ -123,6 +124,8 @@ export function loadConfig(env: Env): Config {
           api: apiUrl,
         }
       : null;
+  const downAfter = Number(env.ACCEL_DOWN_AFTER ?? 120);
+  if (!Number.isInteger(downAfter) || downAfter < 60) throw new ConfigError("ACCEL_DOWN_AFTER must be a whole number of seconds, at least 60");
   const cfg: Config = {
     name: need("HUB_NAME"),
     baseUrl: `${base.protocol}//${baseHost}`,
@@ -143,6 +146,7 @@ export function loadConfig(env: Env): Config {
     inviteDays: Number.isFinite(days) && days > 0 ? Math.floor(days) : 7,
     keyCreated: env.HUB_KEY_CREATED?.trim() || "2026-11-17T00:00:00Z",
     accelerator,
+    accelDownAfter: downAfter,
   };
   cache.set(env, cfg);
   return cfg;

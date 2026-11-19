@@ -124,13 +124,17 @@ export async function enable(cfg: AcceleratorConfig, n: Names, a: Accel, service
 /** Send the hostnames through the tunnel. Throws NotConnected when the tunnel has no live connection. */
 export class NotConnected extends Error {}
 
+/** Whether Cloudflare sees at least one live `cloudflared` connection on the tunnel. */
+export async function tunnelLive(cfg: AcceleratorConfig, tunnelId: string): Promise<boolean> {
+  const t = await new Api(cfg).call("GET", `/accounts/${cfg.accountId}/cfd_tunnel/${tunnelId}`);
+  return t?.status === "healthy" || t?.status === "degraded" || (Array.isArray(t?.connections) && t.connections.length > 0);
+}
+
 export async function activate(cfg: AcceleratorConfig, n: Names, a: Accel, save: Save): Promise<Accel> {
   const api = new Api(cfg);
   const s = { ...a };
   if (s.active && s.routeInstance && s.routeFiles) return s;
-  const t = await api.call("GET", `/accounts/${cfg.accountId}/cfd_tunnel/${s.tunnelId}`);
-  const live = t?.status === "healthy" || t?.status === "degraded" || (Array.isArray(t?.connections) && t.connections.length > 0);
-  if (!live) throw new NotConnected("the tunnel has no live connection");
+  if (!(await tunnelLive(cfg, s.tunnelId as string))) throw new NotConnected("the tunnel has no live connection");
   if (!s.routeInstance) {
     s.routeInstance = await workerRoute(api, cfg.zoneId, bare(n.instance));
     await save({ routeInstance: s.routeInstance });
@@ -140,7 +144,8 @@ export async function activate(cfg: AcceleratorConfig, n: Names, a: Accel, save:
     await save({ routeFiles: s.routeFiles });
   }
   s.active = true;
-  await save({ active: true });
+  s.downSince = null;
+  await save({ active: true, downSince: null });
   return s;
 }
 
@@ -148,9 +153,10 @@ export async function activate(cfg: AcceleratorConfig, n: Names, a: Accel, save:
 export async function deactivate(cfg: AcceleratorConfig, a: Accel, save: Save): Promise<Accel> {
   const api = new Api(cfg);
   const s = { ...a };
-  if (s.active) {
+  if (s.active || s.downSince !== null) {
     s.active = false;
-    await save({ active: false });
+    s.downSince = null;
+    await save({ active: false, downSince: null });
   }
   if (s.routeInstance) {
     await api.remove(`/zones/${cfg.zoneId}/workers/routes/${s.routeInstance}`);
