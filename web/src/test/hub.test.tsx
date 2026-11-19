@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { routes } from '../app/routes'
+import { previewHostnames } from '../screens/SettingsHub'
 import responses from './mock-responses.json'
 
 const table = responses as Record<string, unknown>
@@ -64,6 +65,27 @@ describe('Settings → Hub', () => {
     expect(screen.getByText('Example Hub')).toBeTruthy()
     fireEvent.click(screen.getByLabelText(/I've made a backup/))
     expect((screen.getByRole('button', { name: 'Join' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('previews the hostnames for the typed name from the hub\'s example', async () => {
+    overrides['/api/membership'] = base
+    overrides['/api/membership/preview'] = {
+      hub, name_hint: null, expires: null, own_url_allowed: false, two_factor_ready: true, problems: [],
+      example: { instance: 'username.hub.example', files: 'files--username.hub.example' }, example_name: 'username',
+    }
+    renderAt('/settings/hub')
+    fireEvent.change(await screen.findByLabelText('Invite'), { target: { value: 'l0w-invite:abc' } })
+    fireEvent.click(screen.getByText('Read invite'))
+    fireEvent.change(await screen.findByLabelText(/^Name/), { target: { value: 'low' } })
+    expect(await screen.findByText('low.hub.example')).toBeTruthy()
+    expect(screen.getByText('files--low.hub.example')).toBeTruthy()
+  })
+
+  it('previewHostnames replaces the example name only as a whole part of a label', () => {
+    const ex = { instance: 'username.hub.example:8700', files: 'files--username.hubfiles.example' }
+    expect(previewHostnames(ex, 'username', 'low')).toEqual({ instance: 'low.hub.example:8700', files: 'files--low.hubfiles.example' })
+    expect(previewHostnames({ instance: 'usernames.hub.example', files: 'f.username.hub.example' }, 'username', 'low')).toBeNull()
+    expect(previewHostnames(ex, null, 'low')).toBeNull()
   })
 
   it('a bound invite prefills the name and locks it; an unbound one leaves it editable', async () => {

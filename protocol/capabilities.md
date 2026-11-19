@@ -15,7 +15,7 @@ members' addresses. Payload:
   "api": "https://hub.example/v0/",
   "tunnel": "wss://tunnel.hub.example/v0/tunnel",
   "membership": {"invites": true, "signups": "closed", "own_url": true, "require_2fa": true},
-  "hostnames": {"layout": "two-domains", "example": {"instance": "mara.hub.example", "files": "files--mara.hubfiles.example"}},
+  "hostnames": {"layout": "two-domains", "example": {"name": "username", "instance": "username.hub.example", "files": "files--username.hubfiles.example"}},
   "policies": {"terms": "https://hub.example/terms", "privacy": "https://hub.example/privacy"},
   "limits": {"tunnel_streams": 64, "request_body_bytes": 104857600, "auth_rate_per_minute": 20},
   "extras": []
@@ -31,7 +31,11 @@ members' addresses. Payload:
 - `membership.signups`: `"closed"`, `"open"` or `"approval"`. `own_url`: whether members may join
   with their own URLs. `require_2fa` is always `true` in this version; instances check it anyway.
 - `hostnames.layout`: informative (`"two-domains"`, `"flat"`, `"nested"`); instances never derive a
-  hostname from it. The example shows a new member what theirs will look like.
+  hostname from it. The example shows a new member what theirs will look like: `example.name` (optional)
+  is the name it was made for, and hubs SHOULD use `username`. An instance MAY preview a member's
+  hostnames by putting the name they typed in place of `example.name` where it stands as a whole part
+  of a label (between the start or a `.`/`-` and the end or a `.`/`-`); that is a display, never a
+  hostname it uses: the hostnames are the ones registration returns.
 - `extras`: optional features, each `{"kind": "...", ...}`. Instances ignore kinds they don't know.
   Defined kinds so far:
   - `{"kind": "accelerator", "id": "cloudflared", "doc": "<url>", "api": "<url>"}`: a faster way to

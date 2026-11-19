@@ -1,6 +1,6 @@
 // The hub's core HTTP API (protocol/openapi.json) plus the operator's invite endpoint.
 import { acceleratorExtra, disableForMember, handleAccelerator } from "./accelerator";
-import { type Config, hostnameLayout, hostnamesFor, hubKey, releaseLess } from "./config";
+import { type Config, EXAMPLE_NAME, hostnameLayout, hostnamesFor, hubKey, releaseLess } from "./config";
 import * as db from "./db";
 import type { Env } from "./env";
 import * as b64 from "./proto/b64";
@@ -112,7 +112,7 @@ async function capabilities(env: Env, cfg: Config): Promise<Response> {
     tunnel: cfg.tunnelUrl,
     minRelease: cfg.minRelease,
     membership: { invites: true, signups: "closed", own_url: cfg.ownUrl, require_2fa: true },
-    hostnames: { layout: hostnameLayout(cfg), example: hostnamesFor(cfg, "mara") },
+    hostnames: { layout: hostnameLayout(cfg), example: { name: EXAMPLE_NAME, ...hostnamesFor(cfg, EXAMPLE_NAME) } },
     policies: cfg.policies,
     limits: cfg.limits,
     extras: acceleratorExtra(cfg) ? [acceleratorExtra(cfg) as Obj] : [],

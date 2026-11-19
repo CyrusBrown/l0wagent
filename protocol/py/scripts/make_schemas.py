@@ -22,6 +22,8 @@ ADDRESS = {"type": "string", "pattern": r"^[a-z0-9]+(-[a-z0-9]+)*@[a-z0-9][a-z0-
 NAME = {"type": "string", "minLength": 3, "maxLength": 32, "pattern": r"^[a-z0-9]+(-[a-z0-9]+)*$"}
 URLPAIR = {"type": "object", "required": ["instance", "files"],
            "properties": {"instance": {"type": "string"}, "files": {"type": "string"}}}
+# capabilities' example hostnames, with the name they were made for (capabilities.md)
+EXAMPLE = {**URLPAIR, "properties": {"name": {"type": "string"}, **URLPAIR["properties"]}}
 
 
 def ref(name: str) -> dict:
@@ -90,7 +92,7 @@ S["hub"] = payload("hub", {
     "membership": {"type": "object", "required": ["invites", "signups", "own_url", "require_2fa"], "properties": {
         "invites": {"type": "boolean"}, "signups": {"enum": ["closed", "open", "approval"]},
         "own_url": {"type": "boolean"}, "require_2fa": {"type": "boolean"}}},
-    "hostnames": {"type": "object", "properties": {"layout": {"type": "string"}, "example": URLPAIR}},
+    "hostnames": {"type": "object", "properties": {"layout": {"type": "string"}, "example": EXAMPLE}},
     "policies": {"type": "object", "additionalProperties": {"type": "string"}},
     "limits": {"type": "object", "required": ["tunnel_streams", "request_body_bytes", "auth_rate_per_minute"], "properties": {
         "tunnel_streams": {"type": "integer"}, "request_body_bytes": {"type": "integer"}, "auth_rate_per_minute": {"type": "integer"}}},

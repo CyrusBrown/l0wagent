@@ -3702,6 +3702,11 @@ export interface components {
             /** Own Url Allowed */
             own_url_allowed: boolean;
             example?: components["schemas"]["MemberHostnames"] | null;
+            /**
+             * Example Name
+             * @description The name the hub made `example` for; the join screen previews a typed name's hostnames with it (display only).
+             */
+            example_name?: string | null;
             /** Two Factor Ready */
             two_factor_ready: boolean;
             /**

@@ -1649,6 +1649,7 @@ class InvitePreview(Model):
     expires: datetime | None = None
     own_url_allowed: bool
     example: MemberHostnames | None = None
+    example_name: str | None = Field(None, description="The name the hub made `example` for; the join screen previews a typed name's hostnames with it (display only).")
     two_factor_ready: bool
     problems: list[str] = Field([], description="Reasons joining would be refused now (fix them first).")
 

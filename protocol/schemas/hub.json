@@ -113,6 +113,9 @@
             "files"
           ],
           "properties": {
+            "name": {
+              "type": "string"
+            },
             "instance": {
               "type": "string"
             },

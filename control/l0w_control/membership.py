@@ -76,6 +76,14 @@ def accelerator_api(caps: dict | None, allow_http: bool = False) -> str | None:
     return None
 
 
+def _example_name(ex: dict) -> str | None:
+    """The name the hub's example hostnames were made for, if it gives a valid one (capabilities.md)."""
+    try:
+        return names.validate_name(ex["name"]) if isinstance(ex.get("name"), str) else None
+    except ProtocolError:
+        return None
+
+
 def release_tuple(v: str) -> tuple[int, ...] | None:
     try:
         return tuple(int(x) for x in v.split("-")[0].split("."))
@@ -260,11 +268,13 @@ class Membership:
         if self.joined():
             problems.append("This instance is already a member of a hub. Leave it first.")
         ex = (caps.get("hostnames") or {}).get("example") or {}
+        has_ex = isinstance(ex.get("instance"), str) and isinstance(ex.get("files"), str)
         return s.InvitePreview(
             hub=s.HubInfo(name=caps["name"], domain=caps["domain"], base_url=inv.base_url, policies=caps.get("policies") or {}),
             name_hint=info.get("name_hint"), name_bound=info.get("name_bound") is True and bool(info.get("name_hint")),
             expires=parse(info.get("expires")), own_url_allowed=bool(caps["membership"].get("own_url")),
-            example=s.MemberHostnames(**ex) if ex.get("instance") and ex.get("files") else None,
+            example=s.MemberHostnames(instance=ex["instance"], files=ex["files"]) if has_ex else None,
+            example_name=_example_name(ex) if has_ex else None,
             two_factor_ready=self.two_factor(), problems=problems,
         )
 

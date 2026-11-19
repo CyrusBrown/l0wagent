@@ -11341,6 +11341,18 @@
               }
             ]
           },
+          "example_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Example Name",
+            "description": "The name the hub made `example` for; the join screen previews a typed name's hostnames with it (display only)."
+          },
           "two_factor_ready": {
             "type": "boolean",
             "title": "Two Factor Ready"

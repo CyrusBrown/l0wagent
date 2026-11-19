@@ -63,6 +63,16 @@ function RecoveryKey({ value, onDone }: { value: string; onDone: () => void }) {
 
 const NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/
 
+/** The join screen's preview: the typed name in place of the hub's example name, where it stands as a whole
+ *  part of a label (capabilities.md). Display only; the hostnames are the ones the hub returns on joining. */
+export function previewHostnames(ex: { instance: string; files: string } | null | undefined, exName: string | null | undefined, name: string) {
+  if (!ex || !exName) return null
+  const re = () => new RegExp(`(^|[.-])${exName.replace(/[^a-z0-9-]/g, '')}(?=$|[.:-])`, 'g')
+  if (!re().test(ex.instance) || !re().test(ex.files)) return null
+  const put = (h: string) => h.replace(re(), (_m, pre: string) => pre + name)
+  return { instance: put(ex.instance), files: put(ex.files) }
+}
+
 function Join({ m, onJoined }: { m: S['Membership']; onJoined: (key: string) => void }) {
   const preview = useInvitePreview()
   const join = useJoinHub()
@@ -75,6 +85,7 @@ function Join({ m, onJoined }: { m: S['Membership']; onJoined: (key: string) => 
   const p = preview.data
   const nameOk = name.length >= 3 && name.length <= 32 && NAME_RE.test(name)
   const urlsOk = mode === 'tunnel' || (/^https:\/\/\S+$/.test(urls.instance) && /^https:\/\/\S+$/.test(urls.files))
+  const yours = mode === 'tunnel' && nameOk ? previewHostnames(p?.example, p?.example_name, name) : null
   const blocked = !!p?.problems?.length
   const ready = !!p && !blocked && nameOk && urlsOk && !!backup && !join.isPending
   return (
@@ -124,6 +135,14 @@ function Join({ m, onJoined }: { m: S['Membership']; onJoined: (key: string) => 
               <input className="input" autoComplete="off" spellCheck={false} maxLength={32} value={name} readOnly={locked} onChange={(e) => setName(e.target.value.toLowerCase())} />
               <span className="sub" style={{ fontSize: 12.5 }}>{locked ? 'This invite is for this name only.' : '3–32 lowercase letters, digits and single dashes.'} A name can never be reused, even after you leave.</span>
             </label>
+            {yours && (
+              <div className="stack" style={{ gap: 2 }} aria-label="Your hostnames">
+                <span className="k" style={{ fontWeight: 500, fontSize: 13.5 }}>Your hostnames</span>
+                <span className="mono" style={{ fontSize: 13 }}>{yours.instance}</span>
+                <span className="mono" style={{ fontSize: 13 }}>{yours.files}</span>
+                <span className="sub" style={{ fontSize: 12.5 }}>A preview: the hub confirms them when you join.</span>
+              </div>
+            )}
             {p.own_url_allowed && (
               <div className="stack" style={{ gap: 6 }}>
                 <span style={{ fontWeight: 500, fontSize: 13.5 }}>How it's reached</span>

@@ -166,9 +166,12 @@ export function matchHost(cfg: Config, host: string): { name: string; kind: "ins
   return null;
 }
 
+/** The name the capabilities' example hostnames are made for (capabilities.md: hubs SHOULD use "username"). */
+export const EXAMPLE_NAME = "username";
+
 /** Informative only (capabilities.md): "two-domains", "flat" or "nested". */
 export function hostnameLayout(cfg: Config): string {
-  const ex = hostnamesFor(cfg, "mara");
+  const ex = hostnamesFor(cfg, EXAMPLE_NAME);
   const site = (h: string) => h.split(":")[0].split(".").slice(1).join(".");
   if (ex.files.endsWith("." + ex.instance)) return "nested";
   return site(ex.instance) === site(ex.files) ? "flat" : "two-domains";

@@ -7,6 +7,9 @@ Each release's section becomes its GitHub release notes, which the app shows in 
 
 - Hubs: when your hub offers the faster `cloudflared` connection, the tunnel container uses it (Settings → Hub,
   on by default) and falls back to the normal tunnel by itself if it stops working.
+- Hubs: the join screen previews your hostnames as you type a name, and a name-bound invite fills in the name and locks it.
+- Fixed: the authenticator app's QR code didn't show. Edge builds now report a version a hub can compare
+  (`0.8.0-edge.<commit>`), so a hub no longer turns them away as too old.
 
 ## 0.8.0
 

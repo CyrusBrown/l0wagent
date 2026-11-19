@@ -112,7 +112,7 @@ class Hub:
         payload = payloads.build_hub(
             c.name, c.domain, [self.key.key], c.api, c.tunnel_url, min_release=c.min_release,
             membership={"invites": True, "signups": "closed", "own_url": True, "require_2fa": True},
-            hostnames={"layout": "two-domains", "example": c.hostnames_for("mara")},
+            hostnames={"layout": "two-domains", "example": {"name": "username", **c.hostnames_for("username")}},
             limits=c.limits,
             extras=[{"kind": "accelerator", "id": "cloudflared", "doc": f"{c.base_url}/docs/cloudflared",
                      "api": f"{c.api}accelerators/cloudflared"}])

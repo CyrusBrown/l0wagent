@@ -2,6 +2,11 @@
 
 Tags are `hub-X.Y.Z`. Changes to the hub core only; the instance has its own changelog at the repo root.
 
+## 0.3.2
+
+- The capabilities' example hostnames are made for the name `username` and say so (`hostnames.example.name`,
+  capabilities.md), so an instance can preview a new member's hostnames. No migration.
+
 ## 0.3.1
 
 - Bound invites (protocol/membership.md): `POST /v0/admin/invites` takes `bind: "<name>"`. Registration must use exactly that
