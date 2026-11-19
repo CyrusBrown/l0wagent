@@ -476,6 +476,9 @@ def test_a_resumed_claude_code_conversation_is_charged_per_turn(be):
     assert b.turn_cost("conv-b", 0.05) == pytest.approx(0.05)   # conversations are separate
     assert b.turn_cost("conv-a", 0.04) == pytest.approx(0.04)   # a total that went down: started over, counts whole
     assert b.turn_cost(None, 0.30) == pytest.approx(0.30)       # no conversation id: taken as it is
+    # a resumed conversation whose earlier total was never seen (it began before the update): price the turn itself
+    assert b.turn_cost("conv-old", 1.06, resumed=True) is None
+    assert b.turn_cost("conv-old", 1.10, resumed=True) == pytest.approx(0.04)  # from then on, the difference
 
 
 def test_the_owner_can_give_a_running_run_more_points(c, be):

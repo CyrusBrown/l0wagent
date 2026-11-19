@@ -220,7 +220,7 @@ class Reviewer:
             if out.get("session_id"):
                 self.db.ex("INSERT INTO kv(key, value, updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
                            (key, json.dumps(out["session_id"]), self.db.now()))
-            self._count(run, out, spec["runtime"])
+            self._count(run, out, spec["runtime"], resumed=bool(payload.get("resume_session")))
             text = (out.get("text") or "").strip()
             if not out.get("ok") and not text:
                 self._timeline(run_id, Item("error", "The reviewer's turn failed", True))
@@ -232,7 +232,7 @@ class Reviewer:
                 await self._maybe_switch(run_id, text)
             return (None if quiet else text), mid
 
-    def _count(self, run: dict, out: dict, runtime: str = "claude-code") -> None:
+    def _count(self, run: dict, out: dict, runtime: str = "claude-code", resumed: bool = False) -> None:
         """Add one turn's cost to the run's reviewer row in the ledger (the runtime's own
         total for the turn, else the messages priced at API rates). Claude Code's total is the
         whole day's conversation so far, so only what this turn added counts."""
@@ -241,7 +241,7 @@ class Reviewer:
             pid = run["provider"]
         cost = out.get("cost_usd")
         if cost is not None and runtime == "claude-code":
-            cost = self.budgets.turn_cost(out.get("session_id"), float(cost))
+            cost = self.budgets.turn_cost(out.get("session_id"), float(cost), resumed=resumed)
         if cost is None:
             cost = sum(price(m.get("model"), m.get("usage") or {}) for m in out.get("messages") or [])
         u = out.get("usage") or {}

@@ -525,18 +525,22 @@ class Budgets:
             self.db.ex("UPDATE usage_ledger SET cost_usd=?, pts=?, cost_final=1, updated_at=? WHERE id=?", (c, c * k, self.db.now(), r["id"]))
         self._seen.pop(session_id, None)
 
-    def turn_cost(self, conversation: str | None, total_usd: float) -> float:
+    def turn_cost(self, conversation: str | None, total_usd: float, resumed: bool = False) -> float | None:
         """What one Claude Code turn cost. Its `total_cost_usd` is the conversation's whole cost so far, and resuming
         continues the conversation (a run resumes it for every step; the reviewer keeps one a day), so a turn costs
         its total minus the last total seen for that conversation. A total below that one (the conversation started
-        over) counts whole. Remembers the total."""
+        over) counts whole. None when a resumed conversation's earlier total was never seen (it began before this
+        was recorded, or the database was restored): the caller prices the turn's own messages instead. Remembers
+        the total."""
         if not conversation:
-            return total_usd
+            return None if resumed else total_usd
         row = self.db.q1("SELECT total_usd FROM runtime_totals WHERE conversation=?", (conversation,))
-        prev = float(row["total_usd"]) if row else 0.0
         self.db.ex("INSERT INTO runtime_totals(conversation, total_usd, updated_at) VALUES(?,?,?) "
                    "ON CONFLICT(conversation) DO UPDATE SET total_usd=excluded.total_usd, updated_at=excluded.updated_at",
                    (conversation, total_usd, self.db.now()))
+        if row is None:
+            return None if resumed else total_usd
+        prev = float(row["total_usd"])
         return total_usd - prev if total_usd >= prev else total_usd
 
     def run_pts(self, run_id: int) -> float:

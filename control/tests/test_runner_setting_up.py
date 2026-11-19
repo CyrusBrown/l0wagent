@@ -107,3 +107,42 @@ def test_waiting_gives_up_after_the_limit(monkeypatch):
         with pytest.raises(RunnerSettingUp):
             await asyncio.wait_for(mgr.RunManager._wait_until_set_up(m, 1), 5)
     asyncio.run(go())
+
+
+class HandoverRunner:
+    """Setting up, then refused for a moment (the stand-in stopped, the runner not yet listening), then up."""
+
+    def __init__(self):
+        self.calls = 0
+
+    async def health(self):
+        self.calls += 1
+        if self.calls == 1:
+            raise RunnerSettingUp("boot")
+        if self.calls == 2:
+            raise RunnerError("runner unreachable: ConnectError")
+        return {"busy": False}
+
+
+def test_the_handover_from_the_stand_in_to_the_runner_is_waited_out(monkeypatch):
+    monkeypatch.setattr(mgr, "SETUP_POLL_S", 0)
+    monkeypatch.setattr(mgr.asyncio, "sleep", _no_sleep)
+    m, _ = fake_manager(HandoverRunner())
+    asyncio.run(mgr.RunManager._wait_until_set_up(m, 1))
+    assert m.runner.calls == 3
+
+
+def test_an_unreachable_runner_without_setup_is_left_to_the_start(monkeypatch):
+    class Down:
+        calls = 0
+
+        async def health(self):
+            self.calls += 1
+            raise RunnerError("runner unreachable")
+    m, _ = fake_manager(Down())
+    asyncio.run(mgr.RunManager._wait_until_set_up(m, 1))
+    assert m.runner.calls == 1
+
+
+async def _no_sleep(_s):
+    return None

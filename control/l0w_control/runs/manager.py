@@ -55,6 +55,7 @@ LEASE_RENEW_S = 30
 MONITOR_S = 5
 SETUP_POLL_S = 10        # while the agent computer sets itself up, how often a waiting run checks again
 SETUP_WAIT_S = 40 * 60   # and for how long at most (its provision.sh may take 30 min, boot.sh 5)
+HANDOVER_S = 30          # after setup, how long the runner may take to answer on the stand-in's port
 USAGE_CHECK_S = 120
 MAX_EVENT_BYTES = 200_000
 BRIEF_LIST_CAP = 15      # the default of the BRIEF_LIST_CAP setting (items per list section of the brief)
@@ -219,11 +220,14 @@ class RunManager:
             mid, model, usage = parsed.usage
             self.budgets.record_message(run_id, sess.id, pid, "assistant", bucket, mid, model, usage)
         if parsed.result and parsed.result.get("cost_usd") is not None:
-            cost = float(parsed.result["cost_usd"])
+            cost: float | None = float(parsed.result["cost_usd"])
             if sess.runtime == "claude-code":  # a running total for the conversation, which every step resumes
                 row = self.db.q1("SELECT session_id FROM run_sessions WHERE id=?", (sess.id,))
-                cost = self.budgets.turn_cost(parsed.session_id or (row["session_id"] if row else None), cost)
-            self.budgets.record_total(run_id, sess.id, pid, "assistant", bucket, cost)
+                conv = parsed.session_id or (row["session_id"] if row else None)
+                resumed = bool(self.db.q1("SELECT 1 FROM run_sessions WHERE session_id=? AND id<?", (conv, sess.id))) if conv else False
+                cost = self.budgets.turn_cost(conv, cost, resumed=resumed)
+            if cost is not None:  # else the messages' estimate stands
+                self.budgets.record_total(run_id, sess.id, pid, "assistant", bucket, cost)
         used = self.budgets.run_pts(run_id)
         self.db.ex("UPDATE runs SET used=? WHERE id=?", (used, run_id))
         return abs(used - (run["used"] or 0)) >= 0.05
@@ -468,7 +472,7 @@ class RunManager:
         wait for it with a note on the timeline instead of failing. Raises RunnerSettingUp when the run is stopped
         meanwhile or after SETUP_WAIT_S; any other runner error is left for the session start to report."""
         loop = asyncio.get_running_loop()
-        deadline, noted = loop.time() + SETUP_WAIT_S, False
+        deadline, noted, handover = loop.time() + SETUP_WAIT_S, False, None
         while True:
             try:
                 await self.runner.health()
@@ -481,7 +485,13 @@ class RunManager:
                     raise
                 await asyncio.sleep(SETUP_POLL_S)
             except RunnerError:
-                return
+                # Setup just ended: the stand-in has stopped and the runner is starting on its port (a second or two).
+                if not noted:
+                    return
+                handover = handover or loop.time() + HANDOVER_S
+                if loop.time() >= handover:
+                    return
+                await asyncio.sleep(1)
 
     # ── driving one run ────────────────────────────────────────────────────
     async def _drive(self, run_id: int) -> None:
