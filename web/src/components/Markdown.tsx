@@ -24,9 +24,47 @@ export function resolveRelative(href: string, base: { volume: string; dir: strin
   return `/files?volume=${encodeURIComponent(base.volume)}&path=${encodeURIComponent(parts.join('/'))}&file=${encodeURIComponent(file)}`
 }
 
+// A bare `l0wagent://thread/20` in the text (models often write them without link syntax) becomes a link named
+// for what it points at ("thread #20"). Code and existing links are left alone.
+const BARE_REF = /l0wagent:\/\/(?:thread|project|run|file|chat)\/[^\s<>()[\]`'"]+/g
+
+export function refLabel(url: string): string {
+  const m = /^l0wagent:\/\/(thread|project|run|file|chat)\/(.+)$/.exec(url)
+  if (!m) return url
+  const [, kind, rest] = m
+  const id = rest.replace(/#.*$/, '')
+  if (kind === 'thread' || kind === 'run') return `${kind} #${id}`
+  if (kind === 'file') return decodeURIComponent(id.split('/').pop() || id)
+  return `${kind} ${decodeURIComponent(id)}`
+}
+
+type MdNode = { type: string; value?: string; url?: string; children?: MdNode[] }
+
+export function remarkBareRefs() {
+  const split = (text: string): MdNode[] => {
+    const out: MdNode[] = []
+    let last = 0
+    for (const m of text.matchAll(BARE_REF)) {
+      const url = m[0].replace(/[.,;:!?]+$/, '')
+      const at = m.index ?? 0
+      if (at > last) out.push({ type: 'text', value: text.slice(last, at) })
+      out.push({ type: 'link', url, children: [{ type: 'text', value: refLabel(url) }] })
+      last = at + url.length
+    }
+    if (last < text.length) out.push({ type: 'text', value: text.slice(last) })
+    return out
+  }
+  const walk = (node: MdNode) => {
+    if (!node.children || node.type === 'link' || node.type === 'linkReference') return
+    node.children = node.children.flatMap((c) => (c.type === 'text' && c.value?.includes('l0wagent://') ? split(c.value) : (walk(c), [c])))
+  }
+  return (tree: MdNode) => walk(tree)
+}
+
 export function Markdown({ children, fileBase }: { children: string; fileBase?: { volume: string; dir: string } }) {
   return (
     <ReactMarkdown
+      remarkPlugins={[remarkBareRefs]}
       rehypePlugins={[[rehypeSanitize, schema]]}
       urlTransform={urlTransform}
       components={{

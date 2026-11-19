@@ -15,6 +15,7 @@ Each release's section becomes its GitHub release notes, which the app shows in 
   Cloudflare not to compress it, which held small updates back).
 - Fixed: push notifications never reached iPhones, iPads or Safari. Apple refused them because of the made-up contact
   address they were signed with; they're now signed with your public URL (your hub hostname).
+- Fixed: a bare `l0wagent://thread/20` in a chat or agent message now shows as a link ("thread #20").
 - A running run has a "+10 pts" button beside Stop to give it more points.
 - After an update, while the agent computer reinstalls its tools, runs wait with a note ("still setting up") instead of
   failing, and Settings and Home say it's setting up instead of "unreachable".
