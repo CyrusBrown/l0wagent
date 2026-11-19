@@ -16,6 +16,17 @@ class RunnerError(Exception):
         self.status = status
 
 
+class RunnerSettingUp(RunnerError):
+    """The agent computer is up but still setting itself up (agent/runner/setup_status.py): after an update it
+    replays the agent's provision.sh, then runs its boot.sh, before the runner starts."""
+
+    PHASES = {"starting": "starting", "provisioning": "reinstalling its tools after an update", "boot": "running its boot script"}
+
+    def __init__(self, phase: str, since: str | None = None):
+        self.phase, self.since = phase, since
+        super().__init__(f"The agent computer is still setting up ({self.PHASES.get(phase, phase)}).", 503)
+
+
 class RunnerIdle(RunnerError):
     """The log stream was open but went quiet past the idle timeout: not lost contact."""
 
@@ -38,6 +49,13 @@ class RunnerClient:
                 r = await c.request(method, f"{self.url}{path}", headers=self.headers, **kw)
         except httpx.HTTPError as e:
             raise RunnerError(f"runner unreachable: {type(e).__name__}: {e}") from e
+        if r.status_code == 503:
+            try:
+                j = r.json()
+            except ValueError:
+                j = None
+            if isinstance(j, dict) and j.get("error") == "setting_up":
+                raise RunnerSettingUp(str(j.get("phase") or "starting"), j.get("since") if isinstance(j.get("since"), str) else None)
         if r.status_code >= 400:
             raise RunnerError(f"runner: HTTP {r.status_code}: {r.text[:300]}", r.status_code)
         return r.json()

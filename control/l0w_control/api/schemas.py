@@ -1324,12 +1324,19 @@ class SecretSet(Model):
 
 
 # ── System ─────────────────────────────────────────────────────────────────
+class RunBudgetAdd(Model):
+    add: float = Field(gt=0, le=200, description="Points to add to a running run's budget (it takes effect within seconds).")
+
+
 class RunnerHealth(Model):
     reachable: bool
     busy: bool | None = None
     runtime_version: str | None = None
     logged_in: bool | None = None
     error: str | None = None
+    setting_up: bool = Field(False, description="The agent computer is up but still setting itself up (after an update it reinstalls the "
+                                                "agent's tools); runs wait for it. `error` says which step.")
+    setting_up_since: datetime | None = None
 
 
 class EgressHealth(Model):

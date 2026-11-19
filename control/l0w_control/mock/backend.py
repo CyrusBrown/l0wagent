@@ -493,6 +493,14 @@ class MockBackend(Backend):
         self._changed("run", rid, r)
         return r
 
+    def add_run_budget(self, run_id: int, req: s.RunBudgetAdd) -> s.Run:
+        r = self.run(run_id).run
+        if r.status not in ("running", "starting"):
+            raise Conflict("not_running", f"run {run_id} is {r.status}")
+        r.budget = round((r.budget or 0) + req.add, 2)
+        self._changed("run", run_id, r)
+        return r
+
     def stop_run(self, run_id: int) -> s.Run:
         r = self.run(run_id).run
         if r.status != "running":

@@ -111,6 +111,10 @@ export const useDecideSecurity = () =>
   useInvalidating((a: { id: number; decision: 'confirm' | 'revoke' }) =>
     ok(api.POST('/api/security-alerts/{aid}/decide', { params: { path: { aid: a.id } }, body: { decision: a.decision } })), cardKeys)
 
+// Online only (never queued): a budget change.
+export const useAddRunBudget = () =>
+  useInvalidating(({ id, add }: { id: number; add: number }) => ok(api.POST('/api/runs/{run_id}/budget', { params: { path: { run_id: id } }, body: { add } })), [['status'], ['runs'], ['run'], ['budget']])
+
 export const useStopRun = () =>
   useInvalidating((id: number) => ok(api.POST('/api/runs/{run_id}/stop', { params: { path: { run_id: id } } })), [['status'], ['runs'], ['run']])
 

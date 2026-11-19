@@ -40,7 +40,7 @@ from ..budgets import SUBSCRIPTION, UNIT, Budgets
 from ..config import Env, Settings
 from ..db import Database
 from ..live import Live
-from .clients import EgressClient, RunnerClient, RunnerError, RunnerIdle
+from .clients import EgressClient, RunnerClient, RunnerError, RunnerIdle, RunnerSettingUp
 from .runtime import ADAPTERS, Item, RuntimeAdapter
 from .usage import Usage
 
@@ -53,6 +53,8 @@ log = logging.getLogger("l0w.runs")
 LEASE_TTL = 240
 LEASE_RENEW_S = 30
 MONITOR_S = 5
+SETUP_POLL_S = 10        # while the agent computer sets itself up, how often a waiting run checks again
+SETUP_WAIT_S = 40 * 60   # and for how long at most (its provision.sh may take 30 min, boot.sh 5)
 USAGE_CHECK_S = 120
 MAX_EVENT_BYTES = 200_000
 BRIEF_LIST_CAP = 15      # the default of the BRIEF_LIST_CAP setting (items per list section of the brief)
@@ -217,7 +219,11 @@ class RunManager:
             mid, model, usage = parsed.usage
             self.budgets.record_message(run_id, sess.id, pid, "assistant", bucket, mid, model, usage)
         if parsed.result and parsed.result.get("cost_usd") is not None:
-            self.budgets.record_total(run_id, sess.id, pid, "assistant", bucket, float(parsed.result["cost_usd"]))
+            cost = float(parsed.result["cost_usd"])
+            if sess.runtime == "claude-code":  # a running total for the conversation, which every step resumes
+                row = self.db.q1("SELECT session_id FROM run_sessions WHERE id=?", (sess.id,))
+                cost = self.budgets.turn_cost(parsed.session_id or (row["session_id"] if row else None), cost)
+            self.budgets.record_total(run_id, sess.id, pid, "assistant", bucket, cost)
         used = self.budgets.run_pts(run_id)
         self.db.ex("UPDATE runs SET used=? WHERE id=?", (used, run_id))
         return abs(used - (run["used"] or 0)) >= 0.05
@@ -453,6 +459,30 @@ class RunManager:
         )
         return Session(row_id, sid, 0, resume or "", adapter.name)
 
+    def _stop_requested(self, run_id: int) -> bool:
+        row = self.db.q1("SELECT stop_requested_at FROM runs WHERE id=?", (run_id,))
+        return bool(row and row["stop_requested_at"])
+
+    async def _wait_until_set_up(self, run_id: int) -> None:
+        """While the agent computer is still setting itself up (after an update it replays the agent's provision.sh),
+        wait for it with a note on the timeline instead of failing. Raises RunnerSettingUp when the run is stopped
+        meanwhile or after SETUP_WAIT_S; any other runner error is left for the session start to report."""
+        loop = asyncio.get_running_loop()
+        deadline, noted = loop.time() + SETUP_WAIT_S, False
+        while True:
+            try:
+                await self.runner.health()
+                return
+            except RunnerSettingUp as e:
+                if not noted:
+                    self.timeline(run_id, Item("control", f"{e} This run starts when it's ready.", True))
+                    noted = True
+                if loop.time() >= deadline or self._stop_requested(run_id):
+                    raise
+                await asyncio.sleep(SETUP_POLL_S)
+            except RunnerError:
+                return
+
     # ── driving one run ────────────────────────────────────────────────────
     async def _drive(self, run_id: int) -> None:
         monitor = asyncio.create_task(self._monitor(run_id))
@@ -467,7 +497,14 @@ class RunManager:
                 row = self.db.q1("SELECT * FROM run_sessions WHERE run_id=? ORDER BY id DESC LIMIT 1", (run_id,))
                 if row is None:
                     try:
+                        await self._wait_until_set_up(run_id)
                         sess = await self._start_session(run_id)
+                    except RunnerSettingUp as e:
+                        if not self._stop_requested(run_id):
+                            self.timeline(run_id, Item("error", f"{e} Gave up waiting after {SETUP_WAIT_S // 60} minutes; "
+                                                                "see /workspace/system/provision.log.", True))
+                        end_state = "failed_to_start"
+                        break
                     except RunnerError as e:
                         self.timeline(run_id, Item("error", f"The agent computer refused the session: {e}", True))
                         end_state = "failed_to_start"
@@ -759,6 +796,8 @@ class RunManager:
                 self.timeline(run_id, Item("error", f"Safety-net commit failed: {commit.get('error')}", True))
             elif files:
                 self.timeline(run_id, Item("diff", f"Memory: {len(files)} file(s) changed", True, {"volume": "workspace", "files": files, "commit": commit.get("commit")}))
+        except RunnerSettingUp:
+            self.timeline(run_id, Item("control", "Memory commit skipped: the agent computer is setting up. The next run's commit includes any changes.", False))
         except RunnerError as e:
             self.timeline(run_id, Item("error", f"Safety-net commit failed: {e}", False))
         used = self.budgets.run_pts(run_id)
@@ -813,6 +852,19 @@ class RunManager:
             self.timeline(run_id, Item("control", f"Stop requested: {reason}", True))
             await self._signal(run_id, force=False)
             self._run_changed(run_id)
+        return self.run(run_id)
+
+    def add_budget(self, run_id: int, add: float) -> s.Run:
+        """The owner gives a running run more points. The monitor rereads the budget every few seconds."""
+        run = self.db.q1("SELECT * FROM runs WHERE id=?", (run_id,))
+        if not run:
+            raise NotFound(f"run {run_id}")
+        if run["status"] not in ACTIVE or run["stop_requested_at"]:
+            raise Conflict("not_running", "This run is ending or over, so its budget can't change.")
+        budget = round((run["budget"] or 0) + add, 2)
+        self.db.ex("UPDATE runs SET budget=? WHERE id=?", (budget, run_id))
+        self.timeline(run_id, Item("control", f"You added {add:g} pts · the budget is now {budget:g} pts", True))
+        self._run_changed(run_id)
         return self.run(run_id)
 
     async def _signal(self, run_id: int, force: bool) -> None:

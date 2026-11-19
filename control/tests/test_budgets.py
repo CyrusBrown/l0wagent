@@ -309,8 +309,11 @@ def test_reviewer_gate_tier_changes_and_budget_share(be):
     replies = iter(["Not yet: the summary isn't written.", "Looks right.\nAGREE", "Harder than it looks.\nLEVEL: opus/high", "LEVEL: opus/low"])
     switched = []
 
-    async def consult(payload):
-        return {"ok": True, "text": next(replies), "session_id": "rv1", "cost_usd": 0.5, "usage": {}, "messages": []}
+    total = {"usd": 0.0}
+
+    async def consult(payload):  # like Claude Code: the conversation's running total, $0.50 a turn
+        total["usd"] += 0.5
+        return {"ok": True, "text": next(replies), "session_id": "rv1", "cost_usd": total["usd"], "usage": {}, "messages": []}
 
     async def switch(run_id, tier, by):
         switched.append(tier)
@@ -461,3 +464,29 @@ def test_a_new_reviewer_conversation_orients_itself_first(be):
     assert "use it or lose it" in first[0] and first[0].rstrip().endswith("Writing the export")
     assert second[1] == "rv-day" and "Start of your day" not in second[0]
     assert "give it the next task" in first[2] and "skipping the protocol" in first[2]
+
+
+def test_a_resumed_claude_code_conversation_is_charged_per_turn(be):
+    """Claude Code's total_cost_usd is the conversation's running total, and runs resume theirs every step
+    (the reviewer keeps one a day): each turn counts only what it added."""
+    b = be.budgets
+    assert b.turn_cost("conv-a", 0.10) == pytest.approx(0.10)   # the first turn: all of it
+    assert b.turn_cost("conv-a", 0.25) == pytest.approx(0.15)   # resumed: the difference
+    assert b.turn_cost("conv-a", 0.25) == pytest.approx(0.0)    # nothing new
+    assert b.turn_cost("conv-b", 0.05) == pytest.approx(0.05)   # conversations are separate
+    assert b.turn_cost("conv-a", 0.04) == pytest.approx(0.04)   # a total that went down: started over, counts whole
+    assert b.turn_cost(None, 0.30) == pytest.approx(0.30)       # no conversation id: taken as it is
+
+
+def test_the_owner_can_give_a_running_run_more_points(c, be):
+    rid = be.db.ex("INSERT INTO runs(kind, why, provider, tier, budget, status, started_at, bucket) "
+                   "VALUES('wakeup','planned','claude-subscription','sonnet/medium',20,'running',?,'allowance')", (be.db.now(),))
+    r = c.post(f"/api/runs/{rid}/budget", json={"add": 10})
+    assert r.status_code == 200 and r.json()["budget"] == 30
+    assert be.db.q1("SELECT budget FROM runs WHERE id=?", (rid,))["budget"] == 30
+    assert any("You added 10 pts" in i["text"] for i in c.get(f"/api/runs/{rid}/timeline?view=simple").json())
+    assert c.post(f"/api/runs/{rid}/budget", json={"add": 0}).status_code == 422
+    assert c.post(f"/api/runs/{rid}/budget", json={"add": 500}).status_code == 422
+    be.db.ex("UPDATE runs SET status='done' WHERE id=?", (rid,))
+    r = c.post(f"/api/runs/{rid}/budget", json={"add": 10})
+    assert r.status_code == 409 and "not_running" in r.text

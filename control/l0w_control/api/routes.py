@@ -403,6 +403,12 @@ def stop_run(run_id: int, be: Be) -> s.Run:
     return be.stop_run(run_id)
 
 
+@api.post("/runs/{run_id}/budget", tags=["runs"])
+def add_run_budget(run_id: int, req: s.RunBudgetAdd, be: Be) -> s.Run:
+    """Online only. Gives a running run more points; 409 not_running once it's ending or over."""
+    return be.add_run_budget(run_id, req)
+
+
 @api.get("/jobs", tags=["runs"])
 def list_jobs(be: Be, include_done: bool = False) -> list[s.Job]:
     return be.jobs(include_done)

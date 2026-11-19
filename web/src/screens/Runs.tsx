@@ -4,7 +4,7 @@ import { slotItems } from '../ext/registry'
 import { useExtensions } from '../ext/useExtensions'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import type { S } from '../api/client'
-import { problem, useJobs, useProjects, useRun, useRuns, useStartRun, useStopRun, useTimeline } from '../api/queries'
+import { problem, useAddRunBudget, useJobs, useProjects, useRun, useRuns, useStartRun, useStopRun, useTimeline } from '../api/queries'
 import { useTimeFormat } from '../app/timeFormat'
 import { ago, clock, clockSeconds, duration, pts, stamp, until } from '../components/format'
 import { Select } from '../components/Select'
@@ -124,6 +124,7 @@ export function Run() {
   const detailed = params.get('view') === 'detailed'
   const run = useRun(id)
   const stop = useStopRun()
+  const more = useAddRunBudget()
   if (run.isError) return <div className="page"><div className="error">Couldn't load run #{id}.</div></div>
   const d = run.data
   if (!d) return <div className="page" />
@@ -144,8 +145,15 @@ export function Run() {
             <h1>Run #{r.id}</h1>
             <span className={`pill ${STATUS[r.status][1]} row-start`} style={{ gap: 6 }}>{live && <span className="dot working" style={{ width: 6, height: 6 }} />}{STATUS[r.status][0]}</span>
           </div>
-          {live && <button className="btn small" style={{ color: 'var(--badInk)' }} disabled={stop.isPending} onClick={() => stop.mutate(r.id)}>Stop</button>}
+          {live && (
+            <div className="row-start" style={{ gap: 8 }}>
+              <button className="btn small" title={`Give this run 10 more points (budget ${r.budget ?? 0} → ${(r.budget ?? 0) + 10})`}
+                disabled={more.isPending || stop.isPending} onClick={() => more.mutate({ id: r.id, add: 10 })}>+10 pts</button>
+              <button className="btn small" style={{ color: 'var(--badInk)' }} disabled={stop.isPending} onClick={() => stop.mutate(r.id)}>Stop</button>
+            </div>
+          )}
         </div>
+        {more.error && <div className="error" role="alert">{problem(more.error)}</div>}
         <div className="run-meta">
           {meta.map(([k, v]) => <div key={k} className="stack" style={{ gap: 3 }}><span className="k">{k}</span><span className="v">{v}</span></div>)}
           <div className="run-budget">

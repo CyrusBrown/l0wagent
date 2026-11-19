@@ -53,6 +53,7 @@ NOT_TEXT = {
     "hub_membership": {"state", "hub_base", "hub_domain", "hub_name", "hub_key", "capabilities", "api", "name", "address", "mode", "hostnames",
                        "own_urls", "tunnel_url", "self_doc", "joined_at", "left_at", "backup", "check_at", "check_result", "hub_key_alarm"},
     "hub_log": {"event", "detail"},
+    "runtime_totals": {"conversation"},  # a runtime's conversation id
     "extensions": {"name", "version", "sdk", "source", "found_at"}, "extension_kv": {"ext", "key"}, "extension_cards": {"ext", "kind", "status"},
     # ids, tokens, hashes and keys
     "api_tokens": {"id", "token_hash", "scopes_json"}, "auth_sessions": {"id", "kind", "token_hash", "ip", "user_agent", "scope"},

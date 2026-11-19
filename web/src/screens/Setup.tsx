@@ -99,7 +99,7 @@ function ProviderStep() {
       <div className="provider-card">
         <div className="stack" style={{ gap: 2 }}>
           <span style={{ font: '500 14px var(--sans)' }}>Anthropic · Claude subscription</span>
-          <span className="sub">{!r ? 'Checking…' : !r.reachable ? "The assistant's computer isn't reachable yet." : r.logged_in ? 'Connected · usage from provider' : 'Not logged in yet'}</span>
+          <span className="sub">{!r ? 'Checking…' : !r.reachable ? (r.setting_up ? "The assistant's computer is still setting up. This can take a few minutes after an update." : "The assistant's computer isn't reachable yet.") : r.logged_in ? 'Connected · usage from provider' : 'Not logged in yet'}</span>
         </div>
         <span className={`pill ${r?.logged_in ? 'ok' : 'mute'}`}>{r?.logged_in ? '✓ Connected' : 'Not connected'}</span>
       </div>

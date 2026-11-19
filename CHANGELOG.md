@@ -8,6 +8,12 @@ Each release's section becomes its GitHub release notes, which the app shows in 
 - Hubs: when your hub offers the faster `cloudflared` connection, the tunnel container uses it (Settings → Hub,
   on by default) and falls back to the normal tunnel by itself if it stops working.
 - Hubs: the join screen previews your hostnames as you type a name, and a name-bound invite fills in the name and locks it.
+- Fixed: runs were charged far too many points. Claude Code reports a conversation's running total, and a run resumes its
+  conversation for every step (the reviewer keeps one a day), so each step was charged everything before it too. Each
+  turn now counts only what it added. Points recorded before this update stay as they were.
+- A running run has a "+10 pts" button beside Stop to give it more points.
+- After an update, while the agent computer reinstalls its tools, runs wait with a note ("still setting up") instead of
+  failing, and Settings and Home say it's setting up instead of "unreachable".
 - Fixed: the authenticator app's QR code didn't show. Edge builds now report a version a hub can compare
   (`0.8.0-edge.<commit>`), so a hub no longer turns them away as too old.
 

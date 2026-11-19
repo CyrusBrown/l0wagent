@@ -740,6 +740,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{run_id}/budget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Run Budget
+         * @description Online only. Gives a running run more points; 409 not_running once it's ending or over.
+         */
+        post: operations["add_run_budget_api_runs__run_id__budget_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs": {
         parameters: {
             query?: never;
@@ -4933,6 +4953,14 @@ export interface components {
             /** End Reason */
             end_reason?: string | null;
         };
+        /** RunBudgetAdd */
+        RunBudgetAdd: {
+            /**
+             * Add
+             * @description Points to add to a running run's budget (it takes effect within seconds).
+             */
+            add: number;
+        };
         /** RunChanges */
         RunChanges: {
             /** Memory */
@@ -5009,6 +5037,14 @@ export interface components {
             logged_in?: boolean | null;
             /** Error */
             error?: string | null;
+            /**
+             * Setting Up
+             * @description The agent computer is up but still setting itself up (after an update it reinstalls the agent's tools); runs wait for it. `error` says which step.
+             * @default false
+             */
+            setting_up?: boolean;
+            /** Setting Up Since */
+            setting_up_since?: string | null;
         };
         /** SchedulerProblem */
         SchedulerProblem: {
@@ -7432,6 +7468,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_run_budget_api_runs__run_id__budget_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunBudgetAdd"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

@@ -108,6 +108,7 @@ class Backend:
     def timeline(self, run_id: int, view: str, kinds: list[str] | None, after: int | None) -> list[s.TimelineItem]: raise NotImplementedError
     def start_run(self, req: s.RunStart) -> s.Run: raise NotImplementedError
     def stop_run(self, run_id: int) -> s.Run: raise NotImplementedError
+    def add_run_budget(self, run_id: int, req: s.RunBudgetAdd) -> s.Run: raise NotImplementedError
     def jobs(self, include_done: bool) -> list[s.Job]: raise NotImplementedError
 
     # budgets, providers, roles, the reviewer (M4); changes are online only

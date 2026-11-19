@@ -32,7 +32,8 @@ With ASSISTANT_RUN_MODE=reviewer (the runner's /consult) it plays the reviewer i
 watch updates, AGREE to ending, an answer to questions, and `LEVEL: opus/high` for "fake:level".
 With `--strict-mcp-config --mcp-config FILE` (the chat sidecar) it plays a chat turn: a short reply, or the result of the
 tool named by [fake:tool NAME {json-args}] in the prompt, called on the "l0w" MCP server over HTTP.
-Every model message carries token usage, and the result reports the session's total cost.
+Every model message carries token usage, and the result reports the conversation's total cost so far: like Claude Code,
+a resumed conversation's total includes its earlier turns.
 """
 
 from __future__ import annotations
@@ -78,9 +79,17 @@ WORK = [
 ]
 
 
+CONV_FILE: dict[str, Path | None] = {"path": None}  # the main conversation's state file, where its total is kept
+
+
 def emit(obj: dict) -> None:
     sys.stdout.write(json.dumps(obj) + "\n")
     sys.stdout.flush()
+    path = CONV_FILE["path"]
+    if obj.get("type") == "result" and path is not None and path.exists():
+        conv = json.loads(path.read_text())
+        conv["cost_usd"] = COST["usd"]
+        path.write_text(json.dumps(conv))
 
 
 def arg(name: str) -> str | None:
@@ -446,6 +455,8 @@ def main() -> int:
         conv = {"step": 0, "turns": 0}
         path = STATE / f"{sid}.json"
     path.write_text(json.dumps(conv))
+    COST["usd"] = float(conv.get("cost_usd") or 0.0)  # Claude Code's total runs on across resumes
+    CONV_FILE["path"] = path
 
     interrupted = INTERRUPTED
     signal.signal(signal.SIGINT, lambda *_: interrupted.__setitem__("flag", True))
@@ -486,6 +497,7 @@ def main() -> int:
         emit({"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": tid, "content": result}]}, "session_id": sid})
         conv["step"] += 1
         conv["turns"] += 1
+        conv["cost_usd"] = COST["usd"]
         path.write_text(json.dumps(conv))
 
     if os.environ.get("FAKE_FAIL") == "1":

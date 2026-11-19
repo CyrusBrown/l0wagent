@@ -19,6 +19,14 @@ APT
   sudo -u agent -H git config --global http.proxy "${HTTP_PROXY}" 2>/dev/null || true
 fi
 
+# Until the runner starts, a stand-in answers on its port with "setting up" (runner/setup_status.py), so control
+# shows that instead of "unreachable" and runs wait for it. PHASE is what it reports.
+mkdir -p /run/assistant && chmod 0755 /run/assistant
+phase() { echo "$1" > /run/assistant/setup-phase; }
+phase starting
+setpriv --reuid=agent --regid=agent --init-groups /opt/runner/venv/bin/python /opt/runner/setup_status.py &
+SETUP_STATUS_PID=$!
+
 # Volumes are normally initialised with the image's ownership, but be safe.
 chown agent:agent /workspace /work /cache /home/agent 2>/dev/null || true
 mkdir -p /work/_inbox && chown agent:agent /work/_inbox
@@ -40,6 +48,7 @@ if [ ! -f "$MARK" ]; then
   mkdir -p /var/lib/assistant
   if [ -f /workspace/system/provision.sh ]; then
     echo "[entrypoint] running /workspace/system/provision.sh"
+    phase provisioning
     if timeout 1800 bash /workspace/system/provision.sh > /workspace/system/provision.log 2>&1; then
       echo "[entrypoint] provision ok"
       touch "$MARK"
@@ -59,6 +68,7 @@ if command -v cron >/dev/null; then cron && echo "[entrypoint] cron started"; fi
 # must detach (e.g. `setsid -f runuser -u agent -- cmd >log 2>&1`).
 if [ -f /workspace/system/boot.sh ]; then
   echo "[entrypoint] running /workspace/system/boot.sh"
+  phase boot
   if timeout 300 bash /workspace/system/boot.sh > /workspace/system/boot.log 2>&1 < /dev/null; then
     echo "[entrypoint] boot ok"
   else
@@ -72,6 +82,9 @@ if [ "${FAKE_CLAUDE:-0}" = "1" ]; then
   export CLAUDE_BIN=/opt/runner/fake_claude.py OPENCODE_BIN=/opt/runner/fake_opencode.py
   echo "[entrypoint] using the fake claude and opencode"
 fi
+
+# Hand the port to the runner.
+kill "$SETUP_STATUS_PID" 2>/dev/null; wait "$SETUP_STATUS_PID" 2>/dev/null
 
 exec env HOME=/home/agent USER=agent LOGNAME=agent \
   setpriv --reuid=agent --regid=agent --init-groups \

@@ -42,7 +42,7 @@ from ..notify import Notifier
 from ..retention import run_retention
 from ..reviewer import Reviewer
 from ..routines import Routines
-from ..runs.clients import EgressClient, RunnerClient, RunnerError
+from ..runs.clients import EgressClient, RunnerClient, RunnerError, RunnerSettingUp
 from ..runs.manager import RunManager, run_model
 from ..runs.usage import Usage
 from ..scheduler import Scheduler, wakeup_model
@@ -835,6 +835,9 @@ class SqliteBackend(Backend):
     def stop_run(self, run_id: int) -> s.Run:
         return self._await(self.runs_mgr.stop(run_id))
 
+    def add_run_budget(self, run_id: int, req: s.RunBudgetAdd) -> s.Run:
+        return self.runs_mgr.add_budget(run_id, req.add)
+
     def jobs(self, include_done: bool) -> list[s.Job]:
         return self.jobs_.list(include_done)
 
@@ -1205,6 +1208,8 @@ class SqliteBackend(Backend):
         try:
             h = await self.runner.health()
             runner = s.RunnerHealth(reachable=True, busy=h.get("busy"), runtime_version=h.get("runtime_version"), logged_in=h.get("logged_in"))
+        except RunnerSettingUp as e:
+            runner = s.RunnerHealth(reachable=False, setting_up=True, setting_up_since=parse(e.since), error=str(e))
         except RunnerError as e:
             runner = s.RunnerHealth(reachable=False, error=str(e))
         try:

@@ -128,7 +128,7 @@ function SystemLine() {
   const up = useUpdateInfo().data
   if (!sys) return null
   const parts = [
-    sys.runner.reachable ? "the assistant's computer is up" : "the assistant's computer isn't reachable",
+    sys.runner.reachable ? "the assistant's computer is up" : sys.runner.setting_up ? "the assistant's computer is still setting up after an update" : "the assistant's computer isn't reachable",
     sys.gate.open ? 'runs can start' : `runs held: ${sys.gate.reason ?? 'gate closed'}`,
     up?.available ? `l0wagent ${up.latest} available` : `l0wagent ${sys.server_version}`,
   ]

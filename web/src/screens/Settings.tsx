@@ -263,7 +263,7 @@ function System() {
       {d && (
         <div className="rows">
           <div className="set-row"><span className="k">Server</span><span>l0wagent {d.server_version}</span></div>
-          <div className="set-row"><span className="k">Agent computer</span><Health ok={d.runner.reachable} text={d.runner.reachable ? `${d.runner.busy ? 'running a session' : 'idle'} · ${d.runner.runtime_version ?? ''}` : d.runner.error ?? 'unreachable'} /></div>
+          <div className="set-row"><span className="k">Agent computer</span><Health ok={d.runner.reachable} text={d.runner.reachable ? `${d.runner.busy ? 'running a session' : 'idle'} · ${d.runner.runtime_version ?? ''}` : d.runner.setting_up ? `${d.runner.error ?? 'setting up'}${d.runner.setting_up_since ? ` Since ${ago(d.runner.setting_up_since)}.` : ''} Runs wait for it.` : d.runner.error ?? 'unreachable'} /></div>
           <div className="set-row"><span className="k">Claude login</span><Health ok={!!d.runner.logged_in} warn text={d.runner.logged_in ? 'logged in' : 'not logged in: docker compose exec -u agent agent claude auth login'} /></div>
           <div className="set-row"><span className="k">Egress proxy</span><Health ok={d.egress.reachable} text={d.egress.reachable ? (d.egress.lease_active ? 'model access open (a run holds the lease)' : 'model access closed') : d.egress.error ?? 'unreachable'} /></div>
           <div className="set-row"><span className="k">Usage</span><Health ok={d.usage?.seven_day_pct != null} warn text={d.usage?.seven_day_pct != null ? `${usageText(d.usage)} · ${d.usage.source} · ${clock(d.usage.fetched_at)}` : d.usage?.error ?? 'unknown'} /></div>

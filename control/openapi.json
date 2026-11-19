@@ -2651,6 +2651,67 @@
         }
       }
     },
+    "/api/runs/{run_id}/budget": {
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Add Run Budget",
+        "description": "Online only. Gives a running run more points; 409 not_running once it's ending or over.",
+        "operationId": "add_run_budget_api_runs__run_id__budget_post",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunBudgetAdd"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Run"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs": {
       "get": {
         "tags": [
@@ -14532,6 +14593,23 @@
         ],
         "title": "Run"
       },
+      "RunBudgetAdd": {
+        "properties": {
+          "add": {
+            "type": "number",
+            "maximum": 200.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Add",
+            "description": "Points to add to a running run's budget (it takes effect within seconds)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "add"
+        ],
+        "title": "RunBudgetAdd"
+      },
       "RunChanges": {
         "properties": {
           "memory": {
@@ -14752,6 +14830,24 @@
               }
             ],
             "title": "Error"
+          },
+          "setting_up": {
+            "type": "boolean",
+            "title": "Setting Up",
+            "description": "The agent computer is up but still setting itself up (after an update it reinstalls the agent's tools); runs wait for it. `error` says which step.",
+            "default": false
+          },
+          "setting_up_since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Setting Up Since"
           }
         },
         "additionalProperties": false,
