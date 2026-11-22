@@ -297,3 +297,45 @@ def test_listener_routes_by_host_and_sets_the_client_header(rig, run_service, fx
             r = await c.get("/boom", headers={"host": h["files"], "cf-connecting-ip": "1.1.1.1"})
             assert "keep-alive" not in r.headers
     run_service(body)
+
+
+def test_listener_stops_reading_control_when_the_visitor_goes():
+    """A visitor who drops a long-lived stream (the live events) must free the connection to control: uvicorn's send()
+    does nothing after a disconnect, so without watching for it the proxy read forever and the pool ran out."""
+    from l0w_tunnel.accelerator import make_proxy_app
+
+    closed = asyncio.Event()
+
+    class Endless(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            while True:
+                yield b'{"type":"keepalive"}\n'
+                await asyncio.sleep(0.01)
+
+        async def aclose(self):
+            closed.set()
+
+    async def main():
+        http = httpx.AsyncClient(transport=httpx.MockTransport(lambda req: httpx.Response(200, stream=Endless())))
+        app = make_proxy_app({"me.hub.test": "http://control"}, http)
+        scope = {"type": "http", "method": "GET", "path": "/api/events", "raw_path": b"/api/events", "query_string": b"",
+                 "headers": [(b"host", b"me.hub.test"), (b"cf-connecting-ip", b"203.0.113.9")]}
+        msgs = iter([{"type": "http.request", "body": b"", "more_body": False}])
+        sent: list[dict] = []
+
+        async def receive():
+            try:
+                return next(msgs)
+            except StopIteration:
+                await asyncio.sleep(0.1)
+                return {"type": "http.disconnect"}
+
+        async def send(m):
+            sent.append(m)
+
+        await asyncio.wait_for(app(scope, receive, send), 2)
+        await asyncio.wait_for(closed.wait(), 1)
+        assert sent[0]["status"] == 200 and len(sent) > 2
+        await http.aclose()
+
+    asyncio.run(main())

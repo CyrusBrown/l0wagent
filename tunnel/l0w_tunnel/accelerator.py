@@ -115,9 +115,28 @@ def make_proxy_app(targets: Mapping[str, str] | Callable[[], Mapping[str, str]],
                 out = [(k.lower().encode("latin-1"), v.encode("latin-1")) for k, v in r.headers.multi_items() if not _hop(k.lower())]
                 await send({"type": "http.response.start", "status": r.status_code, "headers": out})
                 started = True
-                async for chunk in r.aiter_raw():
-                    await send({"type": "http.response.body", "body": chunk, "more_body": True})
-                await send({"type": "http.response.body", "body": b""})
+
+                async def relay():
+                    async for chunk in r.aiter_raw():
+                        await send({"type": "http.response.body", "body": chunk, "more_body": True})
+                    await send({"type": "http.response.body", "body": b""})
+
+                async def gone():
+                    # uvicorn's send() does nothing once the visitor has gone, so a long-lived stream (the live events,
+                    # a download) would be read from control forever and hold one of the pool's connections. Watch for
+                    # the disconnect instead and stop.
+                    while (await receive())["type"] != "http.disconnect":
+                        pass
+
+                relaying, watching = asyncio.create_task(relay()), asyncio.create_task(gone())
+                try:
+                    await asyncio.wait({relaying, watching}, return_when=asyncio.FIRST_COMPLETED)
+                finally:
+                    for t in (relaying, watching):
+                        t.cancel()
+                    await asyncio.gather(relaying, watching, return_exceptions=True)
+                if relaying.done() and not relaying.cancelled() and relaying.exception():
+                    raise relaying.exception()
             finally:
                 await r.aclose()
         except Exception as e:
@@ -152,7 +171,9 @@ class Accelerator:
         self.http = http or httpx.AsyncClient(timeout=15.0)
         self._own_http = http is None
         self.probe = httpx.AsyncClient(timeout=2.0)
-        self.proxy_http = httpx.AsyncClient(timeout=None)
+        # No read timeout (live streams stay open), but never wait forever for a connection: a full pool answers 502.
+        self.proxy_http = httpx.AsyncClient(timeout=httpx.Timeout(None, connect=10.0, pool=10.0),
+                                            limits=httpx.Limits(max_connections=1000, max_keepalive_connections=20))
         self._cfg: dict | None = None  # the whole tunnel config (None: none)
         self.spec_connected = False
         self.state = "off"
