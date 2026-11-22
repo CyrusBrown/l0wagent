@@ -418,7 +418,7 @@ def test_paused_refuses_incoming_and_holds_outgoing(w):
     assert "/v0/peer/send" not in w.gw.paths()  # waits
     ok(w.c.patch("/api/friends/settings", json={"paused": False}))
     w.run(w.be.friends_.flush())
-    assert w.gw.bodies("/v0/peer/send")[0]["body"]["text"] == "are you there?"
+    assert sent(w)[0]["body"]["text"] == "are you there?"
     assert w.arrive(BOB, "message", {"thread": "1", "reply_to": None, "text": "yes", "files": []}).status_code == 202
 
 
@@ -504,6 +504,12 @@ def test_the_owners_message_is_sent_and_its_delivery_follows_the_outbox(w):
     assert w.be.db.q1("SELECT value FROM kv WHERE key='peer_outbox_since'")["value"] == "2026-11-22T10:05:00Z"
 
 
+def sent(w) -> list[dict]:
+    """The gateway's /v0/peer/send bodies once a send has happened. Posting a message also starts a flush in the background,
+    so the test's own flush() may find it already in flight and return before it lands."""
+    _wait(lambda: w.gw.bodies("/v0/peer/send"), 5.0)
+    return w.gw.bodies("/v0/peer/send")
+
 AGENT = {"X-Agent-Token": "agent-secret"}
 
 
@@ -516,7 +522,7 @@ def test_the_assistants_files_go_out_with_its_message(w, tmp_path):
     r = ok(w.c.post("/api/agent/messages", headers=AGENT, json={"thread": tid, "body": "results attached", "files": ["/work/reports/pump.csv", "/workspace/notes.txt"]}))
     assert [(a["name"], a["volume"], a["size"]) for a in r["attachments"]] == [("pump.csv", "work", 8), ("notes.txt", "workspace", 5)]
     w.run(w.be.friends_.flush())
-    files = w.gw.bodies("/v0/peer/send")[0]["body"]["files"]
+    files = sent(w)[0]["body"]["files"]
     assert [(f["name"], f["type"], f["size"], f["sha256"], b64.decode(f["data"])) for f in files] == [
         ("pump.csv", "text/csv", 8, hashlib.sha256(b"a,b\n1,2\n").hexdigest(), b"a,b\n1,2\n"),
         ("notes.txt", "text/plain", 5, hashlib.sha256(b"hello").hexdigest(), b"hello")]
@@ -572,7 +578,7 @@ def test_the_owners_uploads_go_out_and_over_5_mib_is_refused(w):
     m = ok(w.c.post(f"/api/threads/{tid}/messages", json={"body": "here", "upload_ids": [small["id"]], "idempotency_key": "m-f1"}), 201)
     assert [a["name"] for a in m["attachments"]] == ["note.txt"]
     w.run(w.be.friends_.flush())
-    f = w.gw.bodies("/v0/peer/send")[0]["body"]["files"][0]
+    f = sent(w)[0]["body"]["files"][0]
     assert (f["name"], f["type"], b64.decode(f["data"])) == ("note.txt", "text/plain", b"for bob")
 
     a, b = up("a.bin", b"\0" * (3 * 1024 * 1024)), up("b.bin", b"\0" * (3 * 1024 * 1024))
