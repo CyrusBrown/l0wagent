@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.l0wagent.invalid/0.1/role-grant.json",
+  "title": "role-grant",
+  "description": "Payload of a role-grant document, signed by the service (services.md)",
+  "type": "object",
+  "required": [
+    "v",
+    "type",
+    "iat",
+    "service",
+    "holder",
+    "holder_kid",
+    "role"
+  ],
+  "properties": {
+    "v": {
+      "const": "l0w/0.1"
+    },
+    "type": {
+      "const": "role-grant"
+    },
+    "iat": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+      "description": "RFC 3339 UTC, whole seconds"
+    },
+    "exp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+      "description": "RFC 3339 UTC, whole seconds"
+    },
+    "service": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*@[a-z0-9][a-z0-9.-]*(:[0-9]+)?$"
+    },
+    "holder": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*@[a-z0-9][a-z0-9.-]*(:[0-9]+)?$"
+    },
+    "holder_kid": {
+      "type": "string",
+      "pattern": "^k1\\.[A-Za-z0-9_-]{22}$"
+    },
+    "role": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,31}$",
+      "description": "A short role name"
+    }
+  },
+  "additionalProperties": true
+}

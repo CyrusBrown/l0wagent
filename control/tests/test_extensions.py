@@ -14,6 +14,8 @@ from l0w_control.app import create_app
 from l0w_control.backends.sqlite import SqliteBackend
 from l0w_control.config import Env
 
+from .hubworld import ECHO, wait_sent
+
 PW = "correct horse battery"
 AGENT = {"X-Agent-Token": "agent-secret"}
 EXAMPLE = Path(__file__).resolve().parents[2] / "extensions" / "examples" / "plantlog"
@@ -255,3 +257,117 @@ def test_advanced_settings_and_reviewer_instructions(client):
     assert d["before"] == "12.0" or d["before"] == "12"
     chat_settings.apply(client.be, [d])
     assert client.be.settings.get("HOLD_MINUTES") == 8
+
+
+# ── ext.hub (SDK 1.1): a hub's services ─────────────────────────────────────
+HUBBY = '''
+from l0w_control.sdk import HubCallError, HubUnavailable
+
+
+def setup(ext):
+    def err(e):
+        return {"ok": False, "code": e.code, "detail": e.detail, "from_service": e.from_service, "unavailable": isinstance(e, HubUnavailable)}
+
+    @ext.router.get("/avail")
+    def avail():
+        return ext.hub.available()
+
+    @ext.router.post("/call")
+    async def call(body: dict):
+        try:
+            return {"ok": True, "result": await ext.hub.acall(body["service"], body["method"], body.get("args"), body.get("role"), timeout=body.get("timeout", 5))}
+        except HubCallError as e:
+            return err(e)
+
+    @ext.router.post("/call-sync")
+    def call_sync(body: dict):
+        try:
+            return {"ok": True, "result": ext.hub.call(body["service"], body["method"], body.get("args"), body.get("role"), timeout=body.get("timeout", 5))}
+        except HubCallError as e:
+            return err(e)
+
+    @ext.router.post("/call-in-loop")
+    async def call_in_loop(body: dict):
+        try:
+            return {"ok": True, "result": ext.hub.call("echo", "echo", {})}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "type": type(e).__name__, "detail": str(e)}
+
+    ext.hub.on_event("custom", lambda e: ext.store.set("by_kind", e))
+    ext.hub.on_event("echo@hub.example", lambda e: ext.store.set("by_address", e))
+    ext.hub.on_event("board", lambda e: ext.store.set("board", e))
+
+    async def later(e):
+        ext.store.set("async_handler", e["event"])
+    ext.hub.on_event("echo@hub.example", later)
+'''
+
+
+@pytest.fixture
+def hubby(hw):
+    d = Path(hw.be.ext.root) / "hubby"
+    d.mkdir()
+    (d / "extension.toml").write_text('name = "hubby"\nversion = "1"\nsdk = "1.0"\nentry = "extension.py"\n')
+    (d / "extension.py").write_text(HUBBY)
+    ok(hw.c.post("/api/extensions/rescan"))
+    ok(hw.c.put("/api/extensions/hubby/enabled", json={"enabled": True}))
+    return hw
+
+
+def in_thread(fn, *a, **kw):
+    from concurrent.futures import ThreadPoolExecutor
+
+    return ThreadPoolExecutor(max_workers=1).submit(fn, *a, **kw)
+
+
+def test_hub_sdk_is_empty_without_a_connected_service_and_refuses_calls(hubby):
+    hw = hubby
+    assert ok(hw.c.get("/api/ext/hubby/avail")) == []  # nothing synced yet
+    r = ok(hw.c.post("/api/ext/hubby/call", json={"service": "echo", "method": "echo"}))
+    assert r["ok"] is False and r["code"] == "unknown_service" and r["unavailable"] is True
+    hw.sync()  # connecting is not connected
+    assert ok(hw.c.get("/api/ext/hubby/avail")) == []
+    r = ok(hw.c.post("/api/ext/hubby/call", json={"service": "echo", "method": "echo"}))
+    assert r["code"] == "not_connected" and r["unavailable"] is True
+
+
+def test_hub_sdk_available_calls_roles_and_errors(hubby):
+    hw = hubby
+    hw.connect_echo()
+    assert ok(hw.c.get("/api/ext/hubby/avail")) == [{"address": ECHO, "kind": "custom", "title": "Echo", "roles": ["tester"]}]
+    # an async route awaits the call; the reply comes in while it waits
+    f = in_thread(hw.c.post, "/api/ext/hubby/call", json={"service": "echo", "method": "secret", "args": {"n": 1}, "role": "tester"})
+    [out] = wait_sent(hw)
+    assert out["body"]["args"] == {"n": 1} and out["body"]["role"]["type"] == "role-grant"
+    hw.reply(out["body"]["call"], ok=True, result={"secret": "xyzzy"})
+    assert f.result(10).json() == {"ok": True, "result": {"secret": "xyzzy"}}
+    row = hw.be.db.q1("SELECT * FROM service_calls ORDER BY created_at DESC, rowid DESC")
+    assert row["by"] == "extension:hubby" and row["role"] == "tester"
+    # a plain `def` route (a worker thread) uses call_sync; a service's own error code comes through
+    f = in_thread(hw.c.post, "/api/ext/hubby/call-sync", json={"service": ECHO, "method": "secret"})
+    out = wait_sent(hw, 2)[-1]
+    assert out["body"]["role"] is None
+    hw.reply(out["body"]["call"], ok=False, error={"code": "not_allowed", "detail": "needs the tester role"})
+    assert f.result(10).json() == {"ok": False, "code": "not_allowed", "detail": "needs the tester role", "from_service": True, "unavailable": False}
+    # a role it doesn't hold, and a call nobody answers
+    r = ok(hw.c.post("/api/ext/hubby/call", json={"service": "echo", "method": "echo", "role": "admin"}))
+    assert r["code"] == "no_role" and r["from_service"] is False
+    r = ok(hw.c.post("/api/ext/hubby/call", json={"service": "echo", "method": "echo", "timeout": 0.3}))
+    assert r["code"] == "timeout"
+    # call_sync from a coroutine would block control's loop: refused
+    r = ok(hw.c.post("/api/ext/hubby/call-in-loop", json={}))
+    assert r["ok"] is False and r["type"] == "ExtensionError" and "await" in r["detail"]
+
+
+def test_hub_sdk_events_go_to_the_extensions_that_asked(hubby):
+    hw = hubby
+    hw.connect_echo()
+    assert hw.arrive(ECHO, "service-event", {"event": "post.new", "data": {"title": "hi"}}).status_code == 202
+    expected = {"service": ECHO, "kind": "custom", "event": "post.new", "data": {"title": "hi"}}
+    assert wait_for(lambda: hw.be.ext.kv_get("hubby", "data:by_kind") == expected and hw.be.ext.kv_get("hubby", "data:by_address") == expected)
+    assert wait_for(lambda: hw.be.ext.kv_get("hubby", "data:async_handler") == "post.new")  # an async handler runs on control's loop
+    assert hw.be.ext.kv_get("hubby", "data:board") is None  # asked for another kind
+    # a roles change is control's own business, not an event for extensions
+    assert hw.arrive(ECHO, "service-event", {"event": "roles", "data": {"grants": []}}).status_code == 202
+    time.sleep(0.3)
+    assert hw.be.ext.kv_get("hubby", "data:by_kind") == expected

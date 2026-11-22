@@ -195,7 +195,9 @@ services:
       GATEWAY_TUNNEL_TOKEN: ${L0W_GATEWAY_TUNNEL_TOKEN:-dev-gateway-tunnel-token}
     volumes:
       - gateway-data:/data
-    networks: [hubnet]
+    # gateway-out: its own route to the internet (peer delivery, directory fetches; targets vetted like egress).
+    # No other container joins it.
+    networks: [hubnet, gateway-out]
     read_only: true
     tmpfs: ["/tmp:size=16m,mode=1777"]
     cap_drop: [ALL]
@@ -234,6 +236,7 @@ services:
 
 networks:
   outside: {}
+  gateway-out: {}
   sandbox:
     internal: true
     driver: bridge

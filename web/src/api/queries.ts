@@ -385,3 +385,43 @@ export const useRotateMemberKey = () => useInvalidating(() => ok(api.POST('/api/
 export const useRecoverMembership = () =>
   useInvalidating((recovery_key: string) => ok(api.POST('/api/membership/recover', { body: { recovery_key } })), [['membership']])
 export const useLeaveHub = () => useInvalidating((confirm: string) => ok(api.POST('/api/membership/leave', { body: { confirm } })), [['membership']])
+
+
+// Friends (H5): friends, requests, codes, the pause switch. Every create carries an idempotency key.
+export const useFriends = (enabled = true) => useQuery({ queryKey: ['friends'], enabled, queryFn: () => ok(api.GET('/api/friends')) })
+export const useFriendRequests = (enabled = true) => useQuery({ queryKey: ['friend-requests'], enabled, queryFn: () => ok(api.GET('/api/friends/requests')) })
+export const useFriendSettings = () => useQuery({ queryKey: ['friend-settings'], queryFn: () => ok(api.GET('/api/friends/settings')) })
+export const useFriendFingerprint = (enabled = true) => useQuery({ queryKey: ['friend-fingerprint'], enabled, queryFn: () => ok(api.GET('/api/friends/fingerprint')) })
+export type BreakerChoice = NonNullable<S['FriendBreaker']['choices']>[number]
+export const useFriendBreaker = (enabled = true) => useQuery({ queryKey: ['friend-breaker'], enabled, queryFn: () => ok(api.GET('/api/friends/breaker')) })
+/** The owner's answer to a tripped spend breaker. */
+export const useDecideBreaker = () =>
+  useInvalidating((choice: BreakerChoice) => {
+    const body = { idempotency_key: newKey() }
+    return choice === 'allow_today' ? ok(api.POST('/api/friends/breaker/allow-today', { body }))
+      : choice === 'allow_run' ? ok(api.POST('/api/friends/breaker/allow-run', { body }))
+      : ok(api.POST('/api/friends/breaker/stop-today', { body }))
+  }, [['friend-breaker']])
+const friendKeys = [['friends'], ['friend-requests'], ['threads']]
+export const useSetFriendSettings = () =>
+  useInvalidating((b: S['FriendSettingsPatch']) => ok(api.PATCH('/api/friends/settings', { body: b })), [['friend-settings']])
+export const useCreateFriendRequest = () =>
+  useInvalidating((b: Omit<S['FriendRequestCreate'], 'idempotency_key'>) => ok(api.POST('/api/friends/requests', { body: { ...b, idempotency_key: newKey() } })), friendKeys)
+export const useApproveFriendRequest = () =>
+  useInvalidating((id: number) => ok(api.POST('/api/friends/requests/{request_id}/approve', { params: { path: { request_id: id } } })), friendKeys)
+export const useDeclineFriendRequest = () =>
+  useInvalidating((id: number) => ok(api.POST('/api/friends/requests/{request_id}/decline', { params: { path: { request_id: id } } })), friendKeys)
+export const useFriendCodes = (enabled = true) => useQuery({ queryKey: ['friend-codes'], enabled, queryFn: () => ok(api.GET('/api/friends/codes')) })
+// The code itself is in this answer only (the server keeps a hash), so it is never cached by a query.
+export const useCreateFriendCode = () =>
+  useInvalidating((b: Omit<S['FriendCodeCreate'], 'idempotency_key'>) => ok(api.POST('/api/friends/codes', { body: { ...b, idempotency_key: newKey() } })), [['friend-codes']])
+export const useDeleteFriendCode = () =>
+  useInvalidating((id: number) => ok(api.DELETE('/api/friends/codes/{code_id}', { params: { path: { code_id: id } } })), [['friend-codes']])
+export const usePatchFriend = () =>
+  useInvalidating((a: { address: string; patch: S['FriendPatch'] }) => ok(api.PATCH('/api/friends/{address}', { params: { path: { address: a.address } }, body: a.patch })), friendKeys)
+export const useBlockFriend = () =>
+  useInvalidating((address: string) => ok(api.POST('/api/friends/{address}/block', { params: { path: { address } } })), friendKeys)
+export const useUnblockFriend = () =>
+  useInvalidating((address: string) => ok(api.POST('/api/friends/{address}/unblock', { params: { path: { address } } })), friendKeys)
+export const useUnfriend = () =>
+  useInvalidating((address: string) => ok(api.DELETE('/api/friends/{address}', { params: { path: { address } } })), friendKeys)

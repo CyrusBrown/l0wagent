@@ -28,7 +28,6 @@ FILES_HOST_PATTERN = "{name}.hubfiles.example"
 MIN_RELEASE = "0.8.0"
 LIMITS = '{"tunnel_streams": 64, "request_body_bytes": 104857600, "auth_rate_per_minute": 20}'
 POLICIES = '{"terms": "https://hub.example/terms", "privacy": "https://hub.example/privacy"}'
-OWN_URL = "true"
 # INVITE_DAYS = "7"
 # The cloudflared accelerator (README.md, "The cloudflared accelerator"); needs migration 0002 and the secret CF_API_TOKEN.
 # CF_ACCELERATOR = "true"

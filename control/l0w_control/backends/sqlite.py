@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import mimetypes
 import os
 from collections.abc import AsyncIterator, Coroutine, Iterator
@@ -34,11 +35,14 @@ from ..diskusage import DiskUsage
 from ..files import Storage, guess_mime
 from ..files_origin import Signer
 from ..files_origin import make_app as files_app
+from ..friends import Friends
+from ..hubservices import Hubservices
 from ..integrations import Integrations
 from ..jobs import Jobs
 from ..live import Live
 from ..membership import Gateway, Membership
 from ..notify import Notifier
+from ..presence import Presence
 from ..retention import run_retention
 from ..reviewer import Reviewer
 from ..routines import Routines
@@ -51,6 +55,7 @@ from ..updates import Updates
 from ..vault import Vault
 from .base import Backend, BadRequest, Conflict, NotFound
 
+log = logging.getLogger("l0w.backend")
 T = TypeVar("T")
 API_VERSION = "0"
 SELFTEST_NOTE = ("The network probes run inside the agent's computer, so they catch a misconfigured setup "
@@ -110,11 +115,26 @@ class SqliteBackend(Backend):
         self.membership_ = Membership(self.db, self.notifier, self.live, gateway=Gateway(gw_url, gw_token) if gw_url and gw_token else None,
                                       two_factor=self._two_factor_on)
         self.notifier.public_origin = lambda: self.membership_.instance_origin() or os.environ.get("L0W_PUBLIC_URL")
+        self.friends_ = Friends(self.db, self.live, self.conv, self.vault, self.settings, self.membership_, self.notifier, lambda sub, name, data: self._write_inbox(sub, name, data))
+        self.hubservices_ = Hubservices(self.db, self.live, self.vault, self.settings, self.membership_, self.notifier)
+        self.friends_.hubservices = self.hubservices_
+        self.conv.storage = self.storage
+        self.friends_.storage = self.storage
+        self.conv.on_owner_message = self._peer_post
+        self.conv.on_assistant_peer_message = self._peer_post
+        self.conv.peer_gate = self.friends_.gate_message
+        self.conv.on_peer_delivered = self.friends_.breaker.on_delivered
+        self.conv.on_nonpeer_post = self.friends_.breaker.on_nonpeer_post
+        self.runs_mgr.on_finish.append(lambda run: self.friends_.breaker.on_run_end(run["id"]))
+        self.conv.apply_wake = self.friends_.apply_wake
+        self.friends_.scheduler, self.friends_.budgets = self.scheduler, self.budgets
+        self.presence_ = Presence(self.db, self.settings, self.budgets, self.runs_mgr, self.friends_)
         self.signer = Signer(self.vault.key)
         from ..extensions import Extensions
 
         ext_dir = os.environ.get("L0W_EXTENSIONS_DIR", "/app/extensions")
         self.ext = Extensions(self, Path(ext_dir) if ext_dir else None)
+        self.hubservices_.event_sink = self.ext.fire_hub_event
         self.integrations.extra_presets = self.ext.presets
         self.integrations.timeout = lambda: self.settings.get("INTEGRATION_TIMEOUT_S")
         fire = self.ext.fire
@@ -147,6 +167,7 @@ class SqliteBackend(Backend):
         self.chats_.startup()
         self.ext.startup(self.loop)
         await self.runs_mgr.startup()
+        self.hubservices_.startup()
         try:
             await self.membership_.startup()
         except Exception:  # noqa: BLE001  (the gateway may still be starting; the daily check repairs it)
@@ -210,6 +231,8 @@ class SqliteBackend(Backend):
             for entity, table in (("question", "questions"), ("permission", "permissions"), ("task", "tasks"), ("suggestion", "suggestions"), ("promote", "promote_requests")):
                 out += [(entity, str(r["id"])) for r in self.db.q(f"SELECT id FROM {table} WHERE status='open'")]
             out += [("claim", str(r["id"])) for r in self.db.q("SELECT id FROM claims WHERE status IN ('planned','in_progress')")]
+            out += [("friend", r["address"]) for r in self.db.q("SELECT address FROM friends")]
+            out += [("friend_request", str(r["id"])) for r in self.db.q("SELECT id FROM friend_requests WHERE state IN ('pending','sent')")]
             return out
 
         return self.live.sync(since, snapshot)
@@ -300,8 +323,73 @@ class SqliteBackend(Backend):
     def membership_leave(self, req: s.LeaveRequest) -> s.Membership:
         return self._await(self.membership_.leave(req))
 
+    def membership_services(self) -> list[s.HubService]:
+        return self.hubservices_.view()
+
+    def membership_service_patch(self, address: str, req: s.HubServicePatch) -> s.HubService:
+        return self._await(self.hubservices_.set_enabled(address, req.enabled), timeout=60)
+
     def self_description(self) -> dict | None:
         return self.membership_.self_doc()
+
+    # ── friends and peer messages (H5; friends.py) ─────────────────────────
+    def _peer_post(self, thread_id: int, message_id: int) -> None:
+        """The owner wrote in a peer thread: remember it, and have it sent without holding the request."""
+        if self.friends_.queue_message(thread_id, message_id) is not None and self.loop is not None:
+            asyncio.run_coroutine_threadsafe(self.friends_.flush(), self.loop)
+
+    def friends(self) -> list[s.Friend]:
+        return self.friends_.friends()
+
+    def friend_requests(self, state: str | None) -> list[s.FriendRequest]:
+        return self.friends_.requests(state)
+
+    def create_friend_request(self, req: s.FriendRequestCreate) -> s.FriendRequest:
+        return self._await(self.friends_.request(req), timeout=90)
+
+    def approve_friend_request(self, request_id: int) -> s.FriendRequest:
+        return self._await(self.friends_.approve(request_id), timeout=90)
+
+    def decline_friend_request(self, request_id: int) -> s.FriendRequest:
+        return self.friends_.decline(request_id)
+
+    def patch_friend(self, address: str, req: s.FriendPatch) -> s.Friend:
+        return self.friends_.patch(address, req)
+
+    def block_friend(self, address: str) -> s.Friend:
+        return self._await(self.friends_.block(address))
+
+    def unblock_friend(self, address: str) -> None:
+        self.friends_.unblock(address)
+
+    def unfriend(self, address: str) -> None:
+        self._await(self.friends_.unfriend(address), timeout=90)
+
+    def friend_codes(self) -> list[s.FriendCode]:
+        return self.friends_.codes()
+
+    def create_friend_code(self, req: s.FriendCodeCreate) -> s.FriendCodeCreated:
+        return self._await(self.friends_.create_code(req))
+
+    def delete_friend_code(self, code_id: int) -> None:
+        self.friends_.delete_code(code_id)
+
+    def friend_fingerprint(self) -> s.FriendFingerprint:
+        return self._await(self.friends_.fingerprint())
+
+    def friend_settings(self) -> s.FriendSettings:
+        return self.friends_.settings_view()
+
+    def friend_breaker(self) -> s.FriendBreaker:
+        return self.friends_.breaker.view()
+
+    def friend_breaker_decide(self, choice: str, req: s.FriendBreakerAction) -> s.FriendBreaker:
+        b = self.friends_.breaker
+        make = {"allow_today": b.allow_today, "allow_run": b.allow_run, "stop_today": b.stop_today}[choice]
+        return self.conv.once(req.idempotency_key, f"friend-breaker:{choice}", s.FriendBreaker, make)
+
+    def set_friend_settings(self, req: s.FriendSettingsPatch) -> s.FriendSettings:
+        return self.friends_.set_settings(req)
 
     def public_origins(self) -> tuple[str | None, str | None]:
         return self.membership_.instance_origin(), self.membership_.files_origin()
@@ -465,41 +553,45 @@ class SqliteBackend(Backend):
         return s.Upload(id=u["id"], project=u["slug"], name=u["name"], path=u["path"], size=u["size"], mime=u["mime"], created_at=parse(u["created_at"]))  # type: ignore[arg-type]
 
     def _write_inbox(self, sub: str, name: str, data: bytes) -> str:
-        """Write into <inbox>/<sub>/ without following symlinks below the inbox root (the
-        agent controls that tree). Never overwrites: picks a free name."""
+        """Write into <inbox>/<sub>/ (sub may be nested, like peers/bob@hub.example) without following symlinks
+        below the inbox root (the agent controls that tree). Never overwrites: picks a free name."""
         flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
         nofollow = getattr(os, "O_NOFOLLOW", 0)
         try:
             root = os.open(self.inbox_dir, flags)
         except OSError as e:
             raise Conflict("inbox_unavailable", f"Control can't write uploads here ({self.inbox_dir}): {e}") from e
+        opened = [root]
         try:
-            try:
-                os.mkdir(sub, 0o755, dir_fd=root)
-            except FileExistsError:
-                pass
-            try:
-                d = os.open(sub, flags | nofollow, dir_fd=root)
-            except OSError as e:
-                raise Conflict("inbox_unavailable", f"_inbox/{sub} isn't a plain folder") from e
-            try:
-                stem, dot, ext = name.rpartition(".")
-                if not dot or not stem:
-                    stem, dot, ext = name, "", ""
-                for n in range(1000):
-                    candidate = name if n == 0 else f"{stem}-{n + 1}{dot}{ext}"
-                    try:
-                        fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL | nofollow, 0o644, dir_fd=d)
-                    except FileExistsError:
-                        continue
-                    with os.fdopen(fd, "wb") as f:
-                        f.write(data)
-                    return candidate
-                raise Conflict("name_taken", "Too many files with that name.")
-            finally:
-                os.close(d)
+            d = root
+            for part in sub.split("/"):
+                if part in ("", ".", ".."):
+                    raise BadRequest("bad_path", "Not a folder name.")
+                try:
+                    os.mkdir(part, 0o755, dir_fd=d)
+                except FileExistsError:
+                    pass
+                try:
+                    d = os.open(part, flags | nofollow, dir_fd=d)
+                except OSError as e:
+                    raise Conflict("inbox_unavailable", f"_inbox/{sub} isn't a plain folder") from e
+                opened.append(d)
+            stem, dot, ext = name.rpartition(".")
+            if not dot or not stem:
+                stem, dot, ext = name, "", ""
+            for n in range(1000):
+                candidate = name if n == 0 else f"{stem}-{n + 1}{dot}{ext}"
+                try:
+                    fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL | nofollow, 0o644, dir_fd=d)
+                except FileExistsError:
+                    continue
+                with os.fdopen(fd, "wb") as f:
+                    f.write(data)
+                return candidate
+            raise Conflict("name_taken", "Too many files with that name.")
         finally:
-            os.close(root)
+            for fd in reversed(opened):
+                os.close(fd)
 
     # ── extensions ─────────────────────────────────────────────────────────
     def extensions(self) -> list[s.ExtensionInfo]:
@@ -879,6 +971,15 @@ class SqliteBackend(Backend):
         from datetime import timedelta
         await self._check_disk(now)
         await self.membership_.housekeeping(now)
+        await self.friends_.housekeeping(now)
+        try:
+            await self.hubservices_.housekeeping(now)
+        except Exception:  # noqa: BLE001  (the rest of housekeeping must still run)
+            log.exception("hub services")
+        try:
+            await self.presence_.tick(now)
+        except Exception:  # noqa: BLE001  (the rest of housekeeping must still run)
+            log.exception("presence")
         if self.settings.get("UPDATE_CHECK"):
             before = self.updates.info().available
             await self.updates.check()

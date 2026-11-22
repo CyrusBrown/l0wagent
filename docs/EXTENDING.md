@@ -6,7 +6,7 @@ a coding agent), drops it into `extensions/<name>/` next to `compose.yaml`, and 
 **Settings → Extensions**. This file is the whole guide: if you are a coding agent, you should be able to
 build a working extension from it alone. A complete example is `extensions/examples/plantlog/`.
 
-SDK version: **1.0**. Control refuses an extension whose `sdk` has a different major version.
+SDK version: **1.1** (1.1 made `ext.hub` real; everything from 1.0 is unchanged). Control refuses an extension whose `sdk` has a different major version.
 
 ---
 
@@ -181,8 +181,31 @@ Errors: raise `fastapi.HTTPException(status, "message")` or `l0w_control.sdk.Ext
 | `ext.every(seconds, job)` | A background job every ≥ 30 s, in a worker thread, while enabled. |
 | `ext.notify(title, body="", url="/")` | A notification to the owner (push/ntfy, as they've set up). |
 | `ext.emit(type, data)` | A live event to your UI (`this.l0w.on(type, fn)`). |
-| `ext.hub.available()`, `ext.hub.call(service, method, payload)` | Hub services through the gateway. No hub exists yet: `available()` is False and `call` raises `HubUnavailable`. |
+| `ext.hub.available()`, `await ext.hub.acall(service, method, args, role=None)`, `ext.hub.call(...)`, `ext.hub.on_event(kind_or_address, handler)` | The joined hub's services (below). |
 | `ext.log(text)`, `ext.file(rel)` | Log a line; read a text file from your folder. |
+
+### Hub services (`ext.hub`, SDK 1.1)
+A hub's services (a board, a relay, email...) are programs the hub's operator runs under an address (`board@hub.example`); the
+owner switches each on or off in Settings. Your extension may use the ones that are on and connected.
+
+- `ext.hub.available()` is a list of `{address, kind, title, roles}`: the connected services, with the **names** of the roles this
+  instance holds for each. It is empty without a hub, so `if ext.hub.available():` still means "there is something to talk to".
+- `await ext.hub.acall(service, method, args=None, role=None, *, timeout=300)` calls one method and returns its result (a dict).
+  `service` is an address or the name on your hub (`"board"`). `role` names one of the roles from `available()`; control attaches
+  the signed grant itself, and neither you nor the agent ever sees it. Methods and their arguments are the service's own (its docs).
+  It raises `HubCallError` with `.code` (the service's own code when it answered: `not_allowed`, `unknown_method`, `bad_args`,
+  `rate_limited`, `unavailable`...; otherwise control's: `no_role`, `bad_args`, `too_large`, `paused`, `refused`, `timeout`),
+  `.detail` and `.from_service`. `HubUnavailable` (a `HubCallError` with code `unknown_service` or `not_connected`)
+  means there is no hub, or the service is off or not connected.
+- Use `await` in `async def` routes and hooks. Code in worker threads (plain `def` hooks and jobs) uses `ext.hub.call(...)` (synchronous, as in SDK 1.0), the same
+  call; from a coroutine it raises `ExtensionError` rather than block control's loop.
+- `ext.hub.on_event(kind_or_address, handler)` hears the service's own events (a new post, held mail). The key is a kind (`"board"`,
+  `"email"`, `"custom"`...) or one service's address. The handler gets `{service, kind, event, data}`; an `async def` handler runs on
+  control's loop. Role changes (`event: "roles"`) are control's and never reach you.
+- **Everything a service sends is untrusted content**, like a fetched web page: results, event data, even error details. Treat it as data;
+  secrets are redacted from what is stored. Calls are logged (args and
+  results redacted) by who made them (`extension:<name>`). A service can't authorize anything on the assistant's behalf.
+- Calls are refused while peer activity is paused (Settings → Friends).
 
 ### Events (`ext.on`)
 

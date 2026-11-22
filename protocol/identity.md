@@ -24,7 +24,6 @@ Payload:
   ],
   "history": [{"<signed rotation document>": "…"}],
   "hostnames": {"instance": "mara.hub.example", "files": "files--mara.hubfiles.example"},
-  "own_urls": {"instance": "https://box.mara.example", "files": "https://files.mara.example"},
   "protocols": ["l0w/0.1"]
 }
 ```
@@ -34,8 +33,6 @@ Payload:
   MUST NOT go back to a lower one (no rollback).
 - `history` lets a verifier that pinned an older key walk forward: each rotation is signed by the
   key it replaces (or by the recovery key), and names the new key.
-- `own_urls` is optional: where the instance can be reached without this hub (if the member has
-  public HTTPS of their own). Both or neither.
 - `hostnames` are exactly what the hub assigned at join (membership.md); never derived from the name.
 
 ## The directory entry (signing input `directory-entry`)

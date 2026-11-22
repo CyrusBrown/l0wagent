@@ -222,6 +222,26 @@ class Backend:
     def membership_rotate(self) -> s.Membership: raise NotImplementedError
     def membership_recover(self, req: s.RecoverRequest) -> s.Membership: raise NotImplementedError
     def membership_leave(self, req: s.LeaveRequest) -> s.Membership: raise NotImplementedError
+    def membership_services(self) -> list[s.HubService]: raise NotImplementedError
+    def membership_service_patch(self, address: str, req: s.HubServicePatch) -> s.HubService: raise NotImplementedError
+    # friends and messages between instances (H5)
+    def friends(self) -> list[s.Friend]: raise NotImplementedError
+    def friend_requests(self, state: str | None) -> list[s.FriendRequest]: raise NotImplementedError
+    def create_friend_request(self, req: s.FriendRequestCreate) -> s.FriendRequest: raise NotImplementedError
+    def approve_friend_request(self, request_id: int) -> s.FriendRequest: raise NotImplementedError
+    def decline_friend_request(self, request_id: int) -> s.FriendRequest: raise NotImplementedError
+    def patch_friend(self, address: str, req: s.FriendPatch) -> s.Friend: raise NotImplementedError
+    def block_friend(self, address: str) -> s.Friend: raise NotImplementedError
+    def unblock_friend(self, address: str) -> None: raise NotImplementedError
+    def unfriend(self, address: str) -> None: raise NotImplementedError
+    def friend_codes(self) -> list[s.FriendCode]: raise NotImplementedError
+    def create_friend_code(self, req: s.FriendCodeCreate) -> s.FriendCodeCreated: raise NotImplementedError
+    def delete_friend_code(self, code_id: int) -> None: raise NotImplementedError
+    def friend_fingerprint(self) -> s.FriendFingerprint: raise NotImplementedError
+    def friend_settings(self) -> s.FriendSettings: raise NotImplementedError
+    def friend_breaker(self) -> s.FriendBreaker: raise NotImplementedError
+    def friend_breaker_decide(self, choice: str, req: s.FriendBreakerAction) -> s.FriendBreaker: raise NotImplementedError
+    def set_friend_settings(self, req: s.FriendSettingsPatch) -> s.FriendSettings: raise NotImplementedError
     def self_description(self) -> dict | None: raise NotImplementedError
     def public_origins(self) -> tuple[str | None, str | None]: raise NotImplementedError  # (instance, files) on a hub, else (None, None)
 

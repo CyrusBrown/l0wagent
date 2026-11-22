@@ -49,7 +49,7 @@ def test_through_the_tunnel(be):
         r = c.get("/api/agent/ping", headers={"x-agent-token": "agent-secret"})
         assert r.status_code == 403 and r.json()["error"] == "agent_api_from_sandbox_only"
         assert c.get("/api/meta").status_code == 200
-        assert c.get("/api/peer/x").status_code == 404  # reserved for the hub
+        assert c.get("/api/peer/x").status_code == 404  # nothing there (the inbox is POST /api/peer/v0/inbox: tests/test_friends.py)
 
 
 def test_tunnel_client_address_and_scheme(monkeypatch):

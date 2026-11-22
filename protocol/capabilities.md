@@ -14,7 +14,7 @@ members' addresses. Payload:
   "instance_releases": {"min": "0.8.0"},
   "api": "https://hub.example/v0/",
   "tunnel": "wss://tunnel.hub.example/v0/tunnel",
-  "membership": {"invites": true, "signups": "closed", "own_url": true, "require_2fa": true},
+  "membership": {"invites": true, "signups": "closed", "require_2fa": true},
   "hostnames": {"layout": "two-domains", "example": {"name": "username", "instance": "username.hub.example", "files": "files--username.hubfiles.example"}},
   "policies": {"terms": "https://hub.example/terms", "privacy": "https://hub.example/privacy"},
   "limits": {"tunnel_streams": 64, "request_body_bytes": 104857600, "auth_rate_per_minute": 20},
@@ -28,8 +28,8 @@ members' addresses. Payload:
 - `protocols`: versions the hub speaks; `instance_releases.min`: the oldest instance release it still
   supports (versions.md).
 - `api`: the base of the hub's core HTTP API (`openapi.json`). `tunnel`: the WebSocket URL (tunnel.md).
-- `membership.signups`: `"closed"`, `"open"` or `"approval"`. `own_url`: whether members may join
-  with their own URLs. `require_2fa` is always `true` in this version; instances check it anyway.
+- `membership.signups`: `"closed"`, `"open"` or `"approval"`. `require_2fa` is always `true` in this version; instances check it anyway.
+  Instances MUST NOT require fields this version doesn't list (older hubs also send `own_url`).
 - `hostnames.layout`: informative (`"two-domains"`, `"flat"`, `"nested"`); instances never derive a
   hostname from it. The example shows a new member what theirs will look like: `example.name` (optional)
   is the name it was made for, and hubs SHOULD use `username`. An instance MAY preview a member's

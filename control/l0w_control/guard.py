@@ -12,7 +12,9 @@
 - The hub tunnel's subnet (`L0W_TUNNEL_SUBNET`, the tunnel service) reaches what the internet
   may: the UI, the owner API, `/mcp`, `/oauth/*`, `/.well-known/*`, `/api/peer/*`, `/api/hub/*`
   and `/s/*`, never `/api/agent/*` or `/api/chat-runtime/*`, and no dev escape hatch widens it.
-- `/api/peer/*` and `/api/hub/*` are reserved for the hub (signed requests, later).
+- `/api/hub/*` is reserved for the hub (signed requests, later). `/api/peer/*` is the instance-to-instance
+  inbox (friends.py): only the tunnel's class reaches it, and it needs no cookie or token (the
+  envelope is signed and the gateway checks it); every other caller gets a plain 404.
 - Writes authenticated by the session cookie must carry `X-L0W-Client`. Cookies reach every
   port on the host, including the files origin with agent HTML in previews; a page there can't
   add a custom header to a cross-origin request without a CORS preflight, which control
@@ -31,7 +33,8 @@ from fastapi.responses import JSONResponse
 
 from .config import Env
 
-RESERVED = ("/api/peer/", "/api/hub/")
+RESERVED = ("/api/hub/",)
+PEER = "/api/peer"
 SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 CLIENT_HEADER = "x-l0w-client"
 SESSION_COOKIES = ("__Host-l0w_session", "l0w_session")  # auth.SESSION_COOKIES (not imported: guard loads first)
@@ -122,6 +125,10 @@ def install(app: FastAPI, env: Env) -> None:
             return await call_next(request)
         if cls not in OWNER_SIDE or _under(path, CHAT_API):
             return await call_next(request)
+        if _under(path, PEER):
+            if cls != TUNNEL:
+                return JSONResponse({"error": "not_found", "detail": path}, status_code=404)
+            return await call_next(request)  # no session, no CSRF check: the route reads nothing the caller's browser could add
         if path.startswith(RESERVED):
             return JSONResponse({"error": "reserved", "detail": "Reserved for the hub."}, status_code=404)
         if (request.method not in SAFE_METHODS and path.startswith("/api/") and any(c in request.cookies for c in SESSION_COOKIES)

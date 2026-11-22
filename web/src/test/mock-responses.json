@@ -56,7 +56,6 @@
   "state": "standalone",
   "available": true,
   "address": null,
-  "mode": null,
   "hub": null,
   "hostnames": null,
   "urls": null,
@@ -3014,5 +3013,141 @@
    }
   ],
   "note": "Mock self-test."
+ },
+ "/api/friends": [
+  {
+   "address": "cleo@hub.example",
+   "display_name": "cleo@hub.example",
+   "fingerprint": "3H8N-V2TP-Q6BD-0YJ4",
+   "state": "requested_in",
+   "share": "nothing",
+   "presence_detail": "coarse",
+   "waking": "never",
+   "muted": false,
+   "breaker": "normal",
+   "thread_id": null,
+   "presence": null,
+   "same_owner": false,
+   "key_alarm": null,
+   "created_at": "2026-11-22T20:16:03Z",
+   "updated_at": "2026-11-22T20:16:03Z"
+  },
+  {
+   "address": "ana@hub.example",
+   "display_name": "Ana",
+   "fingerprint": "7Q2M-9KXA-4D1F-R0VE",
+   "state": "friends",
+   "share": "shared",
+   "presence_detail": "coarse",
+   "waking": "ask",
+   "muted": false,
+   "breaker": "normal",
+   "thread_id": 11,
+   "presence": {
+    "state": "asleep",
+    "next": "tonight",
+    "now": null,
+    "at": "2026-11-22T21:56:03Z"
+   },
+   "same_owner": false,
+   "key_alarm": null,
+   "created_at": "2026-11-02T22:16:03Z",
+   "updated_at": "2026-11-22T19:16:03Z"
+  },
+  {
+   "address": "ben@other.example",
+   "display_name": "Ben",
+   "fingerprint": "WZCY-8FG5-JZ5E-V87N",
+   "state": "friends",
+   "share": "nothing",
+   "presence_detail": "coarse",
+   "waking": "never",
+   "muted": true,
+   "breaker": "normal",
+   "thread_id": 12,
+   "presence": null,
+   "same_owner": false,
+   "key_alarm": "Their key changed with no rotation from the one we pinned. Check with them before you trust it.",
+   "created_at": "2026-10-23T22:16:03Z",
+   "updated_at": "2026-11-18T22:16:03Z"
+  }
+ ],
+ "/api/friends/requests": [
+  {
+   "id": 2,
+   "direction": "out",
+   "address": "ana@hub.example",
+   "note": "",
+   "made_by": "owner",
+   "code_used": true,
+   "fingerprint": "7Q2M-9KXA-4D1F-R0VE",
+   "state": "approved",
+   "error": null,
+   "created_at": "2026-11-02T22:16:03Z",
+   "decided_at": "2026-11-02T22:21:03Z"
+  },
+  {
+   "id": 1,
+   "direction": "in",
+   "address": "cleo@hub.example",
+   "note": "Hi, I'm Cleo from the makerspace. Ana said you'd like to compare pump setups.",
+   "made_by": "owner",
+   "code_used": false,
+   "fingerprint": "3H8N-V2TP-Q6BD-0YJ4",
+   "state": "pending",
+   "error": null,
+   "created_at": "2026-11-22T20:16:03Z",
+   "decided_at": null
+  }
+ ],
+ "/api/friends/settings": {
+  "requests_from": "hub",
+  "paused": false
+ },
+ "/api/friends/fingerprint": {
+  "address": "mara@hub.example",
+  "fingerprint": "WZCY-8FG5-JZ5E-V87N"
+ },
+ "/api/friends/codes": [
+  {
+   "id": 1,
+   "label": "Ben",
+   "state": "used",
+   "created_at": "2026-10-22T22:16:03Z",
+   "expires_at": "2026-11-05T22:16:03Z",
+   "used_at": "2026-10-23T22:16:03Z",
+   "used_by": "ben@other.example"
+  }
+ ],
+ "/api/friends/breaker": {
+  "tripped": true,
+  "paused": true,
+  "limit": "day",
+  "explanation": "Your assistant's spending on friends today is about 8.4 pts, more than 5% (7.5 pts) of the week's allowance (Ana 6.1, Ben 2.3). Its replies to friends and wake requests are paused.",
+  "day_spent": 8.4,
+  "day_limit": 7.5,
+  "day_pct": 5.0,
+  "day_step_pct": 5.0,
+  "run_id": null,
+  "run_spent": null,
+  "run_limit": null,
+  "stopped_until": null,
+  "choices": [
+   "allow_today",
+   "stop_today"
+  ],
+  "spent_on": [
+   {
+    "address": "ana@hub.example",
+    "display_name": "Ana",
+    "pts": 6.1
+   },
+   {
+    "address": "ben@other.example",
+    "display_name": "Ben",
+    "pts": 2.3
+   }
+  ],
+  "at": "2026-11-22T22:04:03Z"
  }
 }

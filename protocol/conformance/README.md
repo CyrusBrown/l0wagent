@@ -18,6 +18,9 @@ uv run python -m conformance --hub https://hub.example --invite-cmd "<shell comm
 - `--bind-name NAME` (default `opsname`): a name the hub reserved itself (its own name, or an extra reserved name).
   The suite registers it with a bound invite, so on a hub that was used before it reports a SKIP (the name is taken).
   `--bind-name ""` skips the bound-invite checks.
+- Services (services.md): when the hub lists services in its capabilities `extras`, the suite checks that each
+  service document verifies with the hub key and validates, and that the service has a directory entry
+  countersigned by the hub. No particular service is required; with none listed the checks SKIP.
 - `--connect HOST:PORT`: open every connection (HTTP, WebSocket, raw) to that address while keeping the `Host`
   header and TLS name. For a hub whose hostnames do not resolve from where you run the suite.
 - `--insecure`: do not verify TLS certificates. `-v`: print the detail of passing checks too.
@@ -30,7 +33,7 @@ the same way for its own tests.
 ## What is checked
 Capabilities (signature, `require_2fa`); invites (lookup does not consume; unknown, used); registration (201, two
 different hostnames, hub key; refusals for a tampered body, a missing second signature, another hub, a stale `iat`, an
-unsupported version, bad / reserved / lookalike / taken names, a bad invite, an old release, own-URL URLs); the directory
+unsupported version, bad / reserved / lookalike / taken names, a bad invite, an old release); the directory
 (404 until the first self, then a valid countersigned entry; revocations and reregistrations are arrays); self updates
 (higher `seq` only, wrong signer or records refused); rotation (only with a valid chain, signed by the old key or the
 recovery key); the tunnel (handshake refusals close 4401, other subprotocol refused, ready limits, PING/PONG,
@@ -41,5 +44,5 @@ the name never reused, the tunnel closed, the hostnames gone).
 
 Not covered (needs hub-side hooks or time the suite cannot assume): hub-initiated PING after 30 s of silence, the 90 s
 dead-connection rule, the 30 s drain limit for a replaced connection, `moved` documents, re-registration approval,
-`instance_releases.min` at the tunnel handshake (4426), own-URL success (needs a TLS server the suite would host), and a
+`instance_releases.min` at the tunnel handshake (4426), and a
 peer that overruns a flow-control window (RESET `flow_control`).

@@ -1376,7 +1376,8 @@
                     "owner",
                     "assistant",
                     "chat",
-                    "system"
+                    "system",
+                    "peer"
                   ],
                   "type": "string"
                 },
@@ -6329,6 +6330,101 @@
         ]
       }
     },
+    "/api/membership/services": {
+      "get": {
+        "tags": [
+          "hub"
+        ],
+        "summary": "Membership Services",
+        "description": "The joined hub's services (protocol/services.md) with the owner's on/off switch and where each connection stands. (`/api/hub/*` is reserved for the hub.)",
+        "operationId": "membership_services_api_membership_services_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/HubService"
+                  },
+                  "type": "array",
+                  "title": "Response Membership Services Api Membership Services Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/membership/services/{address}": {
+      "patch": {
+        "tags": [
+          "hub"
+        ],
+        "summary": "Membership Service Patch",
+        "description": "Switch one service on or off. Off sends the service a goodbye and revokes the token it was given; on connects.",
+        "operationId": "membership_service_patch_api_membership_services__address__patch",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "address",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Address"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HubServicePatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HubService"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/membership/leave": {
       "post": {
         "tags": [
@@ -6377,6 +6473,888 @@
             "device": []
           }
         ]
+      }
+    },
+    "/api/friends": {
+      "get": {
+        "tags": [
+          "friends"
+        ],
+        "summary": "Friends",
+        "description": "Friends, people who asked to be, people we asked, and blocked addresses, with their settings and latest presence.",
+        "operationId": "friends_api_friends_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Friend"
+                  },
+                  "type": "array",
+                  "title": "Response Friends Api Friends Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/friends/requests": {
+      "get": {
+        "tags": [
+          "friends"
+        ],
+        "summary": "Friend Requests",
+        "operationId": "friend_requests_api_friends_requests_get",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pending",
+                    "approved",
+                    "declined",
+                    "sent",
+                    "failed",
+                    "expired"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FriendRequest"
+                  },
+                  "title": "Response Friend Requests Api Friends Requests Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "friends"
+        ],
+        "summary": "Create Friend Request",
+        "description": "Asks someone to be friends (online only). With a friend code their fingerprint is checked for you.",
+        "operationId": "create_friend_request_api_friends_requests_post",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FriendRequestCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FriendRequest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/friends/requests/{request_id}/approve": {
+      "post": {
+        "tags": [
+          "friends"
+        ],
+        "summary": "Approve Friend Request",
+        "description": "Approves a request: theirs (pins their key and sends our acceptance), or our assistant's draft (sends it). Full-scope tokens only.",
+        "operationId": "approve_friend_request_api_friends_requests__request_id__approve_post",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FriendRequest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/friends/requests/{request_id}/decline": {
+      "post": {
+        "tags": [
+          "friends"
+        ],
+        "summary": "Decline Friend Request",
+        "description": "Declines a request. They aren't told.",
+        "operationId": "decline_friend_request_api_friends_requests__request_id__decline_post",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FriendRequest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/friends/settings": {
+      "get": {
+        "tags": [
+          "friends"
+        ],
+        "summary": "Friend Settings",
+        "operationId": "friend_settings_api_friends_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FriendSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "friends"
+        ],
+        "summary": "Set Friend Settings",
+        "description": "Who may send friend requests, and the pause switch for all peer activity.",
+        "operationId": "set_friend_settings_api_friends_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FriendSettingsPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FriendSettings"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/friends/breaker": {
+      "get": {
+        "tags": [
+          "friends"
+        ],
+        "summary": "Friend Breaker",
+        "description": "The spend breaker for peer activity: today's estimated spend on friends, the limits, and whether one was hit (then a card waits for the owner).",
+        "operationId": "friend_breaker_api_friends_breaker_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FriendBreaker"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/friends/breaker/allow-today": {
+      "post": {
+        "tags": [
+          "friends"
+        ],
+        "summary": "Friend Breaker Allow Today",
+        "description": "Raises today's limit on peer spending by the step (5 points of percent) and lets the assistant reply to friends again.",
+        "operationId": "friend_breaker_allow_today_api_friends_breaker_allow_today_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FriendBreakerAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FriendBreaker"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/friends/breaker/allow-run": {
+      "post": {
+        "tags": [
+          "friends"
+        ],
+        "summary": "Friend Breaker Allow Run",
+        "description": "Exempts the run that hit the run limit (only while that limit is the one hit).",
+        "operationId": "friend_breaker_allow_run_api_friends_breaker_allow_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FriendBreakerAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FriendBreaker"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/friends/breaker/stop-today": {
+      "post": {
+        "tags": [
+          "friends"
+        ],
+        "summary": "Friend Breaker Stop Today",
+        "description": "Pauses the assistant's sends to friends until local midnight, whatever the limits say.",
+        "operationId": "friend_breaker_stop_today_api_friends_breaker_stop_today_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FriendBreakerAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FriendBreaker"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/friends/fingerprint": {
+      "get": {
+        "tags": [
+          "friends"
+        ],
+        "summary": "Friend Fingerprint",
+        "description": "Our own fingerprint, for friends to compare with what they see.",
+        "operationId": "friend_fingerprint_api_friends_fingerprint_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FriendFingerprint"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/friends/codes": {
+      "get": {
+        "tags": [
+          "friends"
+        ],
+        "summary": "Friend Codes",
+        "operationId": "friend_codes_api_friends_codes_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FriendCode"
+                  },
+                  "type": "array",
+                  "title": "Response Friend Codes Api Friends Codes Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "friends"
+        ],
+        "summary": "Create Friend Code",
+        "description": "Makes a one-time friend code. The code is in this answer only; just its hash is kept.",
+        "operationId": "create_friend_code_api_friends_codes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FriendCodeCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FriendCodeCreated"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/friends/codes/{code_id}": {
+      "delete": {
+        "tags": [
+          "friends"
+        ],
+        "summary": "Delete Friend Code",
+        "operationId": "delete_friend_code_api_friends_codes__code_id__delete",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "code_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Code Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/friends/{address}": {
+      "patch": {
+        "tags": [
+          "friends"
+        ],
+        "summary": "Patch Friend",
+        "description": "Their name here, what our assistant may share with them, presence detail, waking and mute.",
+        "operationId": "patch_friend_api_friends__address__patch",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "address",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Address"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FriendPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Friend"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "friends"
+        ],
+        "summary": "Unfriend",
+        "description": "Tells them, revokes our token and forgets their key. The thread stays as history.",
+        "operationId": "unfriend_api_friends__address__delete",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "address",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Address"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/friends/{address}/block": {
+      "post": {
+        "tags": [
+          "friends"
+        ],
+        "summary": "Block Friend",
+        "description": "Revokes their delivery token and drops everything they send, silently.",
+        "operationId": "block_friend_api_friends__address__block_post",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "address",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Address"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Friend"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/friends/{address}/unblock": {
+      "post": {
+        "tags": [
+          "friends"
+        ],
+        "summary": "Unblock Friend",
+        "operationId": "unblock_friend_api_friends__address__unblock_post",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "address",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Address"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/system/update/check": {
@@ -10613,6 +11591,858 @@
         ],
         "title": "FileHistoryEntry"
       },
+      "Friend": {
+        "properties": {
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fingerprint",
+            "description": "Of their pinned signing key; compare it with theirs out of band."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "requested_out",
+              "requested_in",
+              "friends",
+              "blocked"
+            ],
+            "title": "State"
+          },
+          "share": {
+            "type": "string",
+            "enum": [
+              "nothing",
+              "shared",
+              "anything"
+            ],
+            "title": "Share",
+            "description": "What our assistant may tell theirs: nothing about my projects / shared projects / anything."
+          },
+          "presence_detail": {
+            "type": "string",
+            "enum": [
+              "coarse",
+              "exact"
+            ],
+            "title": "Presence Detail",
+            "description": "'exact' also tells them when we'll next be awake and what we're doing."
+          },
+          "waking": {
+            "type": "string",
+            "enum": [
+              "never",
+              "ask",
+              "allow"
+            ],
+            "title": "Waking",
+            "description": "Whether they may wake our assistant: never / ask me / allow."
+          },
+          "muted": {
+            "type": "boolean",
+            "title": "Muted",
+            "default": false
+          },
+          "breaker": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "off"
+            ],
+            "title": "Breaker",
+            "description": "The spend breaker: 'off' leaves what this friend costs out of both limits (a run's share and the day's).",
+            "default": "normal"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread Id",
+            "description": "The peer thread."
+          },
+          "presence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FriendPresence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "same_owner": {
+            "type": "boolean",
+            "title": "Same Owner",
+            "description": "They sent a same-owner statement (a hint for defaults, never an authorization).",
+            "default": false
+          },
+          "key_alarm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key Alarm",
+            "description": "Their key changed with no rotation from the one we pinned. Re-verify with them; nothing is accepted automatically."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "address",
+          "display_name",
+          "state",
+          "share",
+          "presence_detail",
+          "waking",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Friend"
+      },
+      "FriendBreaker": {
+        "properties": {
+          "tripped": {
+            "type": "boolean",
+            "title": "Tripped",
+            "description": "A limit was hit and the owner hasn't decided: the assistant's replies to friends are refused and a card waits on the Friends page."
+          },
+          "paused": {
+            "type": "boolean",
+            "title": "Paused",
+            "description": "The assistant's posts in peer threads and its wake requests are refused right now (tripped, or stopped for today)."
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "run",
+                  "day"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit",
+            "description": "Which limit was hit, while tripped."
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation",
+            "description": "Control's plain words for the card: which limit, how much, of what.",
+            "default": ""
+          },
+          "day_spent": {
+            "type": "number",
+            "title": "Day Spent",
+            "description": "Estimated points spent on friends today (local day), without friends whose spend limit is off."
+          },
+          "day_limit": {
+            "type": "number",
+            "title": "Day Limit",
+            "description": "Today's limit in points, with whatever the owner added today."
+          },
+          "day_pct": {
+            "type": "number",
+            "title": "Day Pct",
+            "description": "Today's limit as a share of the period's allowance."
+          },
+          "day_step_pct": {
+            "type": "number",
+            "title": "Day Step Pct",
+            "description": "How many points of percent 'allow_today' adds to today's limit.",
+            "default": 5.0
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id",
+            "description": "The run that hit the run limit, while tripped on it."
+          },
+          "run_spent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Spent"
+          },
+          "run_limit": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Limit"
+          },
+          "stopped_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped Until",
+            "description": "Peer sends stay paused until this time (the owner chose Stop for today)."
+          },
+          "choices": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "allow_today",
+                "allow_run",
+                "stop_today"
+              ]
+            },
+            "type": "array",
+            "title": "Choices",
+            "description": "What the owner may pick now. 'allow_run' is offered only when the run limit tripped."
+          },
+          "spent_on": {
+            "items": {
+              "$ref": "#/components/schemas/FriendBreakerPerson"
+            },
+            "type": "array",
+            "title": "Spent On",
+            "description": "Today's spend by friend, largest first."
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At",
+            "description": "When it tripped."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "tripped",
+          "paused",
+          "day_spent",
+          "day_limit",
+          "day_pct"
+        ],
+        "title": "FriendBreaker"
+      },
+      "FriendBreakerAction": {
+        "properties": {
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key",
+            "description": "Client-generated key; repeating a create with the same key returns the first result."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "FriendBreakerAction"
+      },
+      "FriendBreakerPerson": {
+        "properties": {
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "pts": {
+            "type": "number",
+            "title": "Pts",
+            "description": "Estimated points spent on them today."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "address",
+          "display_name",
+          "pts"
+        ],
+        "title": "FriendBreakerPerson"
+      },
+      "FriendCode": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "used",
+              "expired"
+            ],
+            "title": "State"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "used_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Used At"
+          },
+          "used_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Used By"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "state",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "FriendCode"
+      },
+      "FriendCodeCreate": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Label",
+            "description": "Who it is for; only you see it.",
+            "default": ""
+          },
+          "expires_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 90.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires Days",
+            "description": "Days it stays valid; the owner's default (Settings → Advanced) when not given."
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key",
+            "description": "Client-generated key; repeating a create with the same key returns the first result."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "FriendCodeCreate"
+      },
+      "FriendCodeCreated": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Shown once; only its hash is kept. Hand it over out of band."
+          },
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "code",
+          "address",
+          "fingerprint",
+          "expires_at"
+        ],
+        "title": "FriendCodeCreated"
+      },
+      "FriendFingerprint": {
+        "properties": {
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint",
+            "description": "Of our current signing key, as friends see it."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "address",
+          "fingerprint"
+        ],
+        "title": "FriendFingerprint"
+      },
+      "FriendPatch": {
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "share": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "nothing",
+                  "shared",
+                  "anything"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share"
+          },
+          "presence_detail": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "coarse",
+                  "exact"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presence Detail"
+          },
+          "waking": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "never",
+                  "ask",
+                  "allow"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waking"
+          },
+          "muted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Muted"
+          },
+          "breaker": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "normal",
+                  "off"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breaker"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "FriendPatch"
+      },
+      "FriendPresence": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "asleep",
+              "working",
+              "idle"
+            ],
+            "title": "State"
+          },
+          "next": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next",
+            "description": "'tonight' or a time; only when they let us see it."
+          },
+          "now": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Now",
+            "description": "What they say they're doing: untrusted text from their assistant."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At",
+            "description": "When they made it."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "state",
+          "at"
+        ],
+        "title": "FriendPresence"
+      },
+      "FriendRequest": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "in",
+              "out"
+            ],
+            "title": "Direction"
+          },
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "description": "Their words, untrusted text, when the request is theirs."
+          },
+          "made_by": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "assistant"
+            ],
+            "title": "Made By"
+          },
+          "code_used": {
+            "type": "boolean",
+            "title": "Code Used"
+          },
+          "fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fingerprint",
+            "description": "Of their signing key as their directory entry showed it; compare it with theirs."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "declined",
+              "sent",
+              "failed",
+              "expired"
+            ],
+            "title": "State"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "direction",
+          "address",
+          "note",
+          "made_by",
+          "code_used",
+          "state",
+          "created_at"
+        ],
+        "title": "FriendRequest"
+      },
+      "FriendRequestCreate": {
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address",
+            "description": "name@hub-domain; not needed when a friend code is given."
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Note",
+            "default": ""
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code",
+            "description": "A friend code (l0wf1:...) the other owner gave you: it carries their fingerprint, which is checked automatically."
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key",
+            "description": "Client-generated key; repeating a create with the same key returns the first result."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "FriendRequestCreate"
+      },
+      "FriendSettings": {
+        "properties": {
+          "requests_from": {
+            "type": "string",
+            "enum": [
+              "anyone",
+              "hub",
+              "codes"
+            ],
+            "title": "Requests From",
+            "description": "Who may send friend requests: anyone / members of my hub / only people with a code."
+          },
+          "paused": {
+            "type": "boolean",
+            "title": "Paused",
+            "description": "Pause all peer activity: incoming envelopes are refused (senders retry) and nothing goes out."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "requests_from",
+          "paused"
+        ],
+        "title": "FriendSettings"
+      },
+      "FriendSettingsPatch": {
+        "properties": {
+          "requests_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "anyone",
+                  "hub",
+                  "codes"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requests From"
+          },
+          "paused": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "FriendSettingsPatch"
+      },
       "GateState": {
         "properties": {
           "open": {
@@ -10707,6 +12537,168 @@
           "base_url"
         ],
         "title": "HubInfo"
+      },
+      "HubService": {
+        "properties": {
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "relay, rooms, board, email, spaces, directory, admin or custom."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "docs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Docs",
+            "description": "An https URL the hub gave for the service's documentation."
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles",
+            "description": "The roles the service may grant a member's instance.",
+            "default": []
+          },
+          "roles_held": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles Held",
+            "description": "The roles it has granted this instance (names only; the grants stay in control).",
+            "default": []
+          },
+          "extension": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HubServiceExtension"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The instance-side extension the hub names for this service (installing it is separate)."
+          },
+          "default_on": {
+            "type": "boolean",
+            "title": "Default On",
+            "description": "Whether the service asks to be on unless the owner says otherwise."
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "The owner's switch."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "off",
+              "connecting",
+              "connected",
+              "error"
+            ],
+            "title": "State"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "connected_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connected At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "address",
+          "kind",
+          "title",
+          "default_on",
+          "enabled",
+          "state",
+          "updated_at"
+        ],
+        "title": "HubService",
+        "description": "One of the joined hub's services (protocol/services.md), as this instance sees it."
+      },
+      "HubServiceExtension": {
+        "properties": {
+          "git": {
+            "type": "string",
+            "title": "Git"
+          },
+          "commit": {
+            "type": "string",
+            "title": "Commit"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "git",
+          "commit",
+          "path"
+        ],
+        "title": "HubServiceExtension"
+      },
+      "HubServicePatch": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "HubServicePatch"
       },
       "InboxCounts": {
         "properties": {
@@ -11388,10 +13380,6 @@
             ],
             "title": "Expires"
           },
-          "own_url_allowed": {
-            "type": "boolean",
-            "title": "Own Url Allowed"
-          },
           "example": {
             "anyOf": [
               {
@@ -11432,7 +13420,6 @@
         "type": "object",
         "required": [
           "hub",
-          "own_url_allowed",
           "two_factor_ready"
         ],
         "title": "InvitePreview"
@@ -11560,26 +13547,6 @@
             "maxLength": 32,
             "minLength": 3,
             "title": "Name"
-          },
-          "mode": {
-            "type": "string",
-            "enum": [
-              "tunnel",
-              "own-url"
-            ],
-            "title": "Mode",
-            "default": "tunnel"
-          },
-          "own_urls": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/MemberHostnames"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Own-URL mode: two https URLs on different origins."
           },
           "backup": {
             "type": "string",
@@ -11908,21 +13875,6 @@
             ],
             "title": "Address"
           },
-          "mode": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "tunnel",
-                  "own-url"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Mode"
-          },
           "hub": {
             "anyOf": [
               {
@@ -11997,8 +13949,7 @@
               {
                 "type": "null"
               }
-            ],
-            "description": "Tunnel mode only."
+            ]
           },
           "check": {
             "anyOf": [
@@ -12084,7 +14035,8 @@
               "owner",
               "assistant",
               "chat",
-              "system"
+              "system",
+              "peer"
             ],
             "title": "Sender"
           },
@@ -12716,7 +14668,8 @@
               "secret",
               "setting",
               "routine",
-              "mcp_call"
+              "mcp_call",
+              "wake"
             ],
             "title": "Kind"
           },
@@ -16154,7 +18107,7 @@
           "type": {
             "type": "string",
             "title": "Type",
-            "description": "'normal' for now; grows with extensions (email, peer)."
+            "description": "'normal', 'peer' (the thread with a friend's assistant: messages from them are untrusted data); grows with extensions."
           },
           "status": {
             "type": "string",
@@ -17323,7 +19276,9 @@
               "chat",
               "chat_delta",
               "extension",
-              "membership"
+              "membership",
+              "friend",
+              "friend_request"
             ],
             "title": "Type",
             "type": "string"

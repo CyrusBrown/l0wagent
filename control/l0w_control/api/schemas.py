@@ -18,7 +18,7 @@ class Model(BaseModel):
 
 
 Actor = Literal["owner", "assistant", "chat"]
-Sender = Literal["owner", "assistant", "chat", "system"]
+Sender = Literal["owner", "assistant", "chat", "system", "peer"]
 Volume = Literal["workspace", "work"]
 IdempotencyKey = Annotated[
     str | None,
@@ -239,7 +239,7 @@ class Thread(Model):
     id: int
     project: str | None = Field(description="Project slug; null = General.")
     title: str
-    type: str = Field(description="'normal' for now; grows with extensions (email, peer).")
+    type: str = Field(description="'normal', 'peer' (the thread with a friend's assistant: messages from them are untrusted data); grows with extensions.")
     status: Literal["open", "archived"]
     created_by: Actor
     pinned: bool
@@ -338,7 +338,7 @@ class QuestionAnswer(Model):
 
 
 class PermissionAction(Model):
-    kind: Literal["egress_rule", "secret", "setting", "routine", "mcp_call"]
+    kind: Literal["egress_rule", "secret", "setting", "routine", "mcp_call", "wake"]
     summary: str
     payload: dict[str, Any]
 
@@ -1576,7 +1576,7 @@ class LiveEvent(Model):
     type: Literal[
         "hello", "heartbeat", "status", "message", "thread", "project", "card", "claim",
         "timeline", "run", "inbox_counts", "unread", "job", "shelf", "upload", "question", "permission",
-        "task", "suggestion", "promote", "security", "budget", "calendar", "chat", "chat_delta", "extension", "membership",
+        "task", "suggestion", "promote", "security", "budget", "calendar", "chat", "chat_delta", "extension", "membership", "friend", "friend_request",
     ]
     cursor: str | None = Field(None, description="Sync cursor after this event, when it changed cached data.")
     data: dict[str, Any] = {}
@@ -1632,17 +1632,45 @@ class Membership(Model):
     state: Literal["standalone", "joined", "left"]
     available: bool = Field(description="This install has the gateway, so it can join a hub.")
     address: str | None = None
-    mode: Literal["tunnel", "own-url"] | None = None
     hub: HubInfo | None = None
     hostnames: MemberHostnames | None = Field(None, description="Exactly as the hub assigned them.")
     urls: MemberHostnames | None = Field(None, description="Where the instance and its files are reached through the hub.")
     joined_at: datetime | None = None
     left_at: datetime | None = None
     tunnel: TunnelStatus | None = None
-    accelerator: AcceleratorSetting | None = Field(None, description="Tunnel mode only.")
+    accelerator: AcceleratorSetting | None = None
     check: MembershipCheck | None = None
     sign_key: MemberKey | None = None
     hub_key_alarm: str | None = None
+
+
+class HubServiceExtension(Model):
+    git: str
+    commit: str
+    path: str
+
+
+class HubService(Model):
+    """One of the joined hub's services (protocol/services.md), as this instance sees it."""
+
+    address: str
+    kind: str = Field(description="relay, rooms, board, email, spaces, directory, admin or custom.")
+    title: str
+    description: str = ""
+    docs: str | None = Field(None, description="An https URL the hub gave for the service's documentation.")
+    roles: list[str] = Field([], description="The roles the service may grant a member's instance.")
+    roles_held: list[str] = Field([], description="The roles it has granted this instance (names only; the grants stay in control).")
+    extension: HubServiceExtension | None = Field(None, description="The instance-side extension the hub names for this service (installing it is separate).")
+    default_on: bool = Field(description="Whether the service asks to be on unless the owner says otherwise.")
+    enabled: bool = Field(description="The owner's switch.")
+    state: Literal["off", "connecting", "connected", "error"]
+    error: str | None = None
+    connected_at: datetime | None = None
+    updated_at: datetime
+
+
+class HubServicePatch(Model):
+    enabled: bool
 
 
 class InvitePreviewRequest(Model):
@@ -1654,7 +1682,6 @@ class InvitePreview(Model):
     name_hint: str | None = None
     name_bound: bool = Field(False, description="The invite is bound to name_hint: the name can't be changed.")
     expires: datetime | None = None
-    own_url_allowed: bool
     example: MemberHostnames | None = None
     example_name: str | None = Field(None, description="The name the hub made `example` for; the join screen previews a typed name's hostnames with it (display only).")
     two_factor_ready: bool
@@ -1664,8 +1691,6 @@ class InvitePreview(Model):
 class JoinRequest(Model):
     invite: str = Field(min_length=1, max_length=2000)
     name: str = Field(min_length=3, max_length=32)
-    mode: Literal["tunnel", "own-url"] = "tunnel"
-    own_urls: MemberHostnames | None = Field(None, description="Own-URL mode: two https URLs on different origins.")
     backup: Literal["made", "skipped"] = Field(description="The owner made a backup first, or chose to skip it.")
     idempotency_key: str = Field(min_length=1, max_length=100)
 
@@ -1681,3 +1706,136 @@ class RecoverRequest(Model):
 
 class LeaveRequest(Model):
     confirm: str = Field(description="The member's address, typed to confirm.")
+
+
+# ── friends and messages between instances (H5; protocol/messages.md) ───────
+FriendShare = Literal["nothing", "shared", "anything"]
+FriendPresenceDetail = Literal["coarse", "exact"]
+FriendWaking = Literal["never", "ask", "allow"]
+FriendBreakerMode = Literal["normal", "off"]
+
+
+class FriendPresence(Model):
+    state: Literal["asleep", "working", "idle"]
+    next: str | None = Field(None, description="'tonight' or a time; only when they let us see it.")
+    now: str | None = Field(None, description="What they say they're doing: untrusted text from their assistant.")
+    at: datetime = Field(description="When they made it.")
+
+
+class Friend(Model):
+    address: str
+    display_name: str
+    fingerprint: str | None = Field(None, description="Of their pinned signing key; compare it with theirs out of band.")
+    state: Literal["requested_out", "requested_in", "friends", "blocked"]
+    share: FriendShare = Field(description="What our assistant may tell theirs: nothing about my projects / shared projects / anything.")
+    presence_detail: FriendPresenceDetail = Field(description="'exact' also tells them when we'll next be awake and what we're doing.")
+    waking: FriendWaking = Field(description="Whether they may wake our assistant: never / ask me / allow.")
+    muted: bool = False
+    breaker: FriendBreakerMode = Field("normal", description="The spend breaker: 'off' leaves what this friend costs out of both limits (a run's share and the day's).")
+    thread_id: int | None = Field(None, description="The peer thread.")
+    presence: FriendPresence | None = None
+    same_owner: bool = Field(False, description="They sent a same-owner statement (a hint for defaults, never an authorization).")
+    key_alarm: str | None = Field(None, description="Their key changed with no rotation from the one we pinned. Re-verify with them; nothing is accepted automatically.")
+    created_at: datetime
+    updated_at: datetime
+
+
+class FriendPatch(Model):
+    display_name: str | None = Field(None, min_length=1, max_length=80)
+    share: FriendShare | None = None
+    presence_detail: FriendPresenceDetail | None = None
+    waking: FriendWaking | None = None
+    muted: bool | None = None
+    breaker: FriendBreakerMode | None = None
+
+
+class FriendRequest(Model):
+    id: int
+    direction: Literal["in", "out"]
+    address: str
+    note: str = Field(description="Their words, untrusted text, when the request is theirs.")
+    made_by: Literal["owner", "assistant"]
+    code_used: bool
+    fingerprint: str | None = Field(None, description="Of their signing key as their directory entry showed it; compare it with theirs.")
+    state: Literal["pending", "approved", "declined", "sent", "failed", "expired"]
+    error: str | None = None
+    created_at: datetime
+    decided_at: datetime | None = None
+
+
+class FriendRequestCreate(Model):
+    address: str | None = Field(None, max_length=200, description="name@hub-domain; not needed when a friend code is given.")
+    note: str = Field("", max_length=500)
+    code: str | None = Field(None, max_length=300, description="A friend code (l0wf1:...) the other owner gave you: it carries their fingerprint, which is checked automatically.")
+    idempotency_key: IdempotencyKey
+
+
+class FriendCodeCreate(Model):
+    label: str = Field("", max_length=80, description="Who it is for; only you see it.")
+    expires_days: int | None = Field(None, ge=1, le=90, description="Days it stays valid; the owner's default (Settings → Advanced) when not given.")
+    idempotency_key: IdempotencyKey
+
+
+class FriendCodeCreated(Model):
+    id: int
+    code: str = Field(description="Shown once; only its hash is kept. Hand it over out of band.")
+    address: str
+    fingerprint: str
+    expires_at: datetime
+
+
+class FriendCode(Model):
+    id: int
+    label: str
+    state: Literal["active", "used", "expired"]
+    created_at: datetime
+    expires_at: datetime
+    used_at: datetime | None = None
+    used_by: str | None = None
+
+
+class FriendFingerprint(Model):
+    address: str
+    fingerprint: str = Field(description="Of our current signing key, as friends see it.")
+
+
+class FriendSettings(Model):
+    requests_from: Literal["anyone", "hub", "codes"] = Field(description="Who may send friend requests: anyone / members of my hub / only people with a code.")
+    paused: bool = Field(description="Pause all peer activity: incoming envelopes are refused (senders retry) and nothing goes out.")
+
+
+class FriendSettingsPatch(Model):
+    requests_from: Literal["anyone", "hub", "codes"] | None = None
+    paused: bool | None = None
+
+
+# The spend breaker for peer activity (breaker.py)
+FriendBreakerChoice = Literal["allow_today", "allow_run", "stop_today"]
+
+
+class FriendBreakerPerson(Model):
+    address: str
+    display_name: str
+    pts: float = Field(description="Estimated points spent on them today.")
+
+
+class FriendBreaker(Model):
+    tripped: bool = Field(description="A limit was hit and the owner hasn't decided: the assistant's replies to friends are refused and a card waits on the Friends page.")
+    paused: bool = Field(description="The assistant's posts in peer threads and its wake requests are refused right now (tripped, or stopped for today).")
+    limit: Literal["run", "day"] | None = Field(None, description="Which limit was hit, while tripped.")
+    explanation: str = Field("", description="Control's plain words for the card: which limit, how much, of what.")
+    day_spent: float = Field(description="Estimated points spent on friends today (local day), without friends whose spend limit is off.")
+    day_limit: float = Field(description="Today's limit in points, with whatever the owner added today.")
+    day_pct: float = Field(description="Today's limit as a share of the period's allowance.")
+    day_step_pct: float = Field(5.0, description="How many points of percent 'allow_today' adds to today's limit.")
+    run_id: int | None = Field(None, description="The run that hit the run limit, while tripped on it.")
+    run_spent: float | None = None
+    run_limit: float | None = None
+    stopped_until: datetime | None = Field(None, description="Peer sends stay paused until this time (the owner chose Stop for today).")
+    choices: list[FriendBreakerChoice] = Field(default_factory=list, description="What the owner may pick now. 'allow_run' is offered only when the run limit tripped.")
+    spent_on: list[FriendBreakerPerson] = Field(default_factory=list, description="Today's spend by friend, largest first.")
+    at: datetime | None = Field(None, description="When it tripped.")
+
+
+class FriendBreakerAction(Model):
+    idempotency_key: IdempotencyKey

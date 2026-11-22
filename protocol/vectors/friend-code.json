@@ -1,0 +1,25 @@
+{
+  "valid": [
+    {
+      "text": "l0wf1:bob@other.example:WZCY8FG5JZ5EV87N:GJrlKV4Takm_GadfHT3HVg",
+      "address": "bob@other.example",
+      "fingerprint": "WZCY-8FG5-JZ5E-V87N",
+      "secret": "GJrlKV4Takm_GadfHT3HVg"
+    },
+    {
+      "text": "l0wf1:mara@hub.example:8443:WZCY8FG5JZ5EV87N:GJrlKV4Takm_GadfHT3HVg",
+      "address": "mara@hub.example:8443",
+      "fingerprint": "WZCY-8FG5-JZ5E-V87N",
+      "secret": "GJrlKV4Takm_GadfHT3HVg"
+    }
+  ],
+  "invalid": [
+    "l0wf2:bob@other.example:WZCY8FG5JZ5EV87N:GJrlKV4Takm_GadfHT3HVg",
+    "l0wf1:bob@other.example:WZCY8FG5JZ5EV87N:GJrlKV4Takm_GadfHT3HV",
+    "l0wf1:bob@other.example:WZCY8FG5JZ5EV87N",
+    "l0wf1:bob@other.example:UZCY8FG5JZ5EV87N:GJrlKV4Takm_GadfHT3HVg",
+    "l0wf1:BOB@other.example:WZCY8FG5JZ5EV87N:GJrlKV4Takm_GadfHT3HVg",
+    "l0wf1:bob@other.example:WZCY8FG5JZ5EV87N:GJrlKV4Takm_GadfHT3HVg:x",
+    "l0wf1:bob@:WZCY8FG5JZ5EV87N:GJrlKV4Takm_GadfHT3HVg"
+  ]
+}

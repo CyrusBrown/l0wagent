@@ -1875,6 +1875,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/membership/services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Membership Services
+         * @description The joined hub's services (protocol/services.md) with the owner's on/off switch and where each connection stands. (`/api/hub/*` is reserved for the hub.)
+         */
+        get: operations["membership_services_api_membership_services_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/membership/services/{address}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Membership Service Patch
+         * @description Switch one service on or off. Off sends the service a goodbye and revokes the token it was given; on connects.
+         */
+        patch: operations["membership_service_patch_api_membership_services__address__patch"];
+        trace?: never;
+    };
     "/api/membership/leave": {
         parameters: {
             query?: never;
@@ -1889,6 +1929,307 @@ export interface paths {
          * @description Leaves the hub. The name is never given to anyone else, and can't be had back.
          */
         post: operations["membership_leave_api_membership_leave_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/friends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Friends
+         * @description Friends, people who asked to be, people we asked, and blocked addresses, with their settings and latest presence.
+         */
+        get: operations["friends_api_friends_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/friends/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Friend Requests */
+        get: operations["friend_requests_api_friends_requests_get"];
+        put?: never;
+        /**
+         * Create Friend Request
+         * @description Asks someone to be friends (online only). With a friend code their fingerprint is checked for you.
+         */
+        post: operations["create_friend_request_api_friends_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/friends/requests/{request_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Friend Request
+         * @description Approves a request: theirs (pins their key and sends our acceptance), or our assistant's draft (sends it). Full-scope tokens only.
+         */
+        post: operations["approve_friend_request_api_friends_requests__request_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/friends/requests/{request_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline Friend Request
+         * @description Declines a request. They aren't told.
+         */
+        post: operations["decline_friend_request_api_friends_requests__request_id__decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/friends/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Friend Settings */
+        get: operations["friend_settings_api_friends_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set Friend Settings
+         * @description Who may send friend requests, and the pause switch for all peer activity.
+         */
+        patch: operations["set_friend_settings_api_friends_settings_patch"];
+        trace?: never;
+    };
+    "/api/friends/breaker": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Friend Breaker
+         * @description The spend breaker for peer activity: today's estimated spend on friends, the limits, and whether one was hit (then a card waits for the owner).
+         */
+        get: operations["friend_breaker_api_friends_breaker_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/friends/breaker/allow-today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Friend Breaker Allow Today
+         * @description Raises today's limit on peer spending by the step (5 points of percent) and lets the assistant reply to friends again.
+         */
+        post: operations["friend_breaker_allow_today_api_friends_breaker_allow_today_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/friends/breaker/allow-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Friend Breaker Allow Run
+         * @description Exempts the run that hit the run limit (only while that limit is the one hit).
+         */
+        post: operations["friend_breaker_allow_run_api_friends_breaker_allow_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/friends/breaker/stop-today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Friend Breaker Stop Today
+         * @description Pauses the assistant's sends to friends until local midnight, whatever the limits say.
+         */
+        post: operations["friend_breaker_stop_today_api_friends_breaker_stop_today_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/friends/fingerprint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Friend Fingerprint
+         * @description Our own fingerprint, for friends to compare with what they see.
+         */
+        get: operations["friend_fingerprint_api_friends_fingerprint_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/friends/codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Friend Codes */
+        get: operations["friend_codes_api_friends_codes_get"];
+        put?: never;
+        /**
+         * Create Friend Code
+         * @description Makes a one-time friend code. The code is in this answer only; just its hash is kept.
+         */
+        post: operations["create_friend_code_api_friends_codes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/friends/codes/{code_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Friend Code */
+        delete: operations["delete_friend_code_api_friends_codes__code_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/friends/{address}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unfriend
+         * @description Tells them, revokes our token and forgets their key. The thread stays as history.
+         */
+        delete: operations["unfriend_api_friends__address__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Friend
+         * @description Their name here, what our assistant may share with them, presence detail, waking and mute.
+         */
+        patch: operations["patch_friend_api_friends__address__patch"];
+        trace?: never;
+    };
+    "/api/friends/{address}/block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Block Friend
+         * @description Revokes their delivery token and drops everything they send, silently.
+         */
+        post: operations["block_friend_api_friends__address__block_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/friends/{address}/unblock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unblock Friend */
+        post: operations["unblock_friend_api_friends__address__unblock_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3472,6 +3813,374 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** Friend */
+        Friend: {
+            /** Address */
+            address: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Fingerprint
+             * @description Of their pinned signing key; compare it with theirs out of band.
+             */
+            fingerprint?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "requested_out" | "requested_in" | "friends" | "blocked";
+            /**
+             * Share
+             * @description What our assistant may tell theirs: nothing about my projects / shared projects / anything.
+             * @enum {string}
+             */
+            share: "nothing" | "shared" | "anything";
+            /**
+             * Presence Detail
+             * @description 'exact' also tells them when we'll next be awake and what we're doing.
+             * @enum {string}
+             */
+            presence_detail: "coarse" | "exact";
+            /**
+             * Waking
+             * @description Whether they may wake our assistant: never / ask me / allow.
+             * @enum {string}
+             */
+            waking: "never" | "ask" | "allow";
+            /**
+             * Muted
+             * @default false
+             */
+            muted?: boolean;
+            /**
+             * Breaker
+             * @description The spend breaker: 'off' leaves what this friend costs out of both limits (a run's share and the day's).
+             * @default normal
+             * @enum {string}
+             */
+            breaker?: "normal" | "off";
+            /**
+             * Thread Id
+             * @description The peer thread.
+             */
+            thread_id?: number | null;
+            presence?: components["schemas"]["FriendPresence"] | null;
+            /**
+             * Same Owner
+             * @description They sent a same-owner statement (a hint for defaults, never an authorization).
+             * @default false
+             */
+            same_owner?: boolean;
+            /**
+             * Key Alarm
+             * @description Their key changed with no rotation from the one we pinned. Re-verify with them; nothing is accepted automatically.
+             */
+            key_alarm?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** FriendBreaker */
+        FriendBreaker: {
+            /**
+             * Tripped
+             * @description A limit was hit and the owner hasn't decided: the assistant's replies to friends are refused and a card waits on the Friends page.
+             */
+            tripped: boolean;
+            /**
+             * Paused
+             * @description The assistant's posts in peer threads and its wake requests are refused right now (tripped, or stopped for today).
+             */
+            paused: boolean;
+            /**
+             * Limit
+             * @description Which limit was hit, while tripped.
+             */
+            limit?: ("run" | "day") | null;
+            /**
+             * Explanation
+             * @description Control's plain words for the card: which limit, how much, of what.
+             * @default
+             */
+            explanation?: string;
+            /**
+             * Day Spent
+             * @description Estimated points spent on friends today (local day), without friends whose spend limit is off.
+             */
+            day_spent: number;
+            /**
+             * Day Limit
+             * @description Today's limit in points, with whatever the owner added today.
+             */
+            day_limit: number;
+            /**
+             * Day Pct
+             * @description Today's limit as a share of the period's allowance.
+             */
+            day_pct: number;
+            /**
+             * Day Step Pct
+             * @description How many points of percent 'allow_today' adds to today's limit.
+             * @default 5
+             */
+            day_step_pct?: number;
+            /**
+             * Run Id
+             * @description The run that hit the run limit, while tripped on it.
+             */
+            run_id?: number | null;
+            /** Run Spent */
+            run_spent?: number | null;
+            /** Run Limit */
+            run_limit?: number | null;
+            /**
+             * Stopped Until
+             * @description Peer sends stay paused until this time (the owner chose Stop for today).
+             */
+            stopped_until?: string | null;
+            /**
+             * Choices
+             * @description What the owner may pick now. 'allow_run' is offered only when the run limit tripped.
+             */
+            choices?: ("allow_today" | "allow_run" | "stop_today")[];
+            /**
+             * Spent On
+             * @description Today's spend by friend, largest first.
+             */
+            spent_on?: components["schemas"]["FriendBreakerPerson"][];
+            /**
+             * At
+             * @description When it tripped.
+             */
+            at?: string | null;
+        };
+        /** FriendBreakerAction */
+        FriendBreakerAction: {
+            /**
+             * Idempotency Key
+             * @description Client-generated key; repeating a create with the same key returns the first result.
+             */
+            idempotency_key?: string | null;
+        };
+        /** FriendBreakerPerson */
+        FriendBreakerPerson: {
+            /** Address */
+            address: string;
+            /** Display Name */
+            display_name: string;
+            /**
+             * Pts
+             * @description Estimated points spent on them today.
+             */
+            pts: number;
+        };
+        /** FriendCode */
+        FriendCode: {
+            /** Id */
+            id: number;
+            /** Label */
+            label: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "used" | "expired";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Used At */
+            used_at?: string | null;
+            /** Used By */
+            used_by?: string | null;
+        };
+        /** FriendCodeCreate */
+        FriendCodeCreate: {
+            /**
+             * Label
+             * @description Who it is for; only you see it.
+             * @default
+             */
+            label?: string;
+            /**
+             * Expires Days
+             * @description Days it stays valid; the owner's default (Settings → Advanced) when not given.
+             */
+            expires_days?: number | null;
+            /**
+             * Idempotency Key
+             * @description Client-generated key; repeating a create with the same key returns the first result.
+             */
+            idempotency_key?: string | null;
+        };
+        /** FriendCodeCreated */
+        FriendCodeCreated: {
+            /** Id */
+            id: number;
+            /**
+             * Code
+             * @description Shown once; only its hash is kept. Hand it over out of band.
+             */
+            code: string;
+            /** Address */
+            address: string;
+            /** Fingerprint */
+            fingerprint: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
+        /** FriendFingerprint */
+        FriendFingerprint: {
+            /** Address */
+            address: string;
+            /**
+             * Fingerprint
+             * @description Of our current signing key, as friends see it.
+             */
+            fingerprint: string;
+        };
+        /** FriendPatch */
+        FriendPatch: {
+            /** Display Name */
+            display_name?: string | null;
+            /** Share */
+            share?: ("nothing" | "shared" | "anything") | null;
+            /** Presence Detail */
+            presence_detail?: ("coarse" | "exact") | null;
+            /** Waking */
+            waking?: ("never" | "ask" | "allow") | null;
+            /** Muted */
+            muted?: boolean | null;
+            /** Breaker */
+            breaker?: ("normal" | "off") | null;
+        };
+        /** FriendPresence */
+        FriendPresence: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "asleep" | "working" | "idle";
+            /**
+             * Next
+             * @description 'tonight' or a time; only when they let us see it.
+             */
+            next?: string | null;
+            /**
+             * Now
+             * @description What they say they're doing: untrusted text from their assistant.
+             */
+            now?: string | null;
+            /**
+             * At
+             * Format: date-time
+             * @description When they made it.
+             */
+            at: string;
+        };
+        /** FriendRequest */
+        FriendRequest: {
+            /** Id */
+            id: number;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "in" | "out";
+            /** Address */
+            address: string;
+            /**
+             * Note
+             * @description Their words, untrusted text, when the request is theirs.
+             */
+            note: string;
+            /**
+             * Made By
+             * @enum {string}
+             */
+            made_by: "owner" | "assistant";
+            /** Code Used */
+            code_used: boolean;
+            /**
+             * Fingerprint
+             * @description Of their signing key as their directory entry showed it; compare it with theirs.
+             */
+            fingerprint?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "approved" | "declined" | "sent" | "failed" | "expired";
+            /** Error */
+            error?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at?: string | null;
+        };
+        /** FriendRequestCreate */
+        FriendRequestCreate: {
+            /**
+             * Address
+             * @description name@hub-domain; not needed when a friend code is given.
+             */
+            address?: string | null;
+            /**
+             * Note
+             * @default
+             */
+            note?: string;
+            /**
+             * Code
+             * @description A friend code (l0wf1:...) the other owner gave you: it carries their fingerprint, which is checked automatically.
+             */
+            code?: string | null;
+            /**
+             * Idempotency Key
+             * @description Client-generated key; repeating a create with the same key returns the first result.
+             */
+            idempotency_key?: string | null;
+        };
+        /** FriendSettings */
+        FriendSettings: {
+            /**
+             * Requests From
+             * @description Who may send friend requests: anyone / members of my hub / only people with a code.
+             * @enum {string}
+             */
+            requests_from: "anyone" | "hub" | "codes";
+            /**
+             * Paused
+             * @description Pause all peer activity: incoming envelopes are refused (senders retry) and nothing goes out.
+             */
+            paused: boolean;
+        };
+        /** FriendSettingsPatch */
+        FriendSettingsPatch: {
+            /** Requests From */
+            requests_from?: ("anyone" | "hub" | "codes") | null;
+            /** Paused */
+            paused?: boolean | null;
+        };
         /** GateState */
         GateState: {
             /** Open */
@@ -3511,6 +4220,83 @@ export interface components {
             policies?: {
                 [key: string]: string;
             };
+        };
+        /**
+         * HubService
+         * @description One of the joined hub's services (protocol/services.md), as this instance sees it.
+         */
+        HubService: {
+            /** Address */
+            address: string;
+            /**
+             * Kind
+             * @description relay, rooms, board, email, spaces, directory, admin or custom.
+             */
+            kind: string;
+            /** Title */
+            title: string;
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /**
+             * Docs
+             * @description An https URL the hub gave for the service's documentation.
+             */
+            docs?: string | null;
+            /**
+             * Roles
+             * @description The roles the service may grant a member's instance.
+             * @default []
+             */
+            roles?: string[];
+            /**
+             * Roles Held
+             * @description The roles it has granted this instance (names only; the grants stay in control).
+             * @default []
+             */
+            roles_held?: string[];
+            /** @description The instance-side extension the hub names for this service (installing it is separate). */
+            extension?: components["schemas"]["HubServiceExtension"] | null;
+            /**
+             * Default On
+             * @description Whether the service asks to be on unless the owner says otherwise.
+             */
+            default_on: boolean;
+            /**
+             * Enabled
+             * @description The owner's switch.
+             */
+            enabled: boolean;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "off" | "connecting" | "connected" | "error";
+            /** Error */
+            error?: string | null;
+            /** Connected At */
+            connected_at?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** HubServiceExtension */
+        HubServiceExtension: {
+            /** Git */
+            git: string;
+            /** Commit */
+            commit: string;
+            /** Path */
+            path: string;
+        };
+        /** HubServicePatch */
+        HubServicePatch: {
+            /** Enabled */
+            enabled: boolean;
         };
         /** InboxCounts */
         InboxCounts: {
@@ -3719,8 +4505,6 @@ export interface components {
             name_bound?: boolean;
             /** Expires */
             expires?: string | null;
-            /** Own Url Allowed */
-            own_url_allowed: boolean;
             example?: components["schemas"]["MemberHostnames"] | null;
             /**
              * Example Name
@@ -3776,14 +4560,6 @@ export interface components {
             invite: string;
             /** Name */
             name: string;
-            /**
-             * Mode
-             * @default tunnel
-             * @enum {string}
-             */
-            mode?: "tunnel" | "own-url";
-            /** @description Own-URL mode: two https URLs on different origins. */
-            own_urls?: components["schemas"]["MemberHostnames"] | null;
             /**
              * Backup
              * @description The owner made a backup first, or chose to skip it.
@@ -3921,8 +4697,6 @@ export interface components {
             available: boolean;
             /** Address */
             address?: string | null;
-            /** Mode */
-            mode?: ("tunnel" | "own-url") | null;
             hub?: components["schemas"]["HubInfo"] | null;
             /** @description Exactly as the hub assigned them. */
             hostnames?: components["schemas"]["MemberHostnames"] | null;
@@ -3933,7 +4707,6 @@ export interface components {
             /** Left At */
             left_at?: string | null;
             tunnel?: components["schemas"]["TunnelStatus"] | null;
-            /** @description Tunnel mode only. */
             accelerator?: components["schemas"]["AcceleratorSetting"] | null;
             check?: components["schemas"]["MembershipCheck"] | null;
             sign_key?: components["schemas"]["MemberKey"] | null;
@@ -3965,7 +4738,7 @@ export interface components {
              * Sender
              * @enum {string}
              */
-            sender: "owner" | "assistant" | "chat" | "system";
+            sender: "owner" | "assistant" | "chat" | "system" | "peer";
             /** Body */
             body: string;
             /** Via */
@@ -4207,7 +4980,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "egress_rule" | "secret" | "setting" | "routine" | "mcp_call";
+            kind: "egress_rule" | "secret" | "setting" | "routine" | "mcp_call" | "wake";
             /** Summary */
             summary: string;
             /** Payload */
@@ -5562,7 +6335,7 @@ export interface components {
             title: string;
             /**
              * Type
-             * @description 'normal' for now; grows with extensions (email, peer).
+             * @description 'normal', 'peer' (the thread with a friend's assistant: messages from them are untrusted data); grows with extensions.
              */
             type: string;
             /**
@@ -5960,7 +6733,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "hello" | "heartbeat" | "status" | "message" | "thread" | "project" | "card" | "claim" | "timeline" | "run" | "inbox_counts" | "unread" | "job" | "shelf" | "upload" | "question" | "permission" | "task" | "suggestion" | "promote" | "security" | "budget" | "calendar" | "chat" | "chat_delta" | "extension" | "membership";
+            type: "hello" | "heartbeat" | "status" | "message" | "thread" | "project" | "card" | "claim" | "timeline" | "run" | "inbox_counts" | "unread" | "job" | "shelf" | "upload" | "question" | "permission" | "task" | "suggestion" | "promote" | "security" | "budget" | "calendar" | "chat" | "chat_delta" | "extension" | "membership" | "friend" | "friend_request";
             /**
              * Cursor
              * @description Sync cursor after this event, when it changed cached data.
@@ -6852,7 +7625,7 @@ export interface operations {
     recent_messages_api_messages_recent_get: {
         parameters: {
             query?: {
-                sender?: ("owner" | "assistant" | "chat" | "system") | null;
+                sender?: ("owner" | "assistant" | "chat" | "system" | "peer") | null;
                 limit?: number;
             };
             header?: never;
@@ -9779,6 +10552,61 @@ export interface operations {
             };
         };
     };
+    membership_services_api_membership_services_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HubService"][];
+                };
+            };
+        };
+    };
+    membership_service_patch_api_membership_services__address__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HubServicePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HubService"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     membership_leave_api_membership_leave_post: {
         parameters: {
             query?: never;
@@ -9799,6 +10627,556 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Membership"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    friends_api_friends_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Friend"][];
+                };
+            };
+        };
+    };
+    friend_requests_api_friends_requests_get: {
+        parameters: {
+            query?: {
+                state?: ("pending" | "approved" | "declined" | "sent" | "failed" | "expired") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendRequest"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_friend_request_api_friends_requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FriendRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendRequest"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_friend_request_api_friends_requests__request_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendRequest"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_friend_request_api_friends_requests__request_id__decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendRequest"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    friend_settings_api_friends_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendSettings"];
+                };
+            };
+        };
+    };
+    set_friend_settings_api_friends_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FriendSettingsPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendSettings"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    friend_breaker_api_friends_breaker_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendBreaker"];
+                };
+            };
+        };
+    };
+    friend_breaker_allow_today_api_friends_breaker_allow_today_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FriendBreakerAction"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendBreaker"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    friend_breaker_allow_run_api_friends_breaker_allow_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FriendBreakerAction"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendBreaker"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    friend_breaker_stop_today_api_friends_breaker_stop_today_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FriendBreakerAction"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendBreaker"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    friend_fingerprint_api_friends_fingerprint_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendFingerprint"];
+                };
+            };
+        };
+    };
+    friend_codes_api_friends_codes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendCode"][];
+                };
+            };
+        };
+    };
+    create_friend_code_api_friends_codes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FriendCodeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendCodeCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_friend_code_api_friends_codes__code_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unfriend_api_friends__address__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_friend_api_friends__address__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FriendPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Friend"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    block_friend_api_friends__address__block_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Friend"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unblock_friend_api_friends__address__unblock_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
                 };
             };
             /** @description Validation Error */

@@ -1,0 +1,65 @@
+{
+  "description": "Two instances of one owner, signed by both keys",
+  "type": "same-owner",
+  "now": "2026-11-17T21:30:00Z",
+  "payload_json": "{\"v\":\"l0w/0.1\",\"type\":\"same-owner\",\"iat\":\"2026-11-17T21:30:00Z\",\"a\":\"mara@hub.example\",\"a_kid\":\"k1.7jjJipSU1jZBHvxMYWMDhA\",\"b\":\"mara2@other.example\",\"b_kid\":\"k1.erFuh2c39eRGKKTh3sqOZw\"}",
+  "payload_b64": "eyJ2IjoibDB3LzAuMSIsInR5cGUiOiJzYW1lLW93bmVyIiwiaWF0IjoiMjAyNi0xMS0xN1QyMTozMDowMFoiLCJhIjoibWFyYUBodWIuZXhhbXBsZSIsImFfa2lkIjoiazEuN2pqSmlwU1UxalpCSHZ4TVlXTURoQSIsImIiOiJtYXJhMkBvdGhlci5leGFtcGxlIiwiYl9raWQiOiJrMS5lckZ1aDJjMzllUkdLS1RoM3NxT1p3In0",
+  "signing_input": "l0wagent-sig/1\nsame-owner\neyJ2IjoibDB3LzAuMSIsInR5cGUiOiJzYW1lLW93bmVyIiwiaWF0IjoiMjAyNi0xMS0xN1QyMTozMDowMFoiLCJhIjoibWFyYUBodWIuZXhhbXBsZSIsImFfa2lkIjoiazEuN2pqSmlwU1UxalpCSHZ4TVlXTURoQSIsImIiOiJtYXJhMkBvdGhlci5leGFtcGxlIiwiYl9raWQiOiJrMS5lckZ1aDJjMzllUkdLS1RoM3NxT1p3In0",
+  "signatures": [
+    {
+      "kid": "k1.7jjJipSU1jZBHvxMYWMDhA",
+      "sig": "ZDL0NjCFnZstWbB4LwZ-ZW7VwRigP_6C1fXDKpUqJVN2AlgMiVFPwU9BQOgPxbu1SaCxlVgItBFFDyoLxqAUDQ"
+    },
+    {
+      "kid": "k1.erFuh2c39eRGKKTh3sqOZw",
+      "sig": "J1XgbyHABaDAKwOZ7l5W1FligfQmJ9rb7WEF-7yc1D46PeN-ZCFYwHZyyx2K2kwyfmrriSo5bokzastL0pCxBA"
+    }
+  ],
+  "verify_keys": [
+    {
+      "kid": "k1.7jjJipSU1jZBHvxMYWMDhA",
+      "alg": "Ed25519",
+      "use": "sign",
+      "pub": "_-2c7_nOJRpW5HfxP2irxtVfhWWwU-IqTcETdZVWCv4",
+      "created": "2026-11-17T21:30:00Z"
+    },
+    {
+      "kid": "k1.erFuh2c39eRGKKTh3sqOZw",
+      "alg": "Ed25519",
+      "use": "sign",
+      "pub": "cNdi9_uLQkp1HIHSqPrfYKiMOWg3IvJ82wj3NcXLiyo",
+      "created": "2026-11-17T21:30:00Z"
+    }
+  ],
+  "required": [
+    "k1.7jjJipSU1jZBHvxMYWMDhA",
+    "k1.erFuh2c39eRGKKTh3sqOZw"
+  ],
+  "document": {
+    "v": "l0w/0.1",
+    "type": "same-owner",
+    "payload": "eyJ2IjoibDB3LzAuMSIsInR5cGUiOiJzYW1lLW93bmVyIiwiaWF0IjoiMjAyNi0xMS0xN1QyMTozMDowMFoiLCJhIjoibWFyYUBodWIuZXhhbXBsZSIsImFfa2lkIjoiazEuN2pqSmlwU1UxalpCSHZ4TVlXTURoQSIsImIiOiJtYXJhMkBvdGhlci5leGFtcGxlIiwiYl9raWQiOiJrMS5lckZ1aDJjMzllUkdLS1RoM3NxT1p3In0",
+    "sigs": [
+      {
+        "kid": "k1.7jjJipSU1jZBHvxMYWMDhA",
+        "sig": "ZDL0NjCFnZstWbB4LwZ-ZW7VwRigP_6C1fXDKpUqJVN2AlgMiVFPwU9BQOgPxbu1SaCxlVgItBFFDyoLxqAUDQ"
+      },
+      {
+        "kid": "k1.erFuh2c39eRGKKTh3sqOZw",
+        "sig": "J1XgbyHABaDAKwOZ7l5W1FligfQmJ9rb7WEF-7yc1D46PeN-ZCFYwHZyyx2K2kwyfmrriSo5bokzastL0pCxBA"
+      }
+    ]
+  },
+  "peer_keys": {
+    "peer-sign": {
+      "seed": "cbc67b046e1773f1212369760988ad9bb7f28f1e2b2aecd75845b7b3c0c1df00",
+      "key": {
+        "kid": "k1.erFuh2c39eRGKKTh3sqOZw",
+        "alg": "Ed25519",
+        "use": "sign",
+        "pub": "cNdi9_uLQkp1HIHSqPrfYKiMOWg3IvJ82wj3NcXLiyo",
+        "created": "2026-11-17T21:30:00Z"
+      }
+    }
+  }
+}

@@ -62,6 +62,10 @@ def create_app(backend: Backend) -> FastAPI:
         app.include_router(agent_router)
     if hasattr(backend, "connector"):
         app.include_router(connector_router)
+    if hasattr(backend, "friends_"):
+        from .api.peer_routes import router as peer_router
+
+        app.include_router(peer_router)
     from .config import Env
 
     guard.install(app, getattr(backend, "env", None) or Env())

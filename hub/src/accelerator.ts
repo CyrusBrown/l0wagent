@@ -62,7 +62,6 @@ export async function handleAccelerator(request: Request, env: Env, cfg: Config,
     if (e instanceof ProtocolError) throw new HubError(e.code === "bad_sig" ? 401 : 400, e.code === "bad_sig" ? "bad_sig" : "bad_request", e.detail);
     throw e;
   }
-  if (m.mode !== "tunnel") throw new HubError(403, "not_member", "only members that use the hub's tunnel can use an accelerator");
   const iat = parseTime(p.iat);
   if (!(await db.takeAccelIat(env.DB, name, iat))) {
     const last = (await db.getAccel(env.DB, name)).lastIat;

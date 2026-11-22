@@ -6,9 +6,9 @@ This folder is the spec: what a hub must do and what an instance must do to join
 program that passes the conformance suite here; nothing in the spec names a particular hub, domain or
 hosting provider. Your hub on Cloudflare (`hub/`) and the fake hub (`dev/hub/`) are two implementations.
 
-The spec covers the **core** only: membership, routing (the tunnel and "own URL"), identity (keys,
-the self-description, the signed directory), capabilities, and hop authentication. Messages between
-instances (envelopes, friends, delivery tokens) come in H5; hub services in H6; published services in H7.
+The spec covers the **core**: membership, routing (the tunnel), identity (keys, the self-description,
+the signed directory), capabilities and hop authentication; and, from H5, **messages between instances**
+(envelopes, delivery tokens, friends; messages.md) and, from H6, **hub services** (services.md). Published services come in H7.
 Hub-to-hub linking and streams are not part of it.
 
 | Document | What it defines |
@@ -19,6 +19,8 @@ Hub-to-hub linking and streams are not part of it.
 | [membership.md](membership.md) | Names, invites, registration, hostnames, leaving, re-registration |
 | [tunnel.md](tunnel.md) | The tunnel: handshake, framing, flow control, reconnecting, offline answers |
 | [accelerators.md](accelerators.md) | Optional faster ways to connect: the `cloudflared` accelerator and its signed request |
+| [messages.md](messages.md) | Envelopes, sealing (HPKE), delivery tokens, friend codes and requests, presence, waking |
+| [services.md](services.md) | Hub services: the hub-signed service document, connecting, calls, events, role grants |
 | [hop-auth.md](hop-auth.md) | HTTP Message Signatures between instances, hubs and gateways |
 | [versions.md](versions.md) | Version strings, unknown fields, what a hub must support |
 | `openapi.json` | The hub's core HTTP endpoints |

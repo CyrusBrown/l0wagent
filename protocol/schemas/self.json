@@ -70,28 +70,6 @@
         }
       }
     },
-    "own_urls": {
-      "oneOf": [
-        {
-          "type": "object",
-          "required": [
-            "instance",
-            "files"
-          ],
-          "properties": {
-            "instance": {
-              "type": "string"
-            },
-            "files": {
-              "type": "string"
-            }
-          }
-        },
-        {
-          "type": "null"
-        }
-      ]
-    },
     "protocols": {
       "type": "array",
       "items": {

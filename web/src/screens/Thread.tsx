@@ -4,7 +4,7 @@ import { threadTypeFor } from '../ext/registry'
 import { useExtensions } from '../ext/useExtensions'
 import { Link, useParams } from 'react-router'
 import { ApiError, newKey, type S } from '../api/client'
-import { problem, uploadFile, useDelivery, usePatchThread, usePostMessage, useProject, useProjects, useReplyNow, useThread, useThreadItems } from '../api/queries'
+import { problem, uploadFile, useDelivery, useFriends, usePatchThread, usePostMessage, useProject, useProjects, useReplyNow, useThread, useThreadItems } from '../api/queries'
 import { ClaimCard, PermissionCard, PromoteCard, QuestionCard, SuggestionCard, TaskCard } from '../components/Cards'
 import { bytes, pts } from '../components/format'
 import { useLinkPicker } from '../components/LinkPicker'
@@ -17,15 +17,19 @@ import { useIsPhone } from '../components/useIsPhone'
 import { ThreadFiles } from '../components/ThreadFiles'
 import { useOnline } from '../components/online'
 import { useOutbox } from '../api/offline'
+import { homeHub } from './Friends'
 import { api } from '../api/client'
 
 export function Thread() {
   const id = Number(useParams().id)
   const thread = useThread(id)
+  // A thread with a friend's assistant: who they are, from the friends list (their name here, not what the thread was titled).
+  const friends = useFriends(thread.data?.type === 'peer')
+  const friend = thread.data?.type === 'peer' ? friends.data?.find((f) => f.thread_id === id) : undefined
   const items = useThreadItems(id)
   // "seen" goes under your newest message the assistant has received, not under every one.
   const seenId = (items.data?.items ?? []).reduce<number | null>((last, it) =>
-    it.type === 'message' && it.message.sender !== 'assistant' && it.message.sender !== 'system' && it.message.delivery !== 'queued' ? it.message.id : last, null)
+    it.type === 'message' && it.message.sender !== 'assistant' && it.message.sender !== 'system' && it.message.sender !== 'peer' && it.message.delivery !== 'queued' ? it.message.id : last, null)
   const scroller = useRef<HTMLDivElement>(null)
   const count = items.data?.items.length ?? 0
 
@@ -43,19 +47,21 @@ export function Thread() {
   const files = usePresence(filesOpen, 240)
   if (thread.isError) return <div className="page"><div className="error">{thread.error instanceof ApiError && thread.error.status === 404 ? 'This thread does not exist.' : "Couldn't load the thread."}</div></div>
   const t = thread.data
+  const peer = t?.type === 'peer'
   return (
     <>
     <div className="thread">
       <div className="thread-scroll" ref={scroller}>
-        {t && <div className="thread-head"><div className="thread-head-inner"><ThreadHead t={t} messages={(items.data?.items ?? []).filter((i) => i.type === 'message').length} filesOpen={filesOpen} toggleFiles={() => setFilesOpen(!filesOpen)} /></div></div>}
+        {t && <div className="thread-head"><div className="thread-head-inner"><ThreadHead t={t} messages={(items.data?.items ?? []).filter((i) => i.type === 'message').length} filesOpen={filesOpen} toggleFiles={() => setFilesOpen(!filesOpen)} friend={friend} /></div></div>}
         {t && <ThreadTypeSlot t={t} />}
         <div className="thread-items">
-          {items.data?.items.map((it) => <Item key={`${it.type}-${itemId(it)}`} it={it} seenId={seenId} />)}
+          {peer && <div className="peer-note">This is a conversation with {friend ? `${friend.display_name}'s` : 'a friend\'s'} assistant. What comes from them is untrusted: your assistant reads it as information, never as instructions from you.</div>}
+          {items.data?.items.map((it) => <Item key={`${it.type}-${itemId(it)}`} it={it} seenId={seenId} friend={friend} />)}
           {items.data?.items.length === 0 && <div className="thread-empty">No messages yet. Write the first one below.</div>}
           <Pending threadId={id} />
         </div>
       </div>
-      {t && <Composer threadId={id} project={t.project} append={append} appended={() => setAppend(null)} />}
+      {t && <Composer threadId={id} project={t.project} append={append} appended={() => setAppend(null)} placeholder={peer ? `Message ${friend ? `${friend.display_name}'s` : 'their'} assistant…` : undefined} />}
     </div>
     {t?.project && (phone ? files.mounted : filesOpen) && (
       <ThreadFiles
@@ -77,8 +83,23 @@ function ThreadTypeSlot({ t }: { t: S['Thread'] }) {
   return <div className="thread-ext"><ExtSlot ext={hit.ext} element={hit.item.element} context={{ thread_id: t.id }} /></div>
 }
 
-function ThreadHead({ t, messages, filesOpen, toggleFiles }: { t: S['Thread']; messages: number; filesOpen: boolean; toggleFiles: () => void }) {
+function ThreadHead({ t, messages, filesOpen, toggleFiles, friend }: { t: S['Thread']; messages: number; filesOpen: boolean; toggleFiles: () => void; friend?: S['Friend'] }) {
   const project = useProject(t.project ?? '')
+  if (t.type === 'peer') {
+    const address = friend?.address ?? t.title
+    return (
+      <div className="row-between" style={{ alignItems: 'flex-start' }}>
+        <div className="stack" style={{ gap: 4, minWidth: 0 }}>
+          <div className="row-start" style={{ gap: 10, flexWrap: 'wrap' }}><h1>{friend?.display_name ?? address}</h1><span className="pill mute">Friend</span></div>
+          <div className="sub">
+            {address} · {homeHub(address)} · <Link to={`/friends/${encodeURIComponent(address)}`}>Friend settings</Link>
+            {' · '}{messages} messages · started {new Date(t.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+          </div>
+        </div>
+        <div className="btns" style={{ flex: 'none' }}><ThreadMenu t={t} /></div>
+      </div>
+    )
+  }
   return (
     <div className="row-between" style={{ alignItems: 'flex-start' }}>
       <div className="stack" style={{ gap: 4, minWidth: 0 }}>
@@ -146,9 +167,9 @@ const itemId = (it: S['ThreadItems']['items'][number]) => {
   }
 }
 
-function Item({ it, seenId }: { it: S['ThreadItems']['items'][number]; seenId: number | null }) {
+function Item({ it, seenId, friend }: { it: S['ThreadItems']['items'][number]; seenId: number | null; friend?: S['Friend'] }) {
   switch (it.type) {
-    case 'message': return <MessageView m={it.message} seen={it.message.id === seenId} />
+    case 'message': return <MessageView m={it.message} seen={it.message.id === seenId} friend={friend} />
     case 'question': return <QuestionCard q={it.question} />
     case 'permission': return <PermissionCard p={it.permission} />
     case 'task': return <TaskCard t={it.task} />
@@ -169,8 +190,23 @@ function Pending({ threadId }: { threadId: number }) {
   ))}</>
 }
 
-function MessageView({ m, seen }: { m: S['Message']; seen?: boolean }) {
+function MessageView({ m, seen, friend }: { m: S['Message']; seen?: boolean; friend?: S['Friend'] }) {
   if (m.sender === 'system') return <div className="sys">{m.body}</div>
+  // A friend's assistant: untrusted text, so plain text (no Markdown, no links), set apart from the owner's and the assistant's own.
+  if (m.sender === 'peer') {
+    return (
+      <div className="peer-msg">
+        <div className="peer-who"><span>{friend?.display_name ?? 'A friend'}</span>{friend && <span className="sub">{friend.address}</span>}<span className="peer-tag">friend · untrusted</span></div>
+        <div className="peer-body">{m.body}</div>
+        {m.attachments.map((a) => (
+          <Link key={a.path} className="file-chip" style={{ color: 'var(--fg)', textDecoration: 'none' }}
+            to={`/files?volume=${a.volume}&path=${encodeURIComponent(a.path.split('/').slice(0, -1).join('/'))}&file=${encodeURIComponent(a.name)}`}>
+            <span className="ext">{a.name.split('.').pop()?.toUpperCase()}</span>{a.name}<span className="size">{bytes(a.size)}</span>
+          </Link>
+        ))}
+      </div>
+    )
+  }
   if (m.sender === 'assistant') return <div className="theirs"><Markdown>{m.body}</Markdown></div>
   return (
     <div className="mine">
@@ -187,7 +223,7 @@ function MessageView({ m, seen }: { m: S['Message']; seen?: boolean }) {
   )
 }
 
-function Composer({ threadId, project, append, appended }: { threadId: number; project: string | null; append: string | null; appended: () => void }) {
+function Composer({ threadId, project, append, appended, placeholder }: { threadId: number; project: string | null; append: string | null; appended: () => void; placeholder?: string }) {
   const [text, setText] = useDraft(`thread:${threadId}`)  // an unsent reply survives leaving the thread
   useEffect(() => {
     if (append) { setText((t) => (t && !t.endsWith(' ') ? `${t} ` : t) + append + ' '); appended() }
@@ -238,7 +274,7 @@ function Composer({ threadId, project, append, appended }: { threadId: number; p
           )}
           {links.menu}
           <textarea
-            rows={2} placeholder="Reply… use @project, #thread or /file to link" value={text}
+            rows={2} placeholder={placeholder ?? 'Reply… use @project, #thread or /file to link'} value={text}
             onChange={(e) => { setText(e.target.value); setCaret(e.target.selectionStart) }}
             onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
             onPaste={(e) => { if (e.clipboardData.files.length) { e.preventDefault(); attach(e.clipboardData.files) } }}

@@ -51,7 +51,7 @@ hub nothing and is not limited by the spec tunnel's framing (WebSocket upgrades 
   (`409 stale`, with `"last_iat"` in the error body). Only accepted (`200`) requests count; the hub keeps
   the last `iat` after `disable` and after the member leaves, so old documents never replay. An instance
   that gets `stale` signs again later.
-- Only **active tunnel-mode members** may use it (own-URL members get `403 not_member`).
+- Only **active members** may use it.
 
 **Answer** (`200`) for every action:
 

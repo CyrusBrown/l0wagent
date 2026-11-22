@@ -37,9 +37,7 @@ describe("loadConfig", () => {
   it("reserves the hub's own name and RESERVED_NAMES", () => {
     expect(loadConfig(base({ RESERVED_NAMES: "Foo, bar" })).reservedExtra).toEqual(["foo", "bar", "hub"]);
   });
-  it("OWN_URL and POLICIES", () => {
-    expect(loadConfig(base()).ownUrl).toBe(true);
-    expect(loadConfig(base({ OWN_URL: "false" })).ownUrl).toBe(false);
+  it("POLICIES", () => {
     expect(loadConfig(base({ POLICIES: '{"terms":"https://x/t"}' })).policies).toEqual({ terms: "https://x/t" });
   });
 });

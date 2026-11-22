@@ -78,7 +78,6 @@
       "required": [
         "invites",
         "signups",
-        "own_url",
         "require_2fa"
       ],
       "properties": {
@@ -91,9 +90,6 @@
             "open",
             "approval"
           ]
-        },
-        "own_url": {
-          "type": "boolean"
         },
         "require_2fa": {
           "type": "boolean"

@@ -58,7 +58,7 @@ def test_new_settings_are_declared():
         if not seen or seen[-1] != g:
             seen.append(g)
     assert len(seen) == len(set(seen))  # each group's items are together
-    assert seen == ["Conversation", "Runs", "Wakeups", "Reviewer", "Chat", "Files", "Notifications", "System"]
+    assert seen == ["Conversation", "Runs", "Wakeups", "Reviewer", "Chat", "Files", "Notifications", "Friends", "System"]
 
 
 def test_ask_cap_follows_the_setting(be):

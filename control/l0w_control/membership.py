@@ -18,7 +18,7 @@ import asyncio
 import json
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from urllib.parse import urlsplit
 
@@ -51,10 +51,12 @@ class Gateway:
     def __init__(self, url: str, token: str, transport: httpx.AsyncBaseTransport | None = None):
         self.url, self.token, self.transport = url.rstrip("/"), token, transport
 
-    async def call(self, method: str, path: str, body: dict | None = None) -> dict:
+    async def call(self, method: str, path: str, body: dict | None = None, *, raw: bytes | None = None) -> dict:
+        """`raw` sends those bytes as the body untouched (an incoming envelope, which the gateway must see exactly as it arrived)."""
         try:
             async with httpx.AsyncClient(timeout=TIMEOUT, transport=self.transport) as c:
-                r = await c.request(method, self.url + path, json=body, headers={"Authorization": f"Bearer {self.token}"})
+                r = await c.request(method, self.url + path, headers={"Authorization": f"Bearer {self.token}", **({"Content-Type": "application/json"} if raw is not None else {})},
+                                    **({"content": raw} if raw is not None else {"json": body}))
         except httpx.HTTPError as e:
             raise GatewayError(0, "gateway_unreachable", str(e)) from e
         try:
@@ -99,6 +101,8 @@ class Membership:
         self.connect_to = connect_to if connect_to is not None else os.environ.get("L0W_HUB_CONNECT_TO") or None
         self.allow_http = allow_http if allow_http is not None else os.environ.get("L0W_HUB_ALLOW_HTTP") == "1"
         self._lock = asyncio.Lock()
+        self.on_caps: Callable[[], Awaitable[None]] | None = None  # hub services follow the capabilities (hubservices.py)
+        self.on_left: Callable[[], Awaitable[None]] | None = None
 
     # ── state ──────────────────────────────────────────────────────────────
     def row(self) -> dict | None:
@@ -106,7 +110,7 @@ class Membership:
         if not r:
             return None
         r = dict(r)
-        for k in ("hub_key", "capabilities", "hostnames", "own_urls", "self_doc", "check_result"):
+        for k in ("hub_key", "capabilities", "hostnames", "self_doc", "check_result"):
             r[k] = json.loads(r[k]) if r.get(k) else None
         return r
 
@@ -118,8 +122,6 @@ class Membership:
         return r if r and r["state"] == "joined" else None
 
     def _origin(self, r: dict, which: str) -> str:
-        if r["mode"] == "own-url" and r["own_urls"]:
-            return r["own_urls"][which].rstrip("/")
         scheme = urlsplit(r["hub_base"]).scheme or "https"
         return f"{scheme}://{r['hostnames'][which]}"
 
@@ -178,7 +180,6 @@ class Membership:
             "no_such_invite": "The hub doesn't know that invite.",
             "needs_invite": "This hub joins by invite only.",
             "instance_too_old": "This hub needs a newer l0wagent release. Update first (./l0w update).",
-            "own_url_unreachable": "The hub couldn't reach your URLs over HTTPS, or they don't serve your self-description.",
         }
         msg = friendly.get(code, detail or f"The hub answered {r.status_code}.")
         return Conflict(code, msg) if r.status_code == 409 else BadRequest(code, msg)
@@ -204,7 +205,7 @@ class Membership:
     # ── views ──────────────────────────────────────────────────────────────
     async def tunnel_status(self) -> s.TunnelStatus | None:
         r = self.joined()
-        if not r or r["mode"] != "tunnel" or not self.gw:
+        if not r or not self.gw:
             return None
         try:
             st = (await self.gw.call("GET", "/v0/tunnel/status")).get("status") or {}
@@ -232,12 +233,12 @@ class Membership:
                 sign_key = s.MemberKey(kid=sk["kid"], created=parse(sk["created"]))  # type: ignore[arg-type]
         chk = r["check_result"]
         return s.Membership(
-            state="joined", available=available, address=r["address"], mode=r["mode"],
+            state="joined", available=available, address=r["address"],
             hub=s.HubInfo(name=r["hub_name"], domain=r["hub_domain"], base_url=r["hub_base"], policies=(r["capabilities"] or {}).get("policies") or {}),
             hostnames=s.MemberHostnames(**r["hostnames"]),
             urls=s.MemberHostnames(instance=self._origin(r, "instance"), files=self._origin(r, "files")),
             joined_at=parse(r["joined_at"]), tunnel=await self.tunnel_status(),
-            accelerator=s.AcceleratorSetting(offered=self.accelerator_api(r) is not None, enabled=bool(r["use_accelerator"])) if r["mode"] == "tunnel" else None,
+            accelerator=s.AcceleratorSetting(offered=self.accelerator_api(r) is not None, enabled=bool(r["use_accelerator"])),
             check=s.MembershipCheck(ok=chk["ok"], at=parse(chk["at"]), problems=chk["problems"]) if chk else None,  # type: ignore[arg-type]
             sign_key=sign_key, hub_key_alarm=r["hub_key_alarm"],
         )
@@ -272,7 +273,7 @@ class Membership:
         return s.InvitePreview(
             hub=s.HubInfo(name=caps["name"], domain=caps["domain"], base_url=inv.base_url, policies=caps.get("policies") or {}),
             name_hint=info.get("name_hint"), name_bound=info.get("name_bound") is True and bool(info.get("name_hint")),
-            expires=parse(info.get("expires")), own_url_allowed=bool(caps["membership"].get("own_url")),
+            expires=parse(info.get("expires")),
             example=s.MemberHostnames(instance=ex["instance"], files=ex["files"]) if has_ex else None,
             example_name=_example_name(ex) if has_ex else None,
             two_factor_ready=self.two_factor(), problems=problems,
@@ -293,21 +294,12 @@ class Membership:
             name = names.validate_name(req.name.strip().lower())
         except ProtocolError as e:
             raise BadRequest("bad_name", f"{e}. Names are 3–32 lowercase letters and digits, with single dashes between them.") from e
-        if req.mode == "own-url":
-            if not req.own_urls:
-                raise BadRequest("own_urls_needed", "Joining with your own URLs needs both: one for the instance and one for files.")
-            a, b = urlsplit(req.own_urls.instance), urlsplit(req.own_urls.files)
-            if a.scheme != "https" or b.scheme != "https" or (a.scheme, a.netloc) == (b.scheme, b.netloc):
-                raise BadRequest("own_urls_bad", "Both URLs must be https and different origins (different hostnames).")
         inv = self._invite(req.invite)
         capsd = await self._capabilities(inv.base_url)
         caps = capsd["payload"]
-        if req.mode == "own-url" and not caps["membership"].get("own_url"):
-            raise BadRequest("own_url_not_allowed", "This hub doesn't take members with their own URLs.")
         hub_key = self._hub_sign_key(caps)
-        own = {"instance": req.own_urls.instance.rstrip("/"), "files": req.own_urls.files.rstrip("/")} if req.mode == "own-url" and req.own_urls else None
         try:
-            reg = await self.gw.call("POST", "/v0/register", {"hub": caps["domain"], "name": name, "invite": inv.code, "mode": req.mode, "own_urls": own,
+            reg = await self.gw.call("POST", "/v0/register", {"hub": caps["domain"], "name": name, "invite": inv.code,
                                                               "release": __version__, "protocols": [VERSION]})
         except GatewayError as e:
             raise BadRequest("gateway", f"The gateway couldn't make keys ({e.error}).") from e
@@ -327,23 +319,23 @@ class Membership:
         self.db.ex("DELETE FROM hub_membership WHERE id=1")
         self.db.ex(
             "INSERT INTO hub_membership(id, state, hub_base, hub_domain, hub_name, hub_key, capabilities, api, name, address, mode, hostnames, own_urls,"
-            " tunnel_url, self_seq, joined_at, backup) VALUES(1,'joined',?,?,?,?,?,?,?,?,?,?,?,?,-1,?,?)",
-            (inv.base_url, caps["domain"], caps["name"], json.dumps(hub_key.to_dict()), json.dumps(caps), caps["api"], name, address, req.mode,
-             json.dumps(hostnames), json.dumps(own) if own else None, jr.get("tunnel"), now, req.backup))
-        self._log("joined", f"{address} ({req.mode}); backup {req.backup}")
+            " tunnel_url, self_seq, joined_at, backup) VALUES(1,'joined',?,?,?,?,?,?,?,?,'tunnel',?,NULL,?,-1,?,?)",
+            (inv.base_url, caps["domain"], caps["name"], json.dumps(hub_key.to_dict()), json.dumps(caps), caps["api"], name, address,
+             json.dumps(hostnames), jr.get("tunnel"), now, req.backup))
+        self._log("joined", f"{address} ; backup {req.backup}")
         problems: list[str] = []
         try:
             await self._publish_self()
         except (BadRequest, Conflict, GatewayError) as e:
             problems.append(f"Publishing your self-description failed: {getattr(e, 'detail', '') or e}")
-        if req.mode == "tunnel":
-            await self._set_tunnel()
-            await self._wait_tunnel(20)
+        await self._set_tunnel()
+        await self._wait_tunnel(20)
         self._changed()
         if not problems:
             await self.check()
         else:
             self._store_check(problems)
+            await self._caps_changed()
         return s.JoinResult(membership=await self.view(), recovery_key=reg["recovery_key"])
 
     def accelerator_config(self, r: dict) -> dict:
@@ -353,11 +345,10 @@ class Membership:
 
     async def set_accelerator(self, enabled: bool) -> s.Membership:
         async with self._lock:
-            r = self._need_joined()
+            self._need_joined()
             self.db.ex("UPDATE hub_membership SET use_accelerator=? WHERE id=1", (1 if enabled else 0,))
             self._log("accelerator", "on" if enabled else "off")
-            if r["mode"] == "tunnel":
-                await self._set_tunnel()
+            await self._set_tunnel()
         self._changed()
         return await self.view()
 
@@ -366,7 +357,7 @@ class Membership:
             return
         r = self.joined()
         cfg = None
-        if r and r["mode"] == "tunnel" and r["tunnel_url"] and not off:
+        if r and r["tunnel_url"] and not off:
             cfg = {"url": r["tunnel_url"], "address": r["address"], "hub": r["hub_domain"], "hostnames": r["hostnames"], "release": __version__,
                    "connect_to": self.connect_to, "accelerator": self.accelerator_config(r)}
         try:
@@ -387,7 +378,7 @@ class Membership:
         assert r is not None
         seq = int(r["self_seq"]) + 1
         doc = (await self.gw.call("POST", "/v0/sign/self", {"address": r["address"], "seq": seq, "hostnames": r["hostnames"],  # type: ignore[union-attr]
-                                                            "own_urls": r["own_urls"], "protocols": [VERSION]}))["doc"]
+                                                            "protocols": [VERSION]}))["doc"]
         resp = await self._http("PUT", f"{r['api']}members/{r['name']}/self", body=doc)
         if resp.status_code != 200:
             raise self._hub_error(resp)
@@ -418,12 +409,14 @@ class Membership:
         if not r:
             raise Conflict("not_joined", "This instance isn't a member of a hub.")
         problems: list[str] = []
+        caps_ok = False
         pinned = Key.from_dict(r["hub_key"])
         try:
             caps = (await self._capabilities(r["hub_base"], pinned=pinned))["payload"]
             self.db.ex("UPDATE hub_membership SET capabilities=?, hub_key_alarm=NULL WHERE id=1", (json.dumps(caps),))
             if self.accelerator_api({**r, "capabilities": caps}) != self.accelerator_api(r):
                 await self._set_tunnel()  # the hub began or stopped offering the faster connection
+            caps_ok = True
         except SignatureError:
             alarm = "The hub's signing key changed with no rotation from the key you joined with. Don't trust it until you've checked with the hub's operator."
             if not r["hub_key_alarm"]:
@@ -457,7 +450,15 @@ class Membership:
                 problems.append(f"Your files hostname ({r['hostnames']['files']}) doesn't reach the files app (it answered {files.status_code}).")
         except BadRequest as e:
             problems.append(f"Your files hostname doesn't answer: {e.detail}")
-        return self._store_check(problems)
+        result = self._store_check(problems)
+        if caps_ok:
+            await self._caps_changed()
+        return result
+
+    async def _caps_changed(self) -> None:
+        """The hub's capabilities were read: its services follow them."""
+        if self.on_caps:
+            await self.on_caps()
 
     async def _directory_payload(self, r: dict, hub_key: Key, problems: list[str]) -> str | None:
         try:
@@ -522,6 +523,8 @@ class Membership:
             await self._set_tunnel(off=True)
             self.db.ex("UPDATE hub_membership SET state='left', left_at=? WHERE id=1", (self.db.now(),))
             self._log("left", r["address"])
+            if self.on_left:
+                await self.on_left()
             self._changed()
             return await self.view()
 

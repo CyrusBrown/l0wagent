@@ -34,8 +34,15 @@ class Config:
     #: how long a replaced connection may keep serving its open streams before it is closed 4409
     drain_seconds: float = 30.0
     handshake_timeout: float = 10.0
-    #: own-url mode: verify TLS when checking the member's URLs
-    own_url_verify_tls: bool = True
+    #: seconds in the offline page's Retry-After (30, as the spec's example; a test that waits for a retry sets it low: FAKEHUB_OFFLINE_RETRY_AFTER)
+    offline_retry_after: int = 30
+
+    #: run the built-in test service `echo@<domain>` (services.md)
+    echo: bool = False
+    #: members (names or addresses) whose service-welcome carries a `tester` role grant
+    echo_testers: list = field(default_factory=list)
+    #: the `extension` of echo's service document: {"git": https URL, "commit": 40/64 hex, "path": relative}; None: none
+    echo_extension: dict | None = None
 
     def __post_init__(self):
         self.base_url = self.base_url.rstrip("/")
@@ -72,7 +79,7 @@ class Config:
 
     def reserved_extra(self) -> list[str]:
         """The hub's own name and its services (membership.md)."""
-        return [self.domain.split(".")[0], *self.reserved]
+        return [self.domain.split(".")[0], *(["echo"] if self.echo else []), *self.reserved]
 
     @classmethod
     def from_env(cls, **overrides) -> Config:
@@ -85,6 +92,15 @@ class Config:
                 kw[key] = env(var)
         if env("FAKEHUB_RESERVED"):
             kw["reserved"] = [n.strip().lower() for n in env("FAKEHUB_RESERVED").split(",") if n.strip()]
+        if env("FAKEHUB_OFFLINE_RETRY_AFTER"):
+            kw["offline_retry_after"] = int(env("FAKEHUB_OFFLINE_RETRY_AFTER"))
+        if env("FAKEHUB_ECHO") not in (None, "", "0"):
+            kw["echo"] = True
+        if env("FAKEHUB_ECHO_TESTERS"):
+            kw["echo_testers"] = [n.strip().lower() for n in env("FAKEHUB_ECHO_TESTERS").split(",") if n.strip()]
+        if env("FAKEHUB_ECHO_EXTENSION"):  # git,commit,path
+            git, commit, path = env("FAKEHUB_ECHO_EXTENSION").split(",")
+            kw["echo_extension"] = {"git": git, "commit": commit, "path": path}
         if env("FAKEHUB_PORT"):
             kw["listen_port"] = int(env("FAKEHUB_PORT"))
         kw.update({k: v for k, v in overrides.items() if v is not None})

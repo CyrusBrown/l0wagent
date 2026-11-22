@@ -2,7 +2,7 @@ import { type CSSProperties, useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import type { S } from '../api/client'
 import { useLive } from '../api/live'
-import { useChats, useInboxCounts, useProjects, useResume, useStatus, useStopRun, useThreads, useUpdateInfo, useCancelUpdate } from '../api/queries'
+import { useChats, useInboxCounts, useMembership, useProjects, useResume, useStatus, useStopRun, useThreads, useUpdateInfo, useCancelUpdate } from '../api/queries'
 import { pts, stamp, until, usageText } from '../components/format'
 import { useOnline } from '../components/online'
 import { useEscape } from '../components/useEscape'
@@ -86,6 +86,10 @@ export function Shell() {
 
 /** What the More dropdown (desktop) and the More sheet (phone) list; the first three are the dropdown's. */
 const MORE_DESKTOP = [['/calendar', 'Calendar', 'Wakeups, routines, protected hours'], ['/network', 'Network', 'Request log and egress rules']]
+/** Friends only exist on a hub, so the entry is there only once this install has joined one. */
+const FRIENDS_DESKTOP = ['/friends', 'Friends', 'Other people\'s assistants, through your hub']
+const FRIENDS_PHONE: [string, string, string, keyof typeof Icon] = ['/friends', 'Friends', 'Other people\'s assistants, through your hub', 'friends']
+const useJoined = () => useMembership().data?.state === 'joined'
 const MORE_PHONE: [string, string, string, keyof typeof Icon][] = [
   ['/files', 'Files', "The assistant's workspace and project shelves", 'files'],
   ['/tools', 'Tools', 'Integrations, connected apps and secrets', 'tools'],
@@ -99,7 +103,8 @@ function Header({ onSearch, moreOpen, setMoreOpen, onDrawer, drawerOpen }: { onS
   const loc = useLocation()
   const convActive = CONVERSATION.test(loc.pathname)
   const exts = useExtensions()
-  const more = [...MORE_DESKTOP, ...pages(exts.data).map((p) => [p.to, p.page.title, p.ext.title])]
+  const joined = useJoined()
+  const more = [...MORE_DESKTOP, ...(joined ? [FRIENDS_DESKTOP] : []), ...pages(exts.data).map((p) => [p.to, p.page.title, p.ext.title])]
   const moreCur = more.find(([to]) => loc.pathname.startsWith(to))
   useEscape(moreOpen, () => setMoreOpen(false))
   return (
@@ -177,7 +182,8 @@ function TabBar({ chatsActive, openDrawer, openMore, moreOpen }: { chatsActive: 
 /** The phone's More list: the built-in places, then any extension pages. */
 function useMorePhone(): [string, string, string, keyof typeof Icon][] {
   const exts = useExtensions()
-  return [...MORE_PHONE, ...pages(exts.data).map((p): [string, string, string, keyof typeof Icon] => [p.to, p.page.title, p.ext.title, 'more'])]
+  const joined = useJoined()
+  return [...MORE_PHONE.slice(0, 4), ...(joined ? [FRIENDS_PHONE] : []), ...MORE_PHONE.slice(4), ...pages(exts.data).map((p): [string, string, string, keyof typeof Icon] => [p.to, p.page.title, p.ext.title, 'more'])]
 }
 
 function MoreSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -313,10 +319,11 @@ function ChatList() {
   )
 }
 
-function ThreadLink({ t, indent }: { t: { id: number; title: string; unread: number }; indent: boolean }) {
+function ThreadLink({ t, indent }: { t: { id: number; title: string; unread: number; type?: string }; indent: boolean }) {
   return (
     <NavLink to={`/t/${t.id}`} className={({ isActive }) => [indent && 'indent', isActive && 'active', t.unread > 0 && 'unread'].filter(Boolean).join(' ')}>
       <span className="grow">{t.title}</span>
+      {t.type === 'peer' && <span className="peer-tag" title="A conversation with a friend's assistant">friend</span>}
       {t.unread > 0 && <span className="badge">{t.unread}</span>}
     </NavLink>
   )

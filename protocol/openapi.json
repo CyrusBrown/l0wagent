@@ -342,16 +342,6 @@
               }
             }
           },
-          "422": {
-            "description": "Own-URL mode: the URLs failed the hub's checks. Codes: `own_url_unreachable`.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "schemas/error.json"
-                }
-              }
-            }
-          },
           "426": {
             "description": "The instance release is older than `instance_releases.min`. Codes: `instance_too_old`.",
             "content": {
@@ -559,7 +549,7 @@
             }
           },
           "403": {
-            "description": "Not an active tunnel-mode member. Codes: `not_member`.",
+            "description": "Not an active member. Codes: `not_member`.",
             "content": {
               "application/json": {
                 "schema": {

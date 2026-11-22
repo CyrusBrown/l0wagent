@@ -85,6 +85,17 @@ export function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boo
   )
 }
 
+/** One choice out of a few, saved when you pick (the `.seg` control; the pick is a radio group for assistive tech). */
+export function Seg<T extends string>({ value, options, onChange, label, disabled }: { value: T; options: [T, string][]; onChange: (v: T) => void; label: string; disabled?: boolean }) {
+  return (
+    <div className="seg" role="radiogroup" aria-label={label}>
+      {options.map(([k, text]) => (
+        <button key={k} type="button" role="radio" aria-checked={value === k} className={value === k ? 'on' : ''} disabled={disabled} onClick={() => value !== k && onChange(k)}>{text}</button>
+      ))}
+    </div>
+  )
+}
+
 /** Toggle chips for picking several options. */
 export function Chips({ options, value, onChange, label }: { options: { id: string; label: string }[]; value: string[]; onChange: (v: string[]) => void; label: string }) {
   return (

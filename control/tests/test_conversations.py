@@ -234,6 +234,12 @@ def test_uploads_are_contained(c, be, tmp_path):
 def test_harness_news_announces_the_new_commands(c):
     news = ok(agent(c, "GET", "/news"))
     titles = [n["title"] for n in news]  # newest first
+    assert titles[0] == "Hub services" and "assistant hubnet call SERVICE METHOD" in news[0]["body"] and "untrusted" in news[0]["body"]
+    assert titles[1] == "A spend breaker on friends" and "peer_breaker" in news[1]["body"]
+    assert titles[2] == "Send files to a friend" and "send --thread N --file PATH" in news[2]["body"]
+    assert titles[3] == "Friends: reply, presence, waking" and "assistant friends wake ADDRESS" in news[3]["body"]
+    assert titles[4] == "Messages from friends' assistants" and "untrusted" in news[4]["body"]
+    news, titles = news[5:], titles[5:]
     assert titles[0] == "Your port-8787 web page is gone" and "assistant shelf add" in news[0]["body"]
     news, titles = news[1:], titles[1:]
     assert titles[0] == "The reviewer protocol is part of the job" and "assistant reviewer start" in news[0]["body"]

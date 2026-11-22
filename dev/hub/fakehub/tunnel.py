@@ -237,7 +237,7 @@ class TunnelServer:
             if domain != self.cfg.domain.lower():
                 return await refuse()
             m = self.hub.store.member(name)
-            if not m or m["status"] != "active" or m["mode"] != "tunnel":
+            if not m or m["status"] != "active" or m.get("builtin"):
                 return await refuse()
             payloads.verify_tunnel_hello(doc, Key.from_dict(m["keys"]["sign"]), nonce=b64.encode(nonce), hub=self.cfg.domain)
             if time.monotonic() - sent_at > 30:
@@ -276,7 +276,7 @@ class TunnelServer:
         await self.respond(send, status, [("content-type", "application/json"), ("cache-control", "no-store"), *extra], body)
 
     async def offline(self, send, accept: str) -> None:
-        extra = [("retry-after", "30"), ("cache-control", "no-store")]
+        extra = [("retry-after", str(self.cfg.offline_retry_after)), ("cache-control", "no-store")]
         if prefers_json(accept):
             body = json.dumps({"v": VERSION, "error": "instance_offline"}).encode()
             await self.respond(send, 502, [("content-type", "application/json"), *extra], body)
@@ -425,6 +425,9 @@ class Front:
     async def __call__(self, scope, receive, send):
         if scope["type"] in ("http", "websocket"):
             host = next((v.decode("latin-1").lower() for k, v in scope["headers"] if k == b"host"), "")
+            echo = self.server.hub.echo
+            if echo and scope["type"] == "http" and echo.owns_host(host):
+                return await echo.app(scope, receive, send)
             hit = self.server.lookup(host)
             if hit:
                 name, kind = hit

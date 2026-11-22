@@ -84,6 +84,8 @@ class MockBackend(Backend):
             snapshot = [
                 *(s.SyncChange(entity="project", id=p.slug, op="upsert", data=p.model_dump(mode="json")) for p in self.w.projects.values()),
                 *(s.SyncChange(entity="thread", id=str(t.id), op="upsert", data=t.model_dump(mode="json")) for t in self.w.threads.values()),
+                *(s.SyncChange(entity="friend", id=f.address, op="upsert", data=f.model_dump(mode="json")) for f in self.w.friends.values()),
+                *(s.SyncChange(entity="friend_request", id=str(r.id), op="upsert", data=r.model_dump(mode="json")) for r in self.w.friend_requests.values()),
             ]
             return s.SyncResponse(cursor=str(self.seq), changes=snapshot)
         try:
@@ -532,7 +534,7 @@ class MockBackend(Backend):
 
     def membership_preview(self, req: s.InvitePreviewRequest) -> s.InvitePreview:
         self._mock_invite(req.invite)
-        return s.InvitePreview(hub=self.MOCK_HUB, name_hint="mara", expires=_now() + timedelta(days=7), own_url_allowed=True,
+        return s.InvitePreview(hub=self.MOCK_HUB, name_hint="mara", expires=_now() + timedelta(days=7),
                                example=s.MemberHostnames(instance="mara.hub.example", files="files--mara.hubfiles.example"), two_factor_ready=True)
 
     def membership_join(self, req: s.JoinRequest) -> s.JoinResult:
@@ -542,11 +544,19 @@ class MockBackend(Backend):
         name = req.name.strip().lower()
         host = s.MemberHostnames(instance=f"{name}.hub.example", files=f"files--{name}.hubfiles.example")
         self._member = s.Membership(
-            state="joined", available=True, address=f"{name}@hub.example", mode=req.mode, hub=self.MOCK_HUB, hostnames=host,
+            state="joined", available=True, address=f"{name}@hub.example", hub=self.MOCK_HUB, hostnames=host,
             urls=s.MemberHostnames(instance=f"https://{host.instance}", files=f"https://{host.files}"), joined_at=_now(),
             tunnel=s.TunnelStatus(state="connected", since=_now(), accelerator=s.AcceleratorStatus(state="active", since=_now())),
             accelerator=s.AcceleratorSetting(offered=True, enabled=True), check=s.MembershipCheck(ok=True, at=_now()),
             sign_key=s.MemberKey(kid="k1." + secrets.token_urlsafe(16)[:22], created=_now()))
+        self._services = [
+            s.HubService(address="echo@hub.example", kind="custom", title="Echo", description="A test service: echo, whoami, secret.", roles=["tester"], roles_held=["tester"],
+                         default_on=True, enabled=True, state="connected", connected_at=_now(), updated_at=_now()),
+            s.HubService(address="board@hub.example", kind="board", title="Board", description="Topics, posts and discussions for members of this hub.",
+                         docs="https://hub.example/services/board", roles=["moderator", "poster"],
+                         extension=s.HubServiceExtension(git="https://git.example/hub-services.git", commit="0" * 40, path="extensions/board"),
+                         default_on=False, enabled=False, state="off", updated_at=_now()),
+        ]
         return s.JoinResult(membership=self._member, recovery_key="l0w-recovery:" + secrets.token_urlsafe(32))
 
     def _joined(self) -> s.Membership:
@@ -582,7 +592,184 @@ class MockBackend(Backend):
         if req.confirm.strip().lower() != m.address:
             raise BadRequest("confirm", f"Type your address ({m.address}) to confirm.")
         self._member = s.Membership(state="left", available=True, address=m.address, left_at=_now())
+        self._services = []
         return self._member
+
+    def membership_services(self) -> list[s.HubService]:
+        return list(getattr(self, "_services", [])) if self._member.state == "joined" else []
+
+    def membership_service_patch(self, address: str, req: s.HubServicePatch) -> s.HubService:
+        self._joined()
+        svc = next((x for x in getattr(self, "_services", []) if x.address == address.lower()), None)
+        if svc is None:
+            raise NotFound(f"hub service {address}")
+        svc.enabled = req.enabled
+        svc.state = "connected" if req.enabled else "off"
+        svc.connected_at = _now() if req.enabled else None
+        svc.roles_held = ["tester"] if req.enabled and "tester" in svc.roles else []
+        svc.updated_at = _now()
+        return svc
+
+    # ── friends (H5): fixtures plus plausible in-memory behaviour ──
+    def _friend(self, address: str) -> s.Friend:
+        f = self.w.friends.get(address.lower())
+        if not f:
+            raise NotFound(f"friend {address}")
+        return f
+
+    def _friend_changed(self, f: s.Friend) -> None:
+        f.updated_at = _now()
+        self._changed("friend", f.address, f)
+
+    def friends(self) -> list[s.Friend]:
+        order = {"requested_in": 0, "friends": 1, "requested_out": 2, "blocked": 3}
+        return sorted(self.w.friends.values(), key=lambda f: (order[f.state], f.display_name.lower()))
+
+    def friend_requests(self, state: str | None) -> list[s.FriendRequest]:
+        return sorted((r for r in self.w.friend_requests.values() if state is None or r.state == state), key=lambda r: r.id, reverse=True)
+
+    def create_friend_request(self, req: s.FriendRequestCreate) -> s.FriendRequest:
+        def make():
+            address = (req.address or "").strip().lower()
+            if req.code:
+                if not req.code.startswith("l0wf1:"):
+                    raise BadRequest("bad_friend_code", "That isn't a friend code (it starts with l0wf1:).")
+                address = req.code.rsplit(":", 2)[0][len("l0wf1:"):]
+            if "@" not in address:
+                raise BadRequest("bad_address", "That isn't an address (name@hub-domain).")
+            if address in self.w.friends:
+                raise Conflict("already_friends" if self.w.friends[address].state == "friends" else "already_requested", f"You already have {address} here.")
+            now = _now()
+            rid = max(self.w.friend_requests, default=0) + 1
+            r = s.FriendRequest(id=rid, direction="out", address=address, note=req.note, made_by="owner", code_used=bool(req.code), fingerprint="3H8N-V2TP-Q6BD-0YJ4",
+                                state="sent", created_at=now)
+            self.w.friend_requests[rid] = r
+            f = s.Friend(address=address, display_name=address, fingerprint=r.fingerprint, state="requested_out", share="nothing", presence_detail="coarse", waking="never",
+                         muted=False, thread_id=None, presence=None, same_owner=False, key_alarm=None, created_at=now, updated_at=now)
+            self.w.friends[address] = f
+            self._changed("friend_request", rid, r)
+            self._friend_changed(f)
+            return r
+
+        return self._once(req.idempotency_key, make)
+
+    def _request(self, request_id: int) -> s.FriendRequest:
+        r = self.w.friend_requests.get(request_id)
+        if not r:
+            raise NotFound(f"friend request {request_id}")
+        if r.state != "pending":
+            raise Conflict("already_decided", f"That request is {r.state}.")
+        return r
+
+    def approve_friend_request(self, request_id: int) -> s.FriendRequest:
+        r = self._request(request_id)
+        r.state, r.decided_at = "approved", _now()
+        f = self.w.friends.get(r.address)
+        if f:
+            f.state = "friends"
+            if f.thread_id is None:
+                tid = max(self.w.threads) + 1
+                now = _now()
+                self.w.threads[tid] = s.Thread(id=tid, project=None, title=r.address, type="peer", status="open", created_by="owner", pinned=False, created_at=now,
+                                               last_activity_at=now, last_message_preview=None, unread=0, open_asks=0)
+                f.thread_id = tid
+                self._changed("thread", tid, self.w.threads[tid])
+            self._friend_changed(f)
+        self._changed("friend_request", r.id, r)
+        return r
+
+    def decline_friend_request(self, request_id: int) -> s.FriendRequest:
+        r = self._request(request_id)
+        r.state, r.decided_at = "declined", _now()
+        f = self.w.friends.get(r.address)
+        if f and f.state == "requested_in":
+            del self.w.friends[r.address]
+            self._changed("friend", r.address, None)
+        self._changed("friend_request", r.id, r)
+        return r
+
+    def patch_friend(self, address: str, req: s.FriendPatch) -> s.Friend:
+        f = self._friend(address)
+        for k, v in req.model_dump(exclude_unset=True).items():
+            if v is not None:
+                setattr(f, k, v)
+        self._friend_changed(f)
+        return f
+
+    def block_friend(self, address: str) -> s.Friend:
+        address = address.lower()
+        now = _now()
+        f = self.w.friends.get(address) or s.Friend(address=address, display_name=address, fingerprint=None, state="blocked", share="nothing", presence_detail="coarse",
+                                                    waking="never", muted=False, thread_id=None, presence=None, same_owner=False, key_alarm=None, created_at=now, updated_at=now)
+        f.state = "blocked"
+        self.w.friends[address] = f
+        self._friend_changed(f)
+        return f
+
+    def unblock_friend(self, address: str) -> None:
+        f = self._friend(address)
+        if f.state != "blocked":
+            raise NotFound(f"blocked friend {address}")
+        del self.w.friends[f.address]
+        self._changed("friend", f.address, None)
+
+    def unfriend(self, address: str) -> None:
+        f = self._friend(address)
+        if f.state == "blocked":
+            raise Conflict("blocked", "They're blocked: use unblock.")
+        del self.w.friends[f.address]
+        self._changed("friend", f.address, None)
+
+    def friend_codes(self) -> list[s.FriendCode]:
+        return sorted(self.w.friend_codes.values(), key=lambda c: c.id, reverse=True)
+
+    def create_friend_code(self, req: s.FriendCodeCreate) -> s.FriendCodeCreated:
+        def make():
+            cid = max(self.w.friend_codes, default=0) + 1
+            now = _now()
+            days = req.expires_days or 14
+            self.w.friend_codes[cid] = s.FriendCode(id=cid, label=req.label, state="active", created_at=now, expires_at=now + timedelta(days=days))
+            return s.FriendCodeCreated(id=cid, code="l0wf1:mara@hub.example:WZCY8FG5JZ5EV87N:" + secrets.token_urlsafe(16)[:22], address="mara@hub.example",
+                                       fingerprint="WZCY-8FG5-JZ5E-V87N", expires_at=now + timedelta(days=days))
+
+        return self._once(req.idempotency_key, make)
+
+    def delete_friend_code(self, code_id: int) -> None:
+        if self.w.friend_codes.pop(code_id, None) is None:
+            raise NotFound(f"friend code {code_id}")
+
+    def friend_fingerprint(self) -> s.FriendFingerprint:
+        return s.FriendFingerprint(address="mara@hub.example", fingerprint="WZCY-8FG5-JZ5E-V87N")
+
+    def friend_settings(self) -> s.FriendSettings:
+        return self.w.friend_settings
+
+    def set_friend_settings(self, req: s.FriendSettingsPatch) -> s.FriendSettings:
+        for k, v in req.model_dump(exclude_unset=True).items():
+            if v is not None:
+                setattr(self.w.friend_settings, k, v)
+        return self.w.friend_settings
+
+    def friend_breaker(self) -> s.FriendBreaker:
+        return self.w.friend_breaker
+
+    def friend_breaker_decide(self, choice: str, req: s.FriendBreakerAction) -> s.FriendBreaker:
+        def make():
+            b = self.w.friend_breaker
+            if choice == "allow_run" and b.limit != "run":
+                raise Conflict("not_tripped", "No run is over its limit, so there is nothing to allow.")
+            if choice == "allow_today":
+                per_pct = b.day_limit / b.day_pct
+                b.day_pct += 5.0
+                b.day_limit = round(per_pct * b.day_pct, 2)
+            b.tripped, b.limit, b.choices, b.explanation, b.at = False, None, [], "", None
+            b.paused = choice == "stop_today"
+            if choice == "stop_today":
+                b.stopped_until = _now().replace(hour=23, minute=59, second=0, microsecond=0)
+            self._emit(s.LiveEvent(type="friend", data={"breaker": True}))
+            return b
+
+        return self._once(req.idempotency_key, make)
 
     def self_description(self) -> dict | None:
         return None

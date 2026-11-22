@@ -1,0 +1,47 @@
+{
+  "description": "The board grants Mara's instance the moderator role, signed by the service",
+  "type": "role-grant",
+  "now": "2026-11-17T21:30:00Z",
+  "payload_json": "{\"v\":\"l0w/0.1\",\"type\":\"role-grant\",\"iat\":\"2026-11-17T21:30:00Z\",\"service\":\"board@hub.example\",\"holder\":\"mara@hub.example\",\"holder_kid\":\"k1.7jjJipSU1jZBHvxMYWMDhA\",\"role\":\"moderator\"}",
+  "payload_b64": "eyJ2IjoibDB3LzAuMSIsInR5cGUiOiJyb2xlLWdyYW50IiwiaWF0IjoiMjAyNi0xMS0xN1QyMTozMDowMFoiLCJzZXJ2aWNlIjoiYm9hcmRAaHViLmV4YW1wbGUiLCJob2xkZXIiOiJtYXJhQGh1Yi5leGFtcGxlIiwiaG9sZGVyX2tpZCI6ImsxLjdqakppcFNVMWpaQkh2eE1ZV01EaEEiLCJyb2xlIjoibW9kZXJhdG9yIn0",
+  "signing_input": "l0wagent-sig/1\nrole-grant\neyJ2IjoibDB3LzAuMSIsInR5cGUiOiJyb2xlLWdyYW50IiwiaWF0IjoiMjAyNi0xMS0xN1QyMTozMDowMFoiLCJzZXJ2aWNlIjoiYm9hcmRAaHViLmV4YW1wbGUiLCJob2xkZXIiOiJtYXJhQGh1Yi5leGFtcGxlIiwiaG9sZGVyX2tpZCI6ImsxLjdqakppcFNVMWpaQkh2eE1ZV01EaEEiLCJyb2xlIjoibW9kZXJhdG9yIn0",
+  "signatures": [
+    {
+      "kid": "k1.RDetEdeYy0chAOHjB77GCw",
+      "sig": "Edgc3zHtGoB5KwmdUZqElAZDnivdJTcod_XlZNtNvdUIVoER8TxV2VKtGzPBMNzXkRi_jRdsaLQhqlWVBJ2mBw"
+    }
+  ],
+  "verify_keys": [
+    {
+      "kid": "k1.RDetEdeYy0chAOHjB77GCw",
+      "alg": "Ed25519",
+      "use": "sign",
+      "pub": "rloFEnbg3auG9aRwenP4CKWCM4Meb_iu5ZqPew3wGj0",
+      "created": "2026-11-17T21:30:00Z"
+    }
+  ],
+  "required": [
+    "k1.RDetEdeYy0chAOHjB77GCw"
+  ],
+  "document": {
+    "v": "l0w/0.1",
+    "type": "role-grant",
+    "payload": "eyJ2IjoibDB3LzAuMSIsInR5cGUiOiJyb2xlLWdyYW50IiwiaWF0IjoiMjAyNi0xMS0xN1QyMTozMDowMFoiLCJzZXJ2aWNlIjoiYm9hcmRAaHViLmV4YW1wbGUiLCJob2xkZXIiOiJtYXJhQGh1Yi5leGFtcGxlIiwiaG9sZGVyX2tpZCI6ImsxLjdqakppcFNVMWpaQkh2eE1ZV01EaEEiLCJyb2xlIjoibW9kZXJhdG9yIn0",
+    "sigs": [
+      {
+        "kid": "k1.RDetEdeYy0chAOHjB77GCw",
+        "sig": "Edgc3zHtGoB5KwmdUZqElAZDnivdJTcod_XlZNtNvdUIVoER8TxV2VKtGzPBMNzXkRi_jRdsaLQhqlWVBJ2mBw"
+      }
+    ]
+  },
+  "service_key": {
+    "seed": "8b60f8aad594f73d6971b1b7abc9548cec2a1646116d2996f7c7d7524062e2de",
+    "key": {
+      "kid": "k1.RDetEdeYy0chAOHjB77GCw",
+      "alg": "Ed25519",
+      "use": "sign",
+      "pub": "rloFEnbg3auG9aRwenP4CKWCM4Meb_iu5ZqPew3wGj0",
+      "created": "2026-11-17T21:30:00Z"
+    }
+  }
+}

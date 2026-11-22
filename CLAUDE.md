@@ -2,7 +2,7 @@
 
 A long-running personal AI assistant on the owner's own server. **Start with [docs/plans/development.md](docs/plans/development.md)**: it says which milestone is current and what "done" means. Don't build ahead of the current milestone; ideas for later go in that file's "Later" list.
 
-Current work: **the hub, stages H3 (joining) and H4 (your hub, live)**, per [docs/plans/hub-development.md](docs/plans/hub-development.md) (owner, 2026-11-17: start the hub; 2026-11-18: continue up to H4). H1 and H2 are built and waiting on the owner's checks and spec review. M9 (more opencode providers and the model registry) is not started. M1–M8 are waiting on the owner's review; the desktop app is on the Later list.
+Current work: **the hub, stage H5 (friends and messages)**, per [docs/plans/hub-development.md](docs/plans/hub-development.md) (owner, 2026-11-17: start the hub; 2026-11-22: continue the plan). H5 is built and waiting on the owner's checks; H6 (hub services) is in progress, without the ops container. H1–H4 are built and waiting on the owner's checks and spec review. M9 (more opencode providers and the model registry) is not started. M1–M8 are waiting on the owner's review; the desktop app is on the Later list.
 
 ## Sources of truth
 - **UI and styling: the mockup** (`design/mockup/`; readable sources in `design/mockup/src/`). It outranks `docs/plans/ui.md`. Port screens from its markup and tokens; where ui.md disagrees, update ui.md. [design/mockup/REVIEW.md](design/mockup/REVIEW.md) lists every known difference and how it was settled.
@@ -26,6 +26,10 @@ control/   FastAPI app (Python 3.12, SQLite, no ORM). api/ = schemas + owner rou
            integrations.py (brokered MCP servers); connector.py + api/connector_routes.py (/mcp, OAuth);
            updates.py (update check, draining); hostctl.py (host-side commands for ./l0w);
            membership.py (hub membership: join, self-description, self-check, rotate, leave; keys stay in the gateway);
+           hubservices.py (a hub's services: rows follow the capabilities, connect/hello/welcome, role grants held in control, calls and the call log);
+           breaker.py (the spend breaker for peer activity: spans, limits, the owner's card);
+           friends.py + presence.py (friends, peer threads and messages, wake requests; what we tell friends we're up to; the agent's
+           friend routes are in api/agent.py and its wording in prompts/peers.md);
            extensions.py + sdk.py (the owner's extensions: loader, isolation, the SDK v1 contract);
            db/migrations/ = versioned SQL
 agent/     the agent image: runner/ (runner.py, fake_claude.py, fake_opencode.py, opencode-plugin.js, selftest.py),
@@ -40,7 +44,7 @@ deploy/    control.Dockerfile (control + built web app); compose.yaml at the roo
 chat-runtime/  the stateless sidecar for Claude-subscription chats (Claude Code, no tools of its own, its own network)
 extensions/    the owner's extensions (git-ignored) + AGENTS.md and examples/plantlog; the guide is docs/EXTENDING.md
 protocol/      the hub protocol spec (l0w/0.1): documents, schemas, test vectors, py/ = l0wproto (reference library), conformance/
-gateway/       the instance's key holder: makes and signs with the instance keys, never hands a private key out (hubnet only)
+gateway/       the instance's key holder: makes and signs with the instance keys, never hands a private key out (hubnet + its own gateway-out)
 tunnel/        the spec tunnel client: dials out to the hub, hands requests to control / the files app by Host (hubnet + outside)
 hub/           the generic hub core on Cloudflare (Workers, Durable Objects, D1); its own CLAUDE.md; depends only on protocol/
 dev/hub/       the fake hub (Python), for development and tests; dev/check-boundaries.py keeps instance and hub apart
@@ -105,7 +109,8 @@ python3 dev/check-boundaries.py                        # instance and hub/ depen
 - Control writes into the agent's storage only for owner uploads into `_inbox/` and extensions' managed folders.
 - Files are served safely: symlink-safe containment; agent HTML only in a sandboxed frame on a separate origin, SVG only as an image; agent markdown sanitized.
 - Offline-queued actions never include approvals, secrets, settings or budget changes.
-- `/api/peer/*` and `/api/hub/*` are reserved for the hub (later).
+- `/api/peer/*` is the instance-to-instance inbox, reachable only through the hub tunnel (everyone else gets 404);
+  `/api/hub/*` stays reserved for the hub (later).
 - Browsers send a host's cookies to every port on it, including the files origin. So control refuses
   cookie-authenticated writes without the `X-L0W-Client` header (the web client sends it). Agent HTML
   loads only from the files origin (its port, or its own hostname on a hub), with the sandbox CSP on
@@ -113,9 +118,10 @@ python3 dev/check-boundaries.py                        # instance and hub/ depen
 - Requests through the hub tunnel (`L0W_TUNNEL_SUBNET`) are their own caller class: never
   `/api/agent/*` or `/api/chat-runtime/*`, never "local", client address only from the tunnel's header.
 - Device tokens are scoped (`full`, `cli`, `read`; `auth.scope_allows`); browser sessions are full.
+- Hub services: role grants a service signs for the instance stay in control (callers name a role, control attaches the grant); everything a service sends (results, events, titles) is untrusted content, labelled so for the agent; a service never authorizes anything for the assistant. `service-*` envelopes are accepted only from the addresses the hub's capabilities list as services and the owner has on.
 - Only the gateway holds the instance's private keys (signing, sealing); the recovery key is shown to
-  the owner once and never stored. The gateway is on `hubnet` only (control and the tunnel), never the
-  sandbox network; the tunnel reaches control only by its `control-hub` alias on `hubnet`, so its
+  the owner once and never stored. The gateway is on `hubnet` (control and the tunnel) and its own `gateway-out` (the internet, for
+  peer delivery; no other container joins it; targets vetted like egress), never the sandbox network; the tunnel reaches control only by its `control-hub` alias on `hubnet`, so its
   requests always fall in `L0W_TUNNEL_SUBNET`. Joining a hub needs TOTP or a passkey.
 
 ## Commits

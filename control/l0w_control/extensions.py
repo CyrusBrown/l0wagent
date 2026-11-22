@@ -350,7 +350,7 @@ class Extensions:
         return sdk.Extension(name=m.name, title=m.title, version=m.version, root=str(m.root), router=APIRouter(), agent_router=APIRouter(),
                              store=sdk.Store(self, m.name), settings=sdk.SettingsView(self, m.name), threads=sdk.Threads(self, m.name),
                              runs=sdk.Runs(self), projects=sdk.Projects(self), vault=sdk.VaultView(self), inbox=sdk.Inbox(self, m.name),
-                             folders=sdk.Folders(self, m.name), hub=sdk.Hub(self), _x=self)
+                             folders=sdk.Folders(self, m.name), hub=sdk.Hub(self, m.name), _x=self)
 
     def _subapp(self, ext: sdk.Extension, router: APIRouter, owner: bool) -> FastAPI | None:
         if not router.routes:
@@ -414,9 +414,24 @@ class Extensions:
             for handler in (lo.ext.hooks.get(event, []) if lo.ext else []):
                 self.pool.submit(self._call, name, f"{event} hook", handler, dict(data))
 
+    def fire_hub_event(self, service: dict, event: str, data: dict) -> int:
+        """A hub service's own event (`service-event`) for the extensions that asked for its kind or address. -> how many were handed it."""
+        n = 0
+        for name, lo in list(self.loaded.items()):
+            for key, handler in (lo.ext.hub._handlers if lo.ext else []):
+                if key in (service["address"], service["kind"]):
+                    n += 1
+                    self.pool.submit(self._call, name, "hub event hook", handler, {"service": service["address"], "kind": service["kind"], "event": event, "data": dict(data)})
+        return n
+
     def _call(self, name: str, what: str, fn: Callable, *args: Any) -> None:
         try:
-            fn(*args)
+            res = fn(*args)
+            if asyncio.iscoroutine(res):  # an `async def` handler runs on control's loop
+                if self.loop is None:
+                    res.close()
+                else:
+                    asyncio.run_coroutine_threadsafe(res, self.loop).result(330)
         except Exception as e:  # noqa: BLE001
             self._error(name, f"{what} failed: {e}\n{_tail(traceback.format_exc())}")
 

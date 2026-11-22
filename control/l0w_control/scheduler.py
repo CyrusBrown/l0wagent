@@ -450,6 +450,19 @@ class Scheduler:
         wid = self._insert(pid, at, budget, tier, reason, "planned" if by == "assistant" else "owner", by, note=note)
         return wakeup_model(self.db, self.db.q1("SELECT * FROM wakeups WHERE id=?", (wid,)))  # type: ignore[arg-type]
 
+    def plan_soon(self, pid: str, budget: float, reason: str, minutes: float = 2) -> s.Wakeup:
+        """A wakeup a couple of minutes from now that control plans because the owner allowed it (a friend's wake request).
+        Checked like the owner's own additions: the arithmetic (what's left of the period) but not the assistant's limits
+        (hours, count, gap); it counts against the budget like any wakeup. Raises BadRequest with the reason when it can't be."""
+        from .backends.base import BadRequest
+        at = self.budgets.now() + timedelta(minutes=minutes)
+        tier = self.budgets.role("worker").tier
+        problem = self.budgets.validate(pid, at, budget, tier, by="owner")
+        if problem:
+            raise BadRequest("wakeup_rejected", problem)
+        wid = self._insert(pid, at, budget, tier, reason, "planned", "control")
+        return wakeup_model(self.db, self.db.q1("SELECT * FROM wakeups WHERE id=?", (wid,)))  # type: ignore[arg-type]
+
     def replace_plan(self, pid: str, items: list[tuple[datetime, float, str | None, str, str | None]]) -> list[s.Wakeup]:
         """The agent's `wake plan --replace`: its own future wakeups become exactly these.
         All are validated first; nothing changes if one is rejected. A wakeup that keeps its

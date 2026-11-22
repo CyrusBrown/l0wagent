@@ -13,7 +13,7 @@ CT, TT = "control-secret", "tunnel-secret"
 HUB = "hub.example"
 ADDR = f"mara@{HUB}"
 HOSTS = {"instance": "mara.hub.example", "files": "mara-files.hub.example"}
-REG = {"hub": HUB, "name": "mara", "invite": "inv-1", "mode": "tunnel", "own_urls": None, "release": "0.9.0", "protocols": ["l0w/0.1"]}
+REG = {"hub": HUB, "name": "mara", "invite": "inv-1", "release": "0.9.0", "protocols": ["l0w/0.1"]}
 
 
 def hdr(token):
@@ -41,7 +41,7 @@ def register(client):
 
 
 def self_body(seq=1):
-    return {"address": ADDR, "seq": seq, "hostnames": HOSTS, "own_urls": None, "protocols": ["l0w/0.1"]}
+    return {"address": ADDR, "seq": seq, "hostnames": HOSTS, "protocols": ["l0w/0.1"]}
 
 
 def test_healthz_no_auth(client):
@@ -127,10 +127,7 @@ def test_sign_self(client):
     assert r.status_code == 200
     p = payloads.verify_self(r.json()["doc"])
     assert p["keys"] == out["keys"] and p["address"] == ADDR and p["seq"] == 1 and p["hostnames"] == HOSTS
-    assert "own_urls" not in p or p["own_urls"] is None
-    own = {"instance": "https://a.example", "files": "https://f.example"}
-    r = c_post(client, "/v0/sign/self", {**self_body(2), "own_urls": own})
-    assert payloads.verify_self(r.json()["doc"])["own_urls"] == own
+    assert "own_urls" not in p
 
 
 def test_sign_self_ignores_caller_keys(client):

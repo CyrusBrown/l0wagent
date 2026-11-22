@@ -852,10 +852,135 @@ def membership_recover(req: s.RecoverRequest, be: Be) -> s.Membership:
     return be.membership_recover(req)
 
 
+@api.get("/membership/services", tags=["hub"])
+def membership_services(be: Be) -> list[s.HubService]:
+    """The joined hub's services (protocol/services.md) with the owner's on/off switch and where each connection stands. (`/api/hub/*` is reserved for the hub.)"""
+    return be.membership_services()
+
+
+@api.patch("/membership/services/{address}", tags=["hub"])
+def membership_service_patch(address: str, req: s.HubServicePatch, be: Be) -> s.HubService:
+    """Switch one service on or off. Off sends the service a goodbye and revokes the token it was given; on connects."""
+    return be.membership_service_patch(address, req)
+
+
 @api.post("/membership/leave", tags=["hub"])
 def membership_leave(req: s.LeaveRequest, be: Be) -> s.Membership:
     """Leaves the hub. The name is never given to anyone else, and can't be had back."""
     return be.membership_leave(req)
+
+
+# ── friends (H5; protocol/messages.md) ─────────────────────────────────────
+@api.get("/friends", tags=["friends"])
+def friends(be: Be) -> list[s.Friend]:
+    """Friends, people who asked to be, people we asked, and blocked addresses, with their settings and latest presence."""
+    return be.friends()
+
+
+@api.get("/friends/requests", tags=["friends"])
+def friend_requests(be: Be, state: Literal["pending", "approved", "declined", "sent", "failed", "expired"] | None = None) -> list[s.FriendRequest]:
+    return be.friend_requests(state)
+
+
+@api.post("/friends/requests", tags=["friends"], status_code=201)
+def create_friend_request(req: s.FriendRequestCreate, be: Be) -> s.FriendRequest:
+    """Asks someone to be friends (online only). With a friend code their fingerprint is checked for you."""
+    return be.create_friend_request(req)
+
+
+@api.post("/friends/requests/{request_id}/approve", tags=["friends"])
+def approve_friend_request(request_id: int, be: Be) -> s.FriendRequest:
+    """Approves a request: theirs (pins their key and sends our acceptance), or our assistant's draft (sends it). Full-scope tokens only."""
+    return be.approve_friend_request(request_id)
+
+
+@api.post("/friends/requests/{request_id}/decline", tags=["friends"])
+def decline_friend_request(request_id: int, be: Be) -> s.FriendRequest:
+    """Declines a request. They aren't told."""
+    return be.decline_friend_request(request_id)
+
+
+@api.get("/friends/settings", tags=["friends"])
+def friend_settings(be: Be) -> s.FriendSettings:
+    return be.friend_settings()
+
+
+@api.patch("/friends/settings", tags=["friends"])
+def set_friend_settings(req: s.FriendSettingsPatch, be: Be) -> s.FriendSettings:
+    """Who may send friend requests, and the pause switch for all peer activity."""
+    return be.set_friend_settings(req)
+
+
+@api.get("/friends/breaker", tags=["friends"])
+def friend_breaker(be: Be) -> s.FriendBreaker:
+    """The spend breaker for peer activity: today's estimated spend on friends, the limits, and whether one was hit (then a card waits for the owner)."""
+    return be.friend_breaker()
+
+
+@api.post("/friends/breaker/allow-today", tags=["friends"])
+def friend_breaker_allow_today(req: s.FriendBreakerAction, be: Be) -> s.FriendBreaker:
+    """Raises today's limit on peer spending by the step (5 points of percent) and lets the assistant reply to friends again."""
+    return be.friend_breaker_decide("allow_today", req)
+
+
+@api.post("/friends/breaker/allow-run", tags=["friends"])
+def friend_breaker_allow_run(req: s.FriendBreakerAction, be: Be) -> s.FriendBreaker:
+    """Exempts the run that hit the run limit (only while that limit is the one hit)."""
+    return be.friend_breaker_decide("allow_run", req)
+
+
+@api.post("/friends/breaker/stop-today", tags=["friends"])
+def friend_breaker_stop_today(req: s.FriendBreakerAction, be: Be) -> s.FriendBreaker:
+    """Pauses the assistant's sends to friends until local midnight, whatever the limits say."""
+    return be.friend_breaker_decide("stop_today", req)
+
+
+@api.get("/friends/fingerprint", tags=["friends"])
+def friend_fingerprint(be: Be) -> s.FriendFingerprint:
+    """Our own fingerprint, for friends to compare with what they see."""
+    return be.friend_fingerprint()
+
+
+@api.get("/friends/codes", tags=["friends"])
+def friend_codes(be: Be) -> list[s.FriendCode]:
+    return be.friend_codes()
+
+
+@api.post("/friends/codes", tags=["friends"], status_code=201)
+def create_friend_code(req: s.FriendCodeCreate, be: Be) -> s.FriendCodeCreated:
+    """Makes a one-time friend code. The code is in this answer only; just its hash is kept."""
+    return be.create_friend_code(req)
+
+
+@api.delete("/friends/codes/{code_id}", tags=["friends"])
+def delete_friend_code(code_id: int, be: Be) -> s.Ok:
+    be.delete_friend_code(code_id)
+    return s.Ok()
+
+
+@api.patch("/friends/{address}", tags=["friends"])
+def patch_friend(address: str, req: s.FriendPatch, be: Be) -> s.Friend:
+    """Their name here, what our assistant may share with them, presence detail, waking and mute."""
+    return be.patch_friend(address, req)
+
+
+@api.post("/friends/{address}/block", tags=["friends"])
+def block_friend(address: str, be: Be) -> s.Friend:
+    """Revokes their delivery token and drops everything they send, silently."""
+    return be.block_friend(address)
+
+
+@api.post("/friends/{address}/unblock", tags=["friends"])
+def unblock_friend(address: str, be: Be) -> s.Ok:
+    be.unblock_friend(address)
+    return s.Ok()
+
+
+@api.delete("/friends/{address}", tags=["friends"])
+def unfriend(address: str, be: Be) -> s.Ok:
+    """Tells them, revokes our token and forgets their key. The thread stays as history."""
+    be.unfriend(address)
+    return s.Ok()
 
 
 @api.post("/system/update/check", tags=["system"])

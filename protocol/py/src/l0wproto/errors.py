@@ -54,6 +54,12 @@ class FrameError(ProtocolError):
     code = "bad_frame"
 
 
+class SealError(ProtocolError):
+    """Sealing or opening failed (HPKE). The detail never says why an open failed."""
+
+    code = "bad_seal"
+
+
 class HopAuthError(ProtocolError):
     """Hop-auth failure. `reason` is for logs only; never send it to the caller."""
 

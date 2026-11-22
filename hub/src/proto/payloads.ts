@@ -141,7 +141,6 @@ export async function validateSelf(p: unknown): Promise<Obj> {
     if (!isObject(d) || d.type !== "rotation") throw new ValidationError("history entries must be signed rotation documents");
   }
   urlPair(o.hostnames, "hostnames");
-  if (o.own_urls !== undefined && o.own_urls !== null) urlPair(o.own_urls, "own_urls");
   strList(o, "protocols");
   return o;
 }
@@ -265,7 +264,7 @@ export async function validateHub(p: unknown): Promise<Obj> {
   needStr(o, "tunnel");
   const m = needObj(o, "membership");
   if (!["closed", "open", "approval"].includes(m.signups)) throw new ValidationError("membership.signups must be closed, open or approval");
-  for (const f of ["invites", "own_url", "require_2fa"]) needBool(m, f);
+  for (const f of ["invites", "require_2fa"]) needBool(m, f);
   needObj(o, "hostnames");
   const lim = needObj(o, "limits");
   for (const f of ["tunnel_streams", "request_body_bytes", "auth_rate_per_minute"]) needInt(lim, f);
@@ -296,16 +295,6 @@ export async function validateRegistration(p: unknown, hubDomain?: string, now?:
   if (hubDomain !== undefined && hub.toLowerCase() !== hubDomain.toLowerCase()) throw new ValidationError("registration is for another hub");
   validateNameSyntax(needStr(o, "name"));
   needStr(o, "invite");
-  if (o.mode === "tunnel") {
-    if (o.own_urls !== null && o.own_urls !== undefined) throw new ValidationError("own_urls must be null in tunnel mode");
-  } else if (o.mode === "own-url") {
-    urlPair(o.own_urls, "own_urls");
-    for (const k of ["instance", "files"]) {
-      if (!o.own_urls[k].startsWith("https://")) throw new ValidationError("own_urls must be https");
-    }
-  } else {
-    throw new ValidationError("mode must be 'tunnel' or 'own-url'");
-  }
   onePerUse(await keysOf(o), ["sign", "seal", "recover"]);
   const inst = needObj(o, "instance");
   needStr(inst, "release");

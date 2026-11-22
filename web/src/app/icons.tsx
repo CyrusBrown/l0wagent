@@ -19,6 +19,7 @@ export const Icon = {
   tools: (s = 20) => svg(s, <path d="M14.5 6.5a4 4 0 0 0 4.9 4.9L20 12l-8 8a2.1 2.1 0 0 1-3-3l8-8z M14.5 6.5 17 4l3 3-2.5 2.5" />),
   calendar: (s = 20) => svg(s, <><rect x="3.5" y="5" width="17" height="15" rx="2" /><line x1="3.5" y1="10" x2="20.5" y2="10" /><line x1="8" y1="3" x2="8" y2="6.5" /><line x1="16" y1="3" x2="16" y2="6.5" /></>),
   network: (s = 20) => svg(s, <><circle cx="12" cy="12" r="8.5" /><path d="M3.5 12h17M12 3.5c2.6 2.4 3.8 5.2 3.8 8.5s-1.2 6.1-3.8 8.5c-2.6-2.4-3.8-5.2-3.8-8.5S9.4 5.9 12 3.5z" /></>),
+  friends: (s = 20) => svg(s, <><circle cx="9" cy="8.5" r="3.2" /><path d="M3.5 19.5c0-3.2 2.5-5.4 5.5-5.4s5.5 2.2 5.5 5.4" /><circle cx="16.8" cy="9.5" r="2.5" /><path d="M16.5 14.4c2.4.1 4 1.8 4 4.6" /></>),
   web: (s = 20) => svg(s, <><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><line x1="3.5" y1="9" x2="20.5" y2="9" /><circle cx="6.5" cy="6.8" r=".6" fill="currentColor" /><circle cx="9" cy="6.8" r=".6" fill="currentColor" /></>),
   settings: (s = 20) => svg(s, <><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="17" x2="20" y2="17" /><circle cx="9" cy="7" r="2.4" fill="var(--card)" /><circle cx="15" cy="17" r="2.4" fill="var(--card)" /></>),
 }

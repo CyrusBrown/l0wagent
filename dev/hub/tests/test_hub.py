@@ -86,39 +86,6 @@ def test_restart_keeps_members(tmp_path):
     assert b.app.hub.store.member(inst.name)["seq"] == 0
 
 
-def test_own_url_registration_checked_by_the_hub(tmp_path):
-    """Own-url mode: the hub fetches the self document from the member's own instance URL."""
-    inst = Inst("hub.localhost", new_name())
-    urls = {"instance": "https://box.example", "files": "https://files.example"}
-    inst.hostnames = {"instance": "box.example", "files": "files.example"}
-    selfdoc = inst.self_doc(0)
-
-    def handler(req: httpx.Request) -> httpx.Response:
-        if req.url.host == "box.example" and req.url.path == "/.well-known/l0wagent/self":
-            return httpx.Response(200, json=selfdoc)
-        return httpx.Response(200, text="files")
-
-    factory = lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler))  # noqa: E731
-    cfg = Config(base_url="http://hub.localhost:8700", state_path=tmp_path / "s.json")
-    app = create_app(cfg, http_client_factory=factory)
-    hub = app.hub
-
-    async def go():
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://hub.localhost:8700") as c:
-            code = hub.store.make_invite()
-            r = await c.post("/v0/members", json=inst.registration(code, mode="own-url", own_urls=urls))
-            assert r.status_code == 201, r.text
-            assert r.json()["hostnames"] == inst.hostnames and r.json()["tunnel"] is None
-            # a second one whose instance URL serves someone else's self document is refused
-            other = Inst("hub.localhost", new_name())
-            r = await c.post("/v0/members", json=other.registration(hub.store.make_invite(), mode="own-url", own_urls=urls))
-            assert r.status_code == 422 and r.json()["error"] == "own_url_unreachable"
-            # own-url members are not reached through a tunnel: their hostnames are not the hub's to serve
-            r = await c.get("/", headers={"host": "box.example"})
-            assert r.status_code == 404
-    asyncio.run(go())
-
-
 def test_reference_client_forwards_to_a_local_target(running):
     """The reference tunnel client: connect, sign the hello, forward by Host, stream a body both ways."""
     from starlette.applications import Starlette

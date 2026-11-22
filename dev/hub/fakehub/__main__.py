@@ -13,7 +13,20 @@ from .store import Store
 
 def build_config(a: argparse.Namespace) -> Config:
     return Config.from_env(base_url=a.base_url, domain=a.domain, files_domain=a.files_domain, state_path=a.state,
-                           seed_path=a.key, reserved=[n.strip().lower() for n in a.reserved.split(",") if n.strip()] if a.reserved else None, listen_host=getattr(a, "listen", None), listen_port=getattr(a, "port", None))
+                           seed_path=a.key, reserved=[n.strip().lower() for n in a.reserved.split(",") if n.strip()] if a.reserved else None, listen_host=getattr(a, "listen", None), listen_port=getattr(a, "port", None),
+                           **echo_options(a))
+
+
+def echo_options(a: argparse.Namespace) -> dict:
+    out: dict = {}
+    if getattr(a, "echo", False):
+        out["echo"] = True
+    if getattr(a, "echo_tester", None):
+        out["echo_testers"] = [t.strip().lower() for t in a.echo_tester]
+    if getattr(a, "echo_extension", None):
+        git, commit, path = a.echo_extension
+        out["echo_extension"] = {"git": git, "commit": commit, "path": path}
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -28,6 +41,9 @@ def main(argv: list[str] | None = None) -> int:
     sv = sub.add_parser("serve", help="run the hub")
     sv.add_argument("--listen", help="address to listen on (default 127.0.0.1)")
     sv.add_argument("--port", type=int, help="port (default: the base URL's)")
+    sv.add_argument("--echo", action="store_true", help="run the test service echo@<domain> (also FAKEHUB_ECHO=1)")
+    sv.add_argument("--echo-tester", action="append", metavar="NAME", help="a member to give echo's `tester` role (repeatable)")
+    sv.add_argument("--echo-extension", nargs=3, metavar=("GIT", "COMMIT", "PATH"), help="the extension reference in echo's service document")
     iv = sub.add_parser("invite", help="print a new invite string")
     iv.add_argument("--name-hint")
     iv.add_argument("--reregister", metavar="NAME", help="an invite that approves re-registering NAME (both keys lost)")

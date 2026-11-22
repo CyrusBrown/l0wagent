@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.l0wagent.invalid/0.1/same-owner.json",
+  "title": "same-owner",
+  "description": "Payload of a same-owner document; signed by both keys (messages.md)",
+  "type": "object",
+  "required": [
+    "v",
+    "type",
+    "iat",
+    "a",
+    "a_kid",
+    "b",
+    "b_kid"
+  ],
+  "properties": {
+    "v": {
+      "const": "l0w/0.1"
+    },
+    "type": {
+      "const": "same-owner"
+    },
+    "iat": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+      "description": "RFC 3339 UTC, whole seconds"
+    },
+    "exp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+      "description": "RFC 3339 UTC, whole seconds"
+    },
+    "a": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*@[a-z0-9][a-z0-9.-]*(:[0-9]+)?$"
+    },
+    "a_kid": {
+      "type": "string",
+      "pattern": "^k1\\.[A-Za-z0-9_-]{22}$"
+    },
+    "b": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*@[a-z0-9][a-z0-9.-]*(:[0-9]+)?$"
+    },
+    "b_kid": {
+      "type": "string",
+      "pattern": "^k1\\.[A-Za-z0-9_-]{22}$"
+    }
+  },
+  "additionalProperties": true
+}

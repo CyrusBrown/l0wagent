@@ -35,7 +35,7 @@ from fastapi import APIRouter
 if TYPE_CHECKING:
     from .extensions import Extensions
 
-SDK_VERSION = "1.0"
+SDK_VERSION = "1.1"
 
 # Events an extension can listen to with ext.on(...). Each handler gets one dict.
 EVENTS = {
@@ -56,8 +56,21 @@ class ExtensionError(Exception):
     """Raised by SDK calls an extension may not make (or made wrongly); shown on the Extensions page."""
 
 
-class HubUnavailable(ExtensionError):
-    """ext.hub calls need a joined hub; until there is one, every call raises this."""
+class HubCallError(ExtensionError):
+    """A hub service call that gave no result. `code` is the service's own error code when it answered (`not_allowed`,
+    `unknown_method`, `bad_args`, `rate_limited`, `unavailable`, or its own), else control's: `unknown_service`, `not_connected`,
+    `no_role`, `bad_args`, `too_large`, `paused`, `refused`, `timeout`. `detail` is text; from a service it is untrusted."""
+
+    def __init__(self, detail: str = "", code: str = "error", *, from_service: bool = False):
+        super().__init__(f"{code}: {detail}" if detail else code)
+        self.code, self.detail, self.from_service = code, detail, from_service
+
+
+class HubUnavailable(HubCallError):
+    """ext.hub calls need a joined hub (and a connected service); until there is one, every call raises this."""
+
+    def __init__(self, detail: str = "", code: str = "unavailable"):
+        super().__init__(detail, code)
 
 
 @dataclass
@@ -198,16 +211,61 @@ class Folders:
 
 @dataclass
 class Hub:
-    """Calls to hub services through the gateway, with the instance's identity. The extension never sees
-    the instance key. No hub exists yet: every call raises HubUnavailable."""
+    """The joined hub's services (protocol/services.md), through the instance's gateway. The extension never sees the instance's
+    keys or the role grants a service signed for this instance: it names a role and control attaches the grant. What a service
+    sends back is untrusted content. Without a hub, `available()` is empty and `call` raises HubUnavailable."""
 
     _x: Extensions
+    _name: str = ""
+    _handlers: list[tuple[str, Callable[[dict], Any]]] = field(default_factory=list)
 
-    def available(self) -> bool:
-        return False
+    def available(self) -> list[dict]:
+        """The services that are on and connected: [{address, kind, title, roles}], `roles` being the names of the roles this
+        instance holds for it. Empty when there is no hub (so `if ext.hub.available():` still reads as "is a hub here")."""
+        return [{"address": c["address"], "kind": c["kind"], "title": c["title"], "roles": c["roles"]} for c in self._x.be.hubservices_.connected()]
 
-    def call(self, service: str, method: str, payload: dict | None = None) -> dict:
-        raise HubUnavailable("This instance hasn't joined a hub.")
+    async def acall(self, service: str, method: str, args: dict | None = None, role: str | None = None, *, timeout: float = 300.0) -> dict:
+        """Call a method of a service (its address, or its name on your hub: `board`) and wait for the reply, up to `timeout` seconds
+        (the spec's wait is 5 minutes). Returns the result object, or raises HubCallError with the service's own `code`. `role`
+        names a role from `available()`: control attaches the matching grant. Use it from `async def` code (routes, async hooks);
+        threaded code (`def` hooks and jobs) uses `call`."""
+        from .hubservices import ServiceError
+
+        try:
+            return await self._x.be.hubservices_.call(service, method, args, by=f"extension:{self._name}", role=role, timeout=timeout)
+        except ServiceError as e:
+            if e.code in ("unknown_service", "not_connected"):
+                raise HubUnavailable(e.detail, e.code) from e
+            raise HubCallError(e.detail, e.code, from_service=e.from_service) from e
+
+    def call(self, service: str, method: str, args: dict | None = None, role: str | None = None, *, timeout: float = 300.0) -> dict:
+        """`acall` for code that isn't async (hooks and jobs run in worker threads); synchronous, as in SDK 1.0. Without a hub (or
+        that service) it raises HubUnavailable, as 1.0 did. It waits on control's event loop, so calling it from a coroutine would
+        block that loop: there it raises ExtensionError (use `await ext.hub.acall(...)`)."""
+        import asyncio
+
+        if not self.available():
+            raise HubUnavailable("This instance hasn't joined a hub, or no hub service is connected.")
+        loop = self._x.loop
+        if loop is None:
+            raise HubUnavailable("Control isn't running yet.")
+        try:
+            if asyncio.get_running_loop() is loop:
+                raise ExtensionError("Use `await ext.hub.acall(...)` in async code; ext.hub.call is for worker threads.")
+        except RuntimeError:
+            pass
+        return asyncio.run_coroutine_threadsafe(self.acall(service, method, args, role, timeout=timeout), loop).result(timeout + 30)
+
+    call_sync = call  # an alias some 1.1 code may use
+
+    def on_event(self, service: str, handler: Callable[[dict], Any]) -> None:
+        """Hear a service's own events (`service-event`: a new post, held mail). `service` is a kind (`board`, `email`, `custom`...)
+        or one service's address. The handler gets {service (address), kind, event, data}; the content is untrusted. It runs off the
+        request path like `ext.on` handlers; an `async def` handler runs on control's loop. Roles events never reach it: control
+        keeps the grants itself."""
+        if not isinstance(service, str) or not service.strip():
+            raise ExtensionError("on_event needs a service kind or address.")
+        self._handlers.append((service.strip().lower(), handler))
 
 
 @dataclass

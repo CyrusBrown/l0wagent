@@ -53,6 +53,18 @@ NOT_TEXT = {
     "hub_membership": {"state", "hub_base", "hub_domain", "hub_name", "hub_key", "capabilities", "api", "name", "address", "mode", "hostnames",
                        "own_urls", "tunnel_url", "self_doc", "joined_at", "left_at", "backup", "check_at", "check_result", "hub_key_alarm"},
     "hub_log": {"event", "detail"},
+    # friends (H5): addresses, fingerprints, states, signed documents, hashes and ids from the gateway; the owner's and peers' text is in vault.SCRUB
+    "friends": {"address", "fingerprint", "state", "share", "presence_detail", "waking", "presence_at", "same_owner_json", "key_alarm", "checked_at",
+                "presence_sent_json", "presence_sent_at", "breaker"},  # what we last sent: built from redacted text; breaker is 'normal' or 'off'
+    "friend_requests": {"direction", "address", "envelope_id", "made_by", "code", "fingerprint", "token_json", "state", "client_id"},
+    "friend_codes": {"secret_sha256", "client_id", "used_by"}, "peer_envelopes": {"sender", "envelope_id", "kind", "received_at"},
+    "peer_outbox": {"envelope_id", "to_address", "kind", "state"},
+    "peer_wakes": {"direction", "address", "envelope_id", "outcome", "replied_at"},
+    "peer_spans": {"address", "last_at", "closed_by"},  # the spend breaker's spans: an address, times and how it closed
+    # hub services (H6): what the hub's signed documents and our connection state say (the hub's text isn't ours to scrub); a call's text is in vault.SCRUB
+    "hub_services": {"address", "kind", "title", "description", "docs", "roles_json", "extension_json", "state", "error", "connected_at", "grants_json",
+                     "sign_key_json"},
+    "service_calls": {"id", "address", "role", "by", "state", "done_at"},
     "runtime_totals": {"conversation"},  # a runtime's conversation id
     "extensions": {"name", "version", "sdk", "source", "found_at"}, "extension_kv": {"ext", "key"}, "extension_cards": {"ext", "kind", "status"},
     # ids, tokens, hashes and keys

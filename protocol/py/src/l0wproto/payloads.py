@@ -6,11 +6,14 @@ They raise ValidationError. The verify_* functions combine signature, outer chec
 
 from __future__ import annotations
 
+import hashlib as _hashlib
+import json as _json
+import os as _os
 import re
 from collections.abc import Sequence
 
 from . import b64
-from .consts import MAX_SKEW, VERSION
+from .consts import MAX_FILES, MAX_FRIEND_REQUEST_BODY, MAX_SKEW, VERSION
 from .docs import parse_payload, sign_document, verify_document, verify_one_of
 from .errors import DocumentError, SignatureError, ValidationError
 from .keys import Key, KeyPair
@@ -114,9 +117,9 @@ def _kd(keys) -> list[dict]:
 # --- self ------------------------------------------------------------------------------------
 
 
-def build_self(address, seq, keys, hostnames, *, protocols=(VERSION,), history=(), own_urls=_OMIT, iat=None, exp=None) -> dict:
+def build_self(address, seq, keys, hostnames, *, protocols=(VERSION,), history=(), iat=None, exp=None) -> dict:
     return _p("self", iat, exp, address=address, seq=seq, keys=_kd(keys), history=list(history), hostnames=hostnames,
-              own_urls=own_urls, protocols=list(protocols))
+              protocols=list(protocols))
 
 
 def validate_self(p: dict) -> dict:
@@ -131,8 +134,6 @@ def validate_self(p: dict) -> dict:
         if not isinstance(d, dict) or d.get("type") != "rotation":
             raise ValidationError("history entries must be signed rotation documents")
     _url_pair(p.get("hostnames"), "hostnames")
-    if p.get("own_urls") is not None:
-        _url_pair(p["own_urls"], "own_urls")
     _str_list(p, "protocols")
     return p
 
@@ -237,7 +238,7 @@ def build_hub(name, domain, keys, api, tunnel, *, protocols=(VERSION,), min_rele
               policies=_OMIT, limits=None, extras=(), iat=None, exp=None) -> dict:
     return _p("hub", iat, exp, name=name, domain=domain, keys=_kd(keys), protocols=list(protocols),
               instance_releases={"min": min_release}, api=api, tunnel=tunnel,
-              membership=membership or {"invites": True, "signups": "closed", "own_url": True, "require_2fa": True},
+              membership=membership or {"invites": True, "signups": "closed", "require_2fa": True},
               hostnames=hostnames or {"layout": "two-domains"}, policies=policies,
               limits=limits or {"tunnel_streams": 64, "request_body_bytes": 104857600, "auth_rate_per_minute": 20},
               extras=list(extras))
@@ -259,7 +260,7 @@ def validate_hub(p: dict) -> dict:
     m = _need(p, "membership", dict)
     if m.get("signups") not in ("closed", "open", "approval"):
         raise ValidationError("membership.signups must be closed, open or approval")
-    for f in ("invites", "own_url", "require_2fa"):
+    for f in ("invites", "require_2fa"):
         _need(m, f, bool, "a boolean")
     _need(p, "hostnames", dict)
     lim = _need(p, "limits", dict)
@@ -290,9 +291,9 @@ def verify_hub(doc: dict, pinned: Key | None = None, now: int | None = None) -> 
 # --- registration ----------------------------------------------------------------------------
 
 
-def build_registration(hub, name, invite, mode, keys, *, own_urls=None, release="0.9.0", protocols=(VERSION,),
+def build_registration(hub, name, invite, keys, *, release="0.9.0", protocols=(VERSION,),
                        reregister=_OMIT, iat=None, exp=None) -> dict:
-    return _p("registration", iat, exp, hub=hub, name=name, invite=invite, mode=mode, own_urls=own_urls, keys=_kd(keys),
+    return _p("registration", iat, exp, hub=hub, name=name, invite=invite, keys=_kd(keys),
               instance={"release": release, "protocols": list(protocols)}, reregister=reregister)
 
 
@@ -304,16 +305,6 @@ def validate_registration(p: dict, hub_domain: str | None = None, now: int | Non
         raise ValidationError("registration is for another hub")
     validate_name_syntax(_need(p, "name", str))
     _need(p, "invite", str)
-    mode = p.get("mode")
-    if mode == "tunnel":
-        if p.get("own_urls") is not None:
-            raise ValidationError("own_urls must be null in tunnel mode")
-    elif mode == "own-url":
-        _url_pair(p.get("own_urls"), "own_urls")
-        if not all(p["own_urls"][k].startswith("https://") for k in ("instance", "files")):
-            raise ValidationError("own_urls must be https")
-    else:
-        raise ValidationError("mode must be 'tunnel' or 'own-url'")
     _one_per_use(_keys(p), ("sign", "seal", "recover"))
     inst = _need(p, "instance", dict)
     _need(inst, "release", str)
@@ -467,6 +458,225 @@ def verify_accelerator_request(doc: dict, signing_key: Key, *, hub: str, address
     return p
 
 
+# --- envelope, delivery-token, same-owner (messages.md) -------------------------------------
+
+SERVICE_KINDS = ("service-hello", "service-welcome", "service-bye", "service-call", "service-reply", "service-event")
+KINDS = ("friend-request", "friend-accept", "friend-decline", "unfriend", "message", "presence", "wake-request",
+         "same-owner", "wake-reply") + SERVICE_KINDS
+TOKENLESS_KINDS = ("friend-request", "service-hello")  # envelope kinds that carry no delivery token
+PRESENCE_STATES = ("asleep", "working", "idle")
+WAKE_OUTCOMES = ("allowed", "denied", "later")
+BY_VALUES = ("owner", "assistant")
+
+
+def new_id() -> str:
+    """16 random bytes, base64url (envelope and token ids)."""
+    return b64.encode(_os.urandom(16))
+
+
+def _id_field(p: dict, field: str = "id") -> str:
+    v = _need(p, field, str)
+    try:
+        ok = len(b64.decode(v)) == 16
+    except Exception:
+        ok = False
+    if not ok:
+        raise ValidationError(f"field {field!r} must be the base64url of 16 bytes")
+    return v
+
+
+def _kid(p: dict, field: str) -> str:
+    v = _need(p, field, str)
+    if not re.fullmatch(r"k1\.[A-Za-z0-9_-]{22}", v):
+        raise ValidationError(f"field {field!r} is not a key id")
+    return v
+
+
+def build_delivery_token(issuer, issuer_kid, holder, holder_kid, *, id=None, iat=None, exp=None) -> dict:
+    return _p("delivery-token", iat, exp, id=id or new_id(), issuer=issuer, issuer_kid=issuer_kid, holder=holder,
+              holder_kid=holder_kid)
+
+
+def validate_delivery_token(p: dict) -> dict:
+    _base(p, "delivery-token")
+    _id_field(p)
+    split_address(_need(p, "issuer", str))
+    split_address(_need(p, "holder", str))
+    _kid(p, "issuer_kid")
+    _kid(p, "holder_kid")
+    return p
+
+
+def build_same_owner(a, a_kid, b, b_kid, *, iat=None, exp=None) -> dict:
+    return _p("same-owner", iat, exp, a=a, a_kid=a_kid, b=b, b_kid=b_kid)
+
+
+def validate_same_owner(p: dict) -> dict:
+    _base(p, "same-owner")
+    a = split_address(_need(p, "a", str))
+    b = split_address(_need(p, "b", str))
+    ka, kb = _kid(p, "a_kid"), _kid(p, "b_kid")
+    if a == b or ka == kb:
+        raise ValidationError("a same-owner statement needs two different instances and keys")
+    return p
+
+
+def verify_same_owner(doc: dict, key_a: Key, key_b: Key, now: int | None = None) -> dict:
+    """Both signatures must verify, each against the key named in the payload (`a_kid`, `b_kid`)."""
+    p = validate_same_owner(
+        verify_document(doc, [key_a, key_b], expected_type="same-owner", required=[key_a.kid, key_b.kid], now=now))
+    if (p["a_kid"], p["b_kid"]) != (key_a.kid, key_b.kid):
+        raise SignatureError("keys do not match the statement")
+    return p
+
+
+def build_envelope(from_addr, from_kid, to_addr, to_kid, env_id, seq, kind, sealed, token=None, *, iat=None) -> dict:
+    """The payload. `token` (a signed delivery-token document) goes in unless it is None."""
+    return _p("envelope", iat, None, id=env_id, **{"from": from_addr}, from_kid=from_kid, to=to_addr, to_kid=to_kid, seq=seq,
+              kind=kind, **({"token": token} if token is not None else {}), sealed=sealed)
+
+
+def validate_envelope(p: dict) -> dict:
+    """Shape rules. An unknown `kind` is not a shape error (the receiver answers 422 unknown_kind)."""
+    _base(p, "envelope")
+    _id_field(p)
+    split_address(_need(p, "from", str))
+    split_address(_need(p, "to", str))
+    _kid(p, "from_kid")
+    _kid(p, "to_kid")
+    seq = _need(p, "seq", int, "an integer")
+    if seq < 1:
+        raise ValidationError("seq starts at 1")
+    kind = _need(p, "kind", str)
+    if kind in TOKENLESS_KINDS:
+        if "token" in p:
+            raise ValidationError(f"a {kind} carries no token")
+    else:
+        tok = p.get("token")
+        if not isinstance(tok, dict):
+            raise ValidationError("token required")
+        validate_token_document(tok)
+    s = _need(p, "sealed", dict, "an object")
+    for f in ("alg", "enc", "ct"):
+        _need(s, f, str)
+    return p
+
+
+def validate_token_document(doc: object) -> dict:
+    """A delivery-token as a signed document: shape and payload shape only (no signature check)."""
+    if not isinstance(doc, dict) or doc.get("type") != "delivery-token" or doc.get("v") != VERSION \
+            or not isinstance(doc.get("payload"), str) or not isinstance(doc.get("sigs"), list):
+        raise ValidationError("not a delivery-token document")
+    try:
+        inner = _json.loads(b64.decode(doc["payload"]).decode("utf-8"))
+    except Exception as e:
+        raise ValidationError("delivery-token payload is not valid") from e
+    return validate_delivery_token(inner)
+
+
+def validate_statement_document(doc: object) -> dict:
+    if not isinstance(doc, dict) or doc.get("type") != "same-owner" or doc.get("v") != VERSION \
+            or not isinstance(doc.get("payload"), str) or not isinstance(doc.get("sigs"), list):
+        raise ValidationError("not a same-owner document")
+    try:
+        inner = _json.loads(b64.decode(doc["payload"]).decode("utf-8"))
+    except Exception as e:
+        raise ValidationError("same-owner payload is not valid") from e
+    return validate_same_owner(inner)
+
+
+def validate_file(f: object) -> dict:
+    if not isinstance(f, dict):
+        raise ValidationError("a file must be an object")
+    name = _need(f, "name", str)
+    if not name or "/" in name or "\\" in name or "\x00" in name or name in (".", ".."):
+        raise ValidationError("file name must be a single path component")
+    _need(f, "type", str)
+    size = _need(f, "size", int, "an integer")
+    sha = _need(f, "sha256", str)
+    if size < 0 or not re.fullmatch(r"[0-9a-f]{64}", sha):
+        raise ValidationError("bad file size or sha256")
+    try:
+        raw = b64.decode(_need(f, "data", str))
+    except Exception as e:
+        raise ValidationError("file data is not base64url") from e
+    if len(raw) != size:
+        raise ValidationError("file size does not match its data")
+    if _hashlib.sha256(raw).hexdigest() != sha:
+        raise ValidationError("file sha256 does not match its data")
+    return f
+
+
+def build_file(name: str, media_type: str, data: bytes) -> dict:
+    return {"name": name, "type": media_type, "size": len(data), "sha256": _hashlib.sha256(data).hexdigest(), "data": b64.encode(data)}
+
+
+def _opt_str(b: dict, field: str) -> None:
+    if b.get(field) is not None and not isinstance(b[field], str):
+        raise ValidationError(f"field {field!r} must be a string or null")
+
+
+def validate_body(kind: str, body: object) -> dict:
+    """The body rules per kind. Raises ValidationError with code `bad_body`; unknown kinds raise code `unknown_kind`."""
+    try:
+        return _validate_body(kind, body)
+    except ValidationError as e:
+        if e.code == "bad_document":
+            e.code = "bad_body"
+        raise
+
+
+def _validate_body(kind: str, b: object) -> dict:
+    if kind not in KINDS:
+        raise ValidationError(f"unknown kind {kind!r}", "unknown_kind")
+    if not isinstance(b, dict):
+        raise ValidationError("body must be an object")
+    if kind == "friend-request":
+        _opt_str(b, "code")
+        if "code" not in b:
+            raise ValidationError("field 'code' missing (use null)")
+        _need(b, "note", str)
+        if _need(b, "by", str) not in BY_VALUES:
+            raise ValidationError("'by' must be owner or assistant")
+        validate_token_document(b.get("token"))
+        if len(_json.dumps(b, separators=(",", ":"), ensure_ascii=False).encode("utf-8")) > MAX_FRIEND_REQUEST_BODY:
+            raise ValidationError("friend request body is over 4 KiB")
+    elif kind == "friend-accept":
+        _need(b, "request", str)
+        validate_token_document(b.get("token"))
+    elif kind == "friend-decline":
+        _need(b, "request", str)
+    elif kind == "message":
+        _need(b, "thread", str)
+        _opt_str(b, "reply_to")
+        _need(b, "text", str)
+        files = _need(b, "files", list, "a list")
+        total = 0
+        for f in files:
+            validate_file(f)
+            total += f["size"]
+        if total > MAX_FILES:
+            raise ValidationError("files total more than 5 MiB")
+    elif kind == "presence":
+        if _need(b, "state", str) not in PRESENCE_STATES:
+            raise ValidationError("bad presence state")
+        nxt = b.get("next")
+        if nxt is not None and nxt != "tonight":
+            parse_time(nxt)
+        _opt_str(b, "now")
+    elif kind == "wake-request":
+        _need(b, "reason", str)
+    elif kind == "same-owner":
+        validate_statement_document(b.get("statement"))
+    elif kind == "wake-reply":
+        _need(b, "request", str)
+        if _need(b, "outcome", str) not in WAKE_OUTCOMES:
+            raise ValidationError("bad outcome")
+    elif kind in SERVICE_KINDS:
+        _validate_service_body(kind, b)
+    return b  # unfriend, service-bye: any object
+
+
 # --- other bodies ----------------------------------------------------------------------------
 
 
@@ -476,6 +686,184 @@ def build_invite_response(expires: str, hub_name: str, name_hint: str | None = N
 
 def build_join_response(address: str, hostnames: dict, hub_key: Key, tunnel: str | None) -> dict:
     return {"v": VERSION, "address": address, "hostnames": hostnames, "hub_key": hub_key.to_dict(), "tunnel": tunnel}
+
+
+# --- hub services (services.md) --------------------------------------------------------------
+
+SERVICE_WELL_KNOWN = ("relay", "rooms", "board", "email", "spaces", "directory", "admin")
+SERVICE_DEFAULTS = ("on", "off")
+MAX_SERVICE_BODY = 1024 * 1024  # bytes, the serialized body of a service-call or service-reply
+_ROLE = re.compile(r"[a-z][a-z0-9_-]{0,31}\Z")
+_HEX_COMMIT = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
+_HTTPS_URL = re.compile(r"https://[^\s/?#][^\s]*\Z")
+
+
+def valid_role(role: object) -> bool:
+    return isinstance(role, str) and bool(_ROLE.match(role))
+
+
+def _https_url(v: object, field: str) -> str:
+    if not isinstance(v, str) or not _HTTPS_URL.match(v):
+        raise ValidationError(f"field {field!r} must be an https URL")
+    return v
+
+
+def build_service(address, kind, roles, *, title=None, description=None, docs=None, extension=None, default="on",
+                  iat=None, exp=None) -> dict:
+    return _p("service", iat, exp, address=address, kind=kind,
+              title=title if title is not None else address.split("@")[0], description=description if description is not None else _OMIT,
+              docs=docs if docs is not None else _OMIT, roles=list(roles), extension=extension if extension is not None else _OMIT,
+              default=default)
+
+
+def validate_service(p: dict, hub_domain: str | None = None) -> dict:
+    _base(p, "service")
+    _name, domain = split_address(_need(p, "address", str))
+    if hub_domain is not None and domain != hub_domain.lower():
+        raise ValidationError("service address is not on this hub")
+    kind = _need(p, "kind", str)
+    if kind != "custom" and kind not in SERVICE_WELL_KNOWN:
+        raise ValidationError(f"kind {kind!r} is neither well-known nor 'custom'")
+    _need(p, "title", str)
+    for f in ("description",):
+        if f in p and not isinstance(p[f], str):
+            raise ValidationError(f"field {f!r} must be a string")
+    if "docs" in p:
+        _https_url(p["docs"], "docs")
+    roles = _need(p, "roles", list, "a list")
+    if not all(valid_role(r) for r in roles) or len(set(roles)) != len(roles):
+        raise ValidationError("roles must be a list of distinct short names")
+    if "extension" in p:
+        ext = _need(p, "extension", dict, "an object")
+        _https_url(ext.get("git"), "extension.git")
+        if not isinstance(ext.get("commit"), str) or not _HEX_COMMIT.match(ext["commit"]):
+            raise ValidationError("extension.commit must be 40 or 64 lowercase hex digits")
+        path = ext.get("path")
+        if not isinstance(path, str) or not path or path.startswith("/") or "\\" in path or "\x00" in path \
+                or any(seg in ("", "..") for seg in path.split("/")):
+            raise ValidationError("extension.path must be a relative path without '..' segments")
+    if _need(p, "default", str) not in SERVICE_DEFAULTS:
+        raise ValidationError("default must be 'on' or 'off'")
+    return p
+
+
+def verify_service(doc: dict, hub_key: Key, *, hub_domain: str | None = None, now: int | None = None) -> dict:
+    """A service document signed (only) by the hub's signing key. Its directory entry is the caller's to check."""
+    if isinstance(doc, dict) and len(doc.get("sigs") or []) != 1:
+        raise SignatureError("a service document carries exactly one signature")
+    return validate_service(
+        verify_document(doc, [hub_key], expected_type="service", required=[hub_key.kid], now=now), hub_domain)
+
+
+def services_in(capabilities: dict, hub_key: Key | None = None, *, now: int | None = None) -> tuple[list[dict], list[str]]:
+    """The verified service payloads in a (verified) capabilities payload, and a reason for each entry skipped.
+    Each `extras` entry of kind `service` is checked against the hub's signing key (`hub_key`, else the one in the
+    payload) and the hub's domain; bad and duplicate entries are skipped, never raised."""
+    out: list[dict] = []
+    skipped: list[str] = []
+    domain = capabilities.get("domain")
+    keys_ = [hub_key] if hub_key is not None else [k for k in _keys(capabilities) if k.use == "sign" and k.alg == "Ed25519"]
+    seen: set[str] = set()
+    for i, e in enumerate(capabilities.get("extras") or []):
+        if not isinstance(e, dict) or e.get("kind") != "service":
+            continue
+        try:
+            doc = e.get("doc")
+            if not isinstance(doc, dict):
+                raise ValidationError("no doc")
+            last: Exception | None = None
+            for k in keys_:
+                try:
+                    p = verify_service(doc, k, hub_domain=domain if isinstance(domain, str) else None, now=now)
+                    break
+                except SignatureError as ex:
+                    last = ex
+            else:
+                raise last or SignatureError("no hub key")
+            if p["address"].lower() in seen:
+                raise ValidationError("listed twice")
+            seen.add(p["address"].lower())
+            out.append(p)
+        except Exception as ex:  # a bad entry never spoils the rest
+            skipped.append(f"extras[{i}]: {ex}")
+    return out, skipped
+
+
+def build_role_grant(service, holder, holder_kid, role, *, iat=None, exp=None) -> dict:
+    return _p("role-grant", iat, exp, service=service, holder=holder, holder_kid=holder_kid, role=role)
+
+
+def validate_role_grant(p: dict) -> dict:
+    _base(p, "role-grant")
+    split_address(_need(p, "service", str))
+    split_address(_need(p, "holder", str))
+    _kid(p, "holder_kid")
+    if not valid_role(p.get("role")):
+        raise ValidationError("role must be a short name")
+    return p
+
+
+def verify_role_grant(doc: dict, service_key: Key, *, service: str | None = None, holder: str | None = None,
+                      holder_kid: str | None = None, now: int | None = None) -> dict:
+    """Signed by the service's key; `service`, `holder` and `holder_kid` (the envelope's sender, as rotation
+    resolved it) are compared when given. `exp` is checked against `now`."""
+    if isinstance(doc, dict) and len(doc.get("sigs") or []) != 1:
+        raise SignatureError("a role grant carries exactly one signature")
+    p = validate_role_grant(verify_document(doc, [service_key], expected_type="role-grant", required=[service_key.kid], now=now))
+    for name, want in (("service", service), ("holder", holder)):
+        if want is not None and p[name].lower() != want.lower():
+            raise SignatureError(f"role grant is for another {name}")
+    if holder_kid is not None and p["holder_kid"] != holder_kid:
+        raise SignatureError("role grant is for another key")
+    return p
+
+
+def validate_role_grant_document(doc: object) -> dict:
+    """A role grant as a signed document: shape and payload shape only (no signature check)."""
+    if not isinstance(doc, dict) or doc.get("type") != "role-grant" or doc.get("v") != VERSION \
+            or not isinstance(doc.get("payload"), str) or not isinstance(doc.get("sigs"), list):
+        raise ValidationError("not a role-grant document")
+    try:
+        inner = _json.loads(b64.decode(doc["payload"]).decode("utf-8"))
+    except Exception as e:
+        raise ValidationError("role-grant payload is not valid") from e
+    return validate_role_grant(inner)
+
+
+def _validate_service_body(kind: str, b: dict) -> None:
+    if kind == "service-hello":
+        validate_token_document(b.get("token"))
+        _need(b, "release", str)
+    elif kind == "service-welcome":
+        validate_token_document(b.get("token"))
+        for g in _need(b, "roles", list, "a list"):
+            validate_role_grant_document(g)
+    elif kind in ("service-call", "service-reply"):
+        if len(_json.dumps(b, separators=(",", ":"), ensure_ascii=False).encode("utf-8")) > MAX_SERVICE_BODY:
+            raise ValidationError(f"{kind} body is over 1 MiB", "too_large")
+        _id_field(b, "call")
+        if kind == "service-call":
+            if not _need(b, "method", str):
+                raise ValidationError("method must not be empty")
+            _need(b, "args", dict, "an object")
+            if b.get("role") is not None:
+                validate_role_grant_document(b["role"])
+        else:
+            ok = _need(b, "ok", bool, "a boolean")
+            if ok:
+                _need(b, "result", dict, "an object")
+            else:
+                err = _need(b, "error", dict, "an object")
+                if not isinstance(err.get("code"), str) or not err["code"]:
+                    raise ValidationError("error.code missing")
+                if "detail" in err and not isinstance(err["detail"], str):
+                    raise ValidationError("error.detail must be a string")
+    elif kind == "service-event":
+        event = _need(b, "event", str)
+        data = _need(b, "data", dict, "an object")
+        if event == "roles":
+            for g in _need(data, "grants", list, "a list"):
+                validate_role_grant_document(g)
 
 
 __all__ = [n for n in dir() if n.startswith(("build_", "validate_", "verify_"))] + ["split_address", "make_address", "sign_document", "KeyPair"]

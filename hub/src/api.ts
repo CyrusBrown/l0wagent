@@ -111,7 +111,9 @@ async function capabilities(env: Env, cfg: Config): Promise<Response> {
     api: cfg.api,
     tunnel: cfg.tunnelUrl,
     minRelease: cfg.minRelease,
-    membership: { invites: true, signups: "closed", own_url: cfg.ownUrl, require_2fa: true },
+    // own_url is no longer in the spec; it is published as false only because instances released before
+    // own-URL mode was removed require the field. Remove it once those instances are gone.
+    membership: { invites: true, signups: "closed", own_url: false, require_2fa: true },
     hostnames: { layout: hostnameLayout(cfg), example: { name: EXAMPLE_NAME, ...hostnamesFor(cfg, EXAMPLE_NAME) } },
     policies: cfg.policies,
     limits: cfg.limits,
@@ -164,36 +166,6 @@ async function admissionChecks(env: Env, cfg: Config, p: Obj): Promise<void> {
   }
 }
 
-export async function checkOwnUrls(cfg: Config, p: Obj, signKey: Key): Promise<void> {
-  if (!cfg.ownUrl) throw new HubError(400, "bad_registration", "this hub does not accept members with their own URLs");
-  const urls = p.own_urls as { instance: string; files: string };
-  let a: URL;
-  let b: URL;
-  try {
-    a = new URL(urls.instance);
-    b = new URL(urls.files);
-  } catch {
-    throw new HubError(422, "own_url_unreachable", "an own URL is not a valid URL");
-  }
-  if (a.origin === b.origin) throw new HubError(422, "own_url_unreachable", "the instance and files URLs must be different origins");
-  try {
-    const r = await fetch(urls.instance.replace(/\/+$/, "") + "/.well-known/l0wagent/self", {
-      redirect: "manual",
-      signal: AbortSignal.timeout(5000),
-    });
-    if (r.status !== 200) throw new HubError(422, "own_url_unreachable", `self document answered ${r.status}`);
-    const sp = await P.verifySelf(await r.json());
-    if (sp.address !== address(cfg, p.name) || (await P.selfSigningKey(sp)).kid !== signKey.kid) {
-      throw new HubError(422, "own_url_unreachable", "the served self document is not this member's");
-    }
-    const f = await fetch(urls.files, { redirect: "manual", signal: AbortSignal.timeout(5000) }); // any answer over HTTPS counts
-    await f.body?.cancel();
-  } catch (e) {
-    if (e instanceof HubError) throw e;
-    throw new HubError(422, "own_url_unreachable", `${(e as Error).name}: ${(e as Error).message}`);
-  }
-}
-
 async function register(request: Request, env: Env, cfg: Config): Promise<Response> {
   const doc = await readBody(request, "bad_registration");
   const p = await parseSigned(() => P.verifyRegistration(doc, cfg.domain), "bad_registration");
@@ -205,25 +177,14 @@ async function register(request: Request, env: Env, cfg: Config): Promise<Respon
   }
   await admissionChecks(env, cfg, p);
   const name: string = p.name;
-  let hostnames: db.Hostnames;
-  if (p.mode === "own-url") {
-    await checkOwnUrls(cfg, p, keySet.sign);
-    hostnames = {
-      instance: new URL(p.own_urls.instance).host.toLowerCase(),
-      files: new URL(p.own_urls.files).host.toLowerCase(),
-    };
-  } else {
-    hostnames = hostnamesFor(cfg, name);
-  }
+  const hostnames: db.Hostnames = hostnamesFor(cfg, name);
   const t = now();
   const keys = Object.fromEntries(USES.map((u) => [u, keySet[u].toJSON()])) as db.KeySet;
   const newMember: db.NewMember = {
     name,
     address: address(cfg, name),
-    mode: p.mode,
     keys,
     hostnames,
-    ownUrls: p.mode === "own-url" ? p.own_urls : null,
     release: p.instance.release,
     now: t,
   };
@@ -255,8 +216,7 @@ async function register(request: Request, env: Env, cfg: Config): Promise<Respon
     await disableForMember(env, cfg, name);
     await dropTunnel(env, name, 4401, false);
   }
-  const tunnel = p.mode === "tunnel" ? cfg.tunnelUrl : null;
-  return jsonResponse(P.buildJoinResponse(newMember.address, hostnames, (await hubKey(env)).key, tunnel), 201);
+  return jsonResponse(P.buildJoinResponse(newMember.address, hostnames, (await hubKey(env)).key, cfg.tunnelUrl), 201);
 }
 
 // --- self description --------------------------------------------------------------------------
@@ -289,9 +249,6 @@ async function putSelf(request: Request, env: Env, cfg: Config, name: string): P
   const p = await parseSigned(() => P.verifySelf(doc), "bad_self");
   if (p.address !== m.address) throw new HubError(400, "bad_self", "address does not match the member");
   if (!sameJson(p.hostnames, m.hostnames)) throw new HubError(400, "bad_self", "hostnames do not match what the hub assigned");
-  if (m.mode === "own-url" && !sameJson(p.own_urls ?? null, m.ownUrls)) {
-    throw new HubError(400, "bad_self", "own_urls do not match the registration");
-  }
   const expected = await parseSigned(() => walkHistory(m, p), "bad_self");
   const given = {} as Record<Use, Key>;
   for (const k of await Promise.all((p.keys as unknown[]).map((x) => Key.fromJSON(x)))) {

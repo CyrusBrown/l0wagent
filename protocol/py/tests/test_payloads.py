@@ -38,13 +38,10 @@ def test_self_roundtrip_and_rules(kp):
         P.verify_self(docs.sign_document("self", p, [kp["sign"], kp["recover"]]), now=NOW)
 
 
-def test_self_own_urls_and_extra_fields(kp):
-    p = P.build_self(ADDR, 0, member_keys(kp), HN, own_urls=None, iat=IAT)
+def test_self_extra_fields(kp):
+    p = P.build_self(ADDR, 0, member_keys(kp), HN, iat=IAT)
     p["future_field"] = [1]
     P.validate_self(p)
-    p["own_urls"] = {"instance": "https://x"}
-    with pytest.raises(ValidationError):
-        P.validate_self(p)
 
 
 def test_self_kid_mismatch_in_keys(kp):
@@ -125,7 +122,7 @@ def test_hub(kp):
                                         [kp["other"]]), now=NOW)
     with pytest.raises(ValidationError):
         P.verify_hub(hub_doc(kp, api=f"https://{HUB}/v0"), now=NOW)  # no trailing slash
-    m = {"invites": True, "signups": "closed", "own_url": True, "require_2fa": False}
+    m = {"invites": True, "signups": "closed", "require_2fa": False}
     with pytest.raises(ValidationError):
         P.verify_hub(hub_doc(kp, membership=m), now=NOW)
     with pytest.raises(ValidationError):
@@ -133,7 +130,7 @@ def test_hub(kp):
 
 
 def reg(kp, signers=("sign", "recover"), **kw):
-    p = P.build_registration(HUB, "mara", "code", "tunnel", member_keys(kp), iat=kw.pop("iat", IAT), **kw)
+    p = P.build_registration(HUB, "mara", "code", member_keys(kp), iat=kw.pop("iat", IAT), **kw)
     return docs.sign_document("registration", p, [kp[s] for s in signers])
 
 
@@ -150,21 +147,32 @@ def test_registration(kp):
     with pytest.raises(ValidationError):  # stale iat
         P.verify_registration(reg(kp), HUB, now=NOW + 301)
     P.verify_registration(reg(kp), HUB, now=NOW + 300)
-    with pytest.raises(ValidationError):
-        P.verify_registration(reg(kp, own_urls={"instance": "https://a", "files": "https://b"}), HUB, now=NOW)
 
 
-def test_registration_own_url_and_reregister(kp):
-    ou = {"instance": "https://box.mara.example", "files": "https://files.mara.example"}
-    p = P.build_registration(HUB, "mara", "c", "own-url", member_keys(kp), own_urls=ou, reregister=True, iat=IAT)
+def test_registration_reregister(kp):
+    p = P.build_registration(HUB, "mara", "c", member_keys(kp), reregister=True, iat=IAT)
     d = docs.sign_document("registration", p, [kp["sign"], kp["recover"]])
     assert P.verify_registration(d, HUB, now=NOW)["reregister"] is True
-    p["own_urls"] = {"instance": "http://box", "files": "https://f"}
+    p = P.build_registration(HUB, "Bad_Name", "c", member_keys(kp), iat=IAT)
     with pytest.raises(ValidationError):
         P.validate_registration(p, HUB, NOW)
-    p = P.build_registration(HUB, "Bad_Name", "c", "tunnel", member_keys(kp), iat=IAT)
-    with pytest.raises(ValidationError):
-        P.validate_registration(p, HUB, NOW)
+
+
+def test_registration_accepts_legacy_mode_fields(kp):
+    # older instances send `mode` and `own_urls`; hubs ignore them
+    p = P.build_registration(HUB, "mara", "c", member_keys(kp), iat=IAT)
+    p["mode"] = "own-url"
+    p["own_urls"] = {"instance": "https://box.mara.example", "files": "https://files.mara.example"}
+    P.validate_registration(p, HUB, NOW)
+    p["mode"], p["own_urls"] = "tunnel", None
+    P.validate_registration(p, HUB, NOW)
+
+
+def test_hub_membership_with_and_without_own_url(kp):
+    m = {"invites": True, "signups": "closed", "require_2fa": True}
+    assert "own_url" not in P.verify_hub(hub_doc(kp, membership=m), now=NOW)["membership"]
+    assert P.verify_hub(hub_doc(kp, membership={**m, "own_url": True}), now=NOW)["membership"]["own_url"] is True
+    assert "own_url" not in P.verify_hub(hub_doc(kp), now=NOW)["membership"]
 
 
 def test_tunnel_hello(kp):

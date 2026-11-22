@@ -12,7 +12,7 @@ import json
 import sys
 from pathlib import Path
 
-from l0wproto import b64, docs, hopsig, keys, payloads, tunnel
+from l0wproto import b64, docs, hopsig, keys, messages, payloads, seal, tunnel
 from l0wproto.times import parse_time
 
 OUT = Path(__file__).resolve().parents[2] / "vectors"
@@ -92,8 +92,7 @@ def build() -> dict[str, str]:
                          payloads.build_rotation(ADDR, MEMBER.kid, MEMBER2.key, "compromise", iat=IAT), [RECOVER], [RECOVER])
     files["rotation-recovery.json"] = dump(rot_rec)
 
-    self_p = payloads.build_self(ADDR, 3, member_keys, hostnames, history=[], iat=IAT,
-                                 own_urls={"instance": "https://box.mara.example", "files": "https://files.mara.example"})
+    self_p = payloads.build_self(ADDR, 3, member_keys, hostnames, history=[], iat=IAT)
     self_v = doc_vector("A self-description, signed by the current signing key", "self", self_p, [MEMBER], [MEMBER])
     files["self.json"] = dump(self_v)
     self_h = payloads.build_self(ADDR, 4, [MEMBER2.key, SEAL.key, RECOVER.key], hostnames, history=[rot["document"]], iat=IAT)
@@ -125,7 +124,7 @@ def build() -> dict[str, str]:
                            iat=IAT), [HUBKEY], [HUBKEY]))
     files["registration.json"] = dump(doc_vector(
         "Join request, signed by the new signing key and the recovery key", "registration",
-        payloads.build_registration(HUB, "mara", "Zk3abc", "tunnel", member_keys, iat=IAT), [MEMBER, RECOVER], [MEMBER, RECOVER]))
+        payloads.build_registration(HUB, "mara", "Zk3abc", member_keys, iat=IAT), [MEMBER, RECOVER], [MEMBER, RECOVER]))
     files["leave.json"] = dump(doc_vector(
         "Leaving the hub for another", "leave", payloads.build_leave(ADDR, "mara@other.example", iat=IAT), [MEMBER], [MEMBER]))
     files["reregistration.json"] = dump(doc_vector(
@@ -140,9 +139,97 @@ def build() -> dict[str, str]:
         "Enable the cloudflared accelerator", "accelerator-request",
         payloads.build_accelerator_request(ADDR, HUB, "enable", "http://127.0.0.1:8790", iat=IAT), [MEMBER], [MEMBER]))
 
+    files.update(message_vectors())
     files["hop-auth.json"] = dump(hop_vectors())
     files["tunnel-frames.json"] = dump(frame_vectors())
     return files
+
+
+PEER = "bob@other.example"
+PEER_KP = {  # not in keys.json: the seeds are in the message vectors
+    "peer-sign": keys.from_seed(seed("peer-sign"), "sign", IAT),
+    "peer-seal": keys.from_seed(seed("peer-seal"), "seal", IAT),
+}
+
+
+def message_vectors() -> dict[str, str]:
+    files: dict[str, str] = {}
+    psign, pseal = PEER_KP["peer-sign"], PEER_KP["peer-seal"]
+    peer_keys = {k: {"seed": v.private.hex(), "key": v.key.to_dict()} for k, v in PEER_KP.items()}
+    tid = b64.encode(hashlib.sha256(b"l0wagent-vector-token-id").digest()[:16])
+    tok_p = payloads.build_delivery_token(PEER, psign.kid, ADDR, MEMBER.kid, id=tid, iat=IAT)
+    tok = doc_vector("Bob's delivery token for Mara's signing key", "delivery-token", tok_p, [psign], [psign],
+                     peer_keys={"peer-sign": peer_keys["peer-sign"]})
+    files["delivery-token.json"] = dump(tok)
+
+    so_p = payloads.build_same_owner(ADDR, MEMBER.kid, "mara2@other.example", psign.kid, iat=IAT)
+    files["same-owner.json"] = dump(doc_vector("Two instances of one owner, signed by both keys", "same-owner", so_p,
+                                               [MEMBER, psign], [MEMBER, psign], peer_keys={"peer-sign": peer_keys["peer-sign"]}))
+
+    body = {"thread": "t-7", "reply_to": None, "text": "Hello Bob, the plants are fine.", "files": []}
+    env_id = b64.encode(hashlib.sha256(b"l0wagent-vector-envelope-id").digest()[:16])
+    eph = seed("hpke-ephemeral")
+    doc = messages.make_envelope(MEMBER, MEMBER.kid, ADDR, PEER, pseal.key, "message", body, 41, tok["document"],
+                                 env_id=env_id, iat=IAT, eph_priv=eph)
+    payload = json.loads(b64.decode(doc["payload"]))
+    info = seal.seal_info(ADDR, MEMBER.kid, PEER, pseal.kid, env_id)
+    files["envelope.json"] = dump({
+        **doc_vector("A message envelope from Mara to Bob, body sealed with HPKE", "envelope", payload_dict(doc), [MEMBER], [MEMBER]),
+        "recipient": PEER, "recipient_seal_key": peer_keys["peer-seal"],
+        "sealed_info": info.decode("ascii"), "sealed_info_hex": info.hex(),
+        "ephemeral_seed": eph.hex(),
+        "body_json": docs.serialize_payload(body).decode("utf-8"),
+    })
+    svc_kp = keys.from_seed(seed("service-sign"), "sign", IAT)
+    svc_addr = f"board@{HUB}"
+    svc_p = payloads.build_service(
+        svc_addr, "board", ["moderator", "poster"], title="Board", description="Topics, posts and discussions for members of this hub.",
+        docs=f"https://{HUB}/services/board",
+        extension={"git": "https://git.example/hub-services.git", "commit": "0123456789abcdef0123456789abcdef01234567",
+                   "path": "extensions/board"}, default="on", iat=IAT)
+    files["service.json"] = dump(doc_vector("A service document, signed by the hub", "service", svc_p, [HUBKEY], [HUBKEY],
+                                            hub_domain=HUB))
+    rg_p = payloads.build_role_grant(svc_addr, ADDR, MEMBER.kid, "moderator", iat=IAT)
+    files["role-grant.json"] = dump(doc_vector(
+        "The board grants Mara's instance the moderator role, signed by the service", "role-grant", rg_p, [svc_kp], [svc_kp],
+        service_key={"seed": svc_kp.private.hex(), "key": svc_kp.key.to_dict()}))
+    call_body = {"call": b64.encode(hashlib.sha256(b"l0wagent-vector-call-id").digest()[:16]), "method": "post.create",
+                 "args": {"topic": "plants", "text": "Hello"}, "role": files and json.loads(files["role-grant.json"])["document"]}
+    svc_tok = docs.sign_document("delivery-token", payloads.build_delivery_token(svc_addr, svc_kp.kid, ADDR, MEMBER.kid, id=tid, iat=IAT), [svc_kp])
+    svc_seal = keys.from_seed(seed("service-seal"), "seal", IAT)
+    call_env_id = b64.encode(hashlib.sha256(b"l0wagent-vector-call-envelope-id").digest()[:16])
+    call_eph = seed("hpke-ephemeral-call")
+    call_doc = messages.make_envelope(MEMBER, MEMBER.kid, ADDR, svc_addr, svc_seal.key, "service-call", call_body, 1, svc_tok,
+                                      env_id=call_env_id, iat=IAT, eph_priv=call_eph)
+    call_info = seal.seal_info(ADDR, MEMBER.kid, svc_addr, svc_seal.kid, call_env_id)
+    files["service-call.json"] = dump({
+        **doc_vector("A service-call envelope from Mara to the board, body sealed to the service's seal key", "envelope",
+                     payload_dict(call_doc), [MEMBER], [MEMBER]),
+        "recipient": svc_addr, "recipient_seal_key": {"seed": svc_seal.private.hex(), "key": svc_seal.key.to_dict()},
+        "sealed_info": call_info.decode("ascii"), "ephemeral_seed": call_eph.hex(),
+        "body_json": docs.serialize_payload(call_body).decode("utf-8"),
+    })
+    pub = MEMBER.key.pub
+    files["fingerprint.json"] = dump({
+        "note": "Crockford base32 (alphabet 0123456789ABCDEFGHJKMNPQRSTVWXYZ) of the first 10 bytes of SHA-256 of the raw public key",
+        "cases": [{"pub": b64.encode(k), "sha256_hex": hashlib.sha256(k).hexdigest(), "fingerprint": messages.fingerprint(k)}
+                  for k in (pub, psign.key.pub, bytes(32))],
+    })
+    secret = hashlib.sha256(b"l0wagent-vector-friend-secret").digest()[:16]
+    fp = messages.fingerprint(psign.key.pub)
+    text, _ = messages.make_friend_code(PEER, fp, secret)
+    files["friend-code.json"] = dump({
+        "valid": [{"text": text, "address": PEER, "fingerprint": fp, "secret": b64.encode(secret)},
+                  {"text": messages.make_friend_code("mara@hub.example:8443", fp, secret)[0], "address": "mara@hub.example:8443",
+                   "fingerprint": fp, "secret": b64.encode(secret)}],
+        "invalid": [text.replace("l0wf1", "l0wf2"), text[:-1], text.rsplit(":", 1)[0], f"l0wf1:{PEER}:U{fp.replace('-', '')[1:]}:{b64.encode(secret)}",
+                    text.replace("bob@", "BOB@"), text + ":x", "l0wf1:bob@:" + text.split(":", 2)[2]],
+    })
+    return files
+
+
+def payload_dict(doc: dict) -> dict:
+    return json.loads(b64.decode(doc["payload"]))
 
 
 def hop_vectors() -> dict:

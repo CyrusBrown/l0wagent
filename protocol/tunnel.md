@@ -17,7 +17,7 @@ control) and nothing more: seven frame types.
    `{"v", "type": "tunnel-hello", "iat", "address", "nonce": "<the nonce>", "hub": "hub.example", "release": "0.9.0"}`,
    signed by its current signing key (kept in the gateway; the tunnel service asks the gateway to sign).
 4. The hub checks: the nonce is the one it sent (single use, at most 30 s old), `hub` is itself,
-   `iat` within 300 s, the address is an active tunnel-mode member, and the signature verifies against
+   `iat` within 300 s, the address is an active member, and the signature verifies against
    that member's current signing key. Then it sends `{"t": "ready", "session": "<id>", "limits": {...}}`
    (the same `limits` as capabilities). On failure it closes with code **4401** and no detail.
 5. The hub allows **one** live connection per member. A newly verified connection replaces the old one:
@@ -79,4 +79,3 @@ bytes 6-    payload
   app, the instance hostname to control, anything else gets `421`.
 - Is on its own network with control (and the gateway), never the sandbox network. Control treats it as
   the tunnel caller class: no `/api/agent/*`, no `/api/chat-runtime/*`, never "local".
-- In own-URL mode it does nothing.

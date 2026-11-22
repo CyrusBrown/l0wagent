@@ -1,0 +1,49 @@
+{
+  "description": "Bob's delivery token for Mara's signing key",
+  "type": "delivery-token",
+  "now": "2026-11-17T21:30:00Z",
+  "payload_json": "{\"v\":\"l0w/0.1\",\"type\":\"delivery-token\",\"iat\":\"2026-11-17T21:30:00Z\",\"id\":\"tY95bB06jtTA9KP-VUwP1g\",\"issuer\":\"bob@other.example\",\"issuer_kid\":\"k1.erFuh2c39eRGKKTh3sqOZw\",\"holder\":\"mara@hub.example\",\"holder_kid\":\"k1.7jjJipSU1jZBHvxMYWMDhA\"}",
+  "payload_b64": "eyJ2IjoibDB3LzAuMSIsInR5cGUiOiJkZWxpdmVyeS10b2tlbiIsImlhdCI6IjIwMjYtMTEtMTdUMjE6MzA6MDBaIiwiaWQiOiJ0WTk1YkIwNmp0VEE5S1AtVlV3UDFnIiwiaXNzdWVyIjoiYm9iQG90aGVyLmV4YW1wbGUiLCJpc3N1ZXJfa2lkIjoiazEuZXJGdWgyYzM5ZVJHS0tUaDNzcU9adyIsImhvbGRlciI6Im1hcmFAaHViLmV4YW1wbGUiLCJob2xkZXJfa2lkIjoiazEuN2pqSmlwU1UxalpCSHZ4TVlXTURoQSJ9",
+  "signing_input": "l0wagent-sig/1\ndelivery-token\neyJ2IjoibDB3LzAuMSIsInR5cGUiOiJkZWxpdmVyeS10b2tlbiIsImlhdCI6IjIwMjYtMTEtMTdUMjE6MzA6MDBaIiwiaWQiOiJ0WTk1YkIwNmp0VEE5S1AtVlV3UDFnIiwiaXNzdWVyIjoiYm9iQG90aGVyLmV4YW1wbGUiLCJpc3N1ZXJfa2lkIjoiazEuZXJGdWgyYzM5ZVJHS0tUaDNzcU9adyIsImhvbGRlciI6Im1hcmFAaHViLmV4YW1wbGUiLCJob2xkZXJfa2lkIjoiazEuN2pqSmlwU1UxalpCSHZ4TVlXTURoQSJ9",
+  "signatures": [
+    {
+      "kid": "k1.erFuh2c39eRGKKTh3sqOZw",
+      "sig": "UjSrL06SSndMXLzyZrqYxhA4FYmPl1XXZ8hZ5mOz7SN9IdyfX0oJuEEBM2_fNI1jnssSPgqj4Nz6iORTw84NAg"
+    }
+  ],
+  "verify_keys": [
+    {
+      "kid": "k1.erFuh2c39eRGKKTh3sqOZw",
+      "alg": "Ed25519",
+      "use": "sign",
+      "pub": "cNdi9_uLQkp1HIHSqPrfYKiMOWg3IvJ82wj3NcXLiyo",
+      "created": "2026-11-17T21:30:00Z"
+    }
+  ],
+  "required": [
+    "k1.erFuh2c39eRGKKTh3sqOZw"
+  ],
+  "document": {
+    "v": "l0w/0.1",
+    "type": "delivery-token",
+    "payload": "eyJ2IjoibDB3LzAuMSIsInR5cGUiOiJkZWxpdmVyeS10b2tlbiIsImlhdCI6IjIwMjYtMTEtMTdUMjE6MzA6MDBaIiwiaWQiOiJ0WTk1YkIwNmp0VEE5S1AtVlV3UDFnIiwiaXNzdWVyIjoiYm9iQG90aGVyLmV4YW1wbGUiLCJpc3N1ZXJfa2lkIjoiazEuZXJGdWgyYzM5ZVJHS0tUaDNzcU9adyIsImhvbGRlciI6Im1hcmFAaHViLmV4YW1wbGUiLCJob2xkZXJfa2lkIjoiazEuN2pqSmlwU1UxalpCSHZ4TVlXTURoQSJ9",
+    "sigs": [
+      {
+        "kid": "k1.erFuh2c39eRGKKTh3sqOZw",
+        "sig": "UjSrL06SSndMXLzyZrqYxhA4FYmPl1XXZ8hZ5mOz7SN9IdyfX0oJuEEBM2_fNI1jnssSPgqj4Nz6iORTw84NAg"
+      }
+    ]
+  },
+  "peer_keys": {
+    "peer-sign": {
+      "seed": "cbc67b046e1773f1212369760988ad9bb7f28f1e2b2aecd75845b7b3c0c1df00",
+      "key": {
+        "kid": "k1.erFuh2c39eRGKKTh3sqOZw",
+        "alg": "Ed25519",
+        "use": "sign",
+        "pub": "cNdi9_uLQkp1HIHSqPrfYKiMOWg3IvJ82wj3NcXLiyo",
+        "created": "2026-11-17T21:30:00Z"
+      }
+    }
+  }
+}

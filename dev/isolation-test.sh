@@ -21,7 +21,7 @@ for c in checks:
     print("%4s  %s%s" % (c["result"], c["label"], detail))
 sys.exit(1 if any(c["result"] == "fail" for c in checks) else 0)' || SELF_FAIL=1
 
-# The hub's services (gateway, tunnel) are on hubnet only: the agent must reach neither, by name or by address.
+# The hub's services (gateway, tunnel) are never on the sandbox network: the agent must reach neither, by name or by any of their addresses.
 HUB_FAIL=0
 for svc_port in gateway:8780 tunnel:80; do
   svc=${svc_port%%:*}; port=${svc_port##*:}

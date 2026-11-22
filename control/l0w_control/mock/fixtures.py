@@ -55,6 +55,11 @@ class World:
     reviewer: s.ReviewerConfig = field(default_factory=s.ReviewerConfig)
     instructions: str = "Keep replies short. Ask before flashing firmware to the garden controller."
     api_key: bool = False
+    friends: dict[str, s.Friend] = field(default_factory=dict)
+    friend_requests: dict[int, s.FriendRequest] = field(default_factory=dict)
+    friend_codes: dict[int, s.FriendCode] = field(default_factory=dict)
+    friend_settings: s.FriendSettings = field(default_factory=lambda: s.FriendSettings(requests_from="hub", paused=False))
+    friend_breaker: s.FriendBreaker = field(default_factory=lambda: s.FriendBreaker(tripped=False, paused=False, day_spent=0, day_limit=7.5, day_pct=5.0))
 
 
 def build(now: datetime | None = None) -> World:
@@ -200,6 +205,17 @@ def build(now: datetime | None = None) -> World:
     msg(6, "assistant", "Filed 35 of 41. Six are photos of handwritten receipts and need a look from you.", ago(days=3), run_id=121)
     msg(10, "owner", "The sourdough starter keeps collapsing. Something to look into when you have spare time.", ago(days=1), via="web")
 
+    # peer threads: messages from friends' assistants are untrusted data (sender "peer")
+    for tid, address, last, preview, unread in ((11, "ana@hub.example", ago(hours=3), "Ana: The pump relay you asked about is the SRD-05VDC; datasheet attached.", 1),
+                                                (12, "ben@other.example", ago(days=4), "You: Thanks, that fixed it.", 0)):
+        w.threads[tid] = s.Thread(id=tid, project=None, title=address, type="peer", status="open", created_by="owner", pinned=False,
+                                  created_at=ago(days=20), last_activity_at=last, last_message_preview=preview, unread=unread, open_asks=0)
+    msg(11, "owner", "Which relay module are you using on the garden controller?", ago(hours=4), via="web")
+    msg(11, "peer", "The pump relay is the SRD-05VDC, a 5 V coil with a 10 A contact. Datasheet attached.", ago(hours=3), via="peer",
+        attachments=[s.Attachment(name="srd-05vdc.pdf", volume="work", path="_inbox/peers/ana@hub.example/srd-05vdc.pdf", size=212_000, mime="application/pdf")])
+    msg(12, "peer", "Did the firmware update fix the double trigger?", ago(days=4, hours=1), via="peer")
+    msg(12, "owner", "Thanks, that fixed it.", ago(days=4), via="web")
+
     # unread: assistant messages after the owner's read marker
     for tid, n in {2: 2, 4: 1, 6: 1}.items():
         w.threads[tid].unread = n
@@ -299,6 +315,33 @@ def build(now: datetime | None = None) -> World:
     shelf(6, "wiring-diagram.png", "work", "garden-irrigation/_inbox/wiring-diagram.png", "snapshot", "owner", ago(days=17), size=1_300_000, mime="image/png")
 
     _recount(w)
+    # ── H5: friends, one request waiting, and a friend code ──
+    w.friends = {
+        "ana@hub.example": s.Friend(address="ana@hub.example", display_name="Ana", fingerprint="7Q2M-9KXA-4D1F-R0VE", state="friends", share="shared", presence_detail="coarse",
+                                    waking="ask", muted=False, thread_id=11,
+                                    presence=s.FriendPresence(state="asleep", next="tonight", now=None, at=ago(minutes=20)), same_owner=False, key_alarm=None,
+                                    created_at=ago(days=20), updated_at=ago(hours=3)),
+        "ben@other.example": s.Friend(address="ben@other.example", display_name="Ben", fingerprint="WZCY-8FG5-JZ5E-V87N", state="friends", share="nothing",
+                                      presence_detail="coarse", waking="never", muted=True, thread_id=12, presence=None, same_owner=False,
+                                      key_alarm="Their key changed with no rotation from the one we pinned. Check with them before you trust it.",
+                                      created_at=ago(days=30), updated_at=ago(days=4)),
+        "cleo@hub.example": s.Friend(address="cleo@hub.example", display_name="cleo@hub.example", fingerprint="3H8N-V2TP-Q6BD-0YJ4", state="requested_in", share="nothing",
+                                     presence_detail="coarse", waking="never", muted=False, thread_id=None, presence=None, same_owner=False, key_alarm=None,
+                                     created_at=ago(hours=2), updated_at=ago(hours=2)),
+    }
+    w.friend_requests = {
+        1: s.FriendRequest(id=1, direction="in", address="cleo@hub.example", note="Hi, I'm Cleo from the makerspace. Ana said you'd like to compare pump setups.",
+                           made_by="owner", code_used=False, fingerprint="3H8N-V2TP-Q6BD-0YJ4", state="pending", created_at=ago(hours=2)),
+        2: s.FriendRequest(id=2, direction="out", address="ana@hub.example", note="", made_by="owner", code_used=True, fingerprint="7Q2M-9KXA-4D1F-R0VE", state="approved",
+                           created_at=ago(days=20), decided_at=ago(days=20, minutes=-5)),
+    }
+    # the spend breaker is tripped on the day's limit, so the card shows
+    w.friend_breaker = s.FriendBreaker(
+        tripped=True, paused=True, limit="day", day_spent=8.4, day_limit=7.5, day_pct=5.0, choices=["allow_today", "stop_today"], at=ago(minutes=12),
+        explanation="Your assistant's spending on friends today is about 8.4 pts, more than 5% (7.5 pts) of the week's allowance (Ana 6.1, Ben 2.3). "
+                    "Its replies to friends and wake requests are paused.",
+        spent_on=[s.FriendBreakerPerson(address="ana@hub.example", display_name="Ana", pts=6.1), s.FriendBreakerPerson(address="ben@other.example", display_name="Ben", pts=2.3)])
+    w.friend_codes = {1: s.FriendCode(id=1, label="Ben", state="used", created_at=ago(days=31), expires_at=ago(days=17), used_at=ago(days=30), used_by="ben@other.example")}
     # ── M4: the wakeup plan and routines, after the mockup's Calendar week ──
     def at(days: int, hour: int, minute: int = 0) -> datetime:
         return (now + timedelta(days=days)).replace(hour=hour, minute=minute, second=0, microsecond=0)

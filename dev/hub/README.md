@@ -1,7 +1,7 @@
 # fakehub: a fake l0wagent hub for development
 
 A small Python hub that implements the whole core of the hub protocol (`protocol/*.md`, `l0w/0.1`): capabilities,
-invites, registration (tunnel and own-URL), self updates with rotation, leaving, the signed directory, the
+invites, registration, self updates with rotation, leaving, the signed directory, the
 tunnel server, and the HTTP front that sends member hostnames down their tunnels. No Cloudflare; it uses the
 reference library `protocol/py` (`l0wproto`) for every signature, frame, name and hop rule.
 
@@ -18,7 +18,7 @@ uv run python -m fakehub invite --name-hint mara    # prints  l0w-invite:http://
 Options (also `FAKEHUB_*` environment variables): `--base-url` (default `http://hub.localhost:8700`), `--domain`
 (default: the base URL's host, the part after `@` in addresses), `--files-domain` (default `hubfiles.localhost`),
 `--state`, `--key` (the hub signing key's seed file; created next to the state file on first start, so the
-hub's key survives restarts), and for `serve` `--listen` and `--port`.
+hub's key survives restarts), and for `serve` `--listen` and `--port`. `FAKEHUB_OFFLINE_RETRY_AFTER` (seconds, default 30) sets the offline page's `Retry-After`, which a sender's outbox honors, so a test that waits for a retry sets it to 1.
 
 `invite` writes the same state file while the server runs; the server notices. `invite --reregister NAME` makes an
 invite that approves re-registering NAME after both keys were lost (the operator's approval, per membership.md).
@@ -38,9 +38,26 @@ Any request whose `Host` is a member's hostname goes down that member's tunnel; 
   a per-member sliding minute on `/api/auth/*` (429, not forwarded).
 - uvicorn logs `ASGI callable returned without completing handshake` for each refused WebSocket upgrade (the 501
   is sent through its denial-response extension). The answer is right; the log line is uvicorn's.
-- Own-URL registration checks that both URLs are HTTPS and different origins, and that the instance URL serves
-  the member's own `self` document. TLS is verified (`Config.own_url_verify_tls`).
 - A refused registration does not use up the invite.
+
+## The test service `echo` (services.md)
+`serve --echo` (or `FAKEHUB_ECHO=1`) runs a built-in service, `echo@<hub domain>`, for developing instances against
+the hub-services protocol (`protocol/services.md`) without a real service. It is a directory member with its own
+keys (derived from the hub's key seed, so they survive restarts), a self document and the hub's countersignature,
+and its hostname (`echo.<domain>`) is served by the hub itself, with no tunnel. The capabilities list it in `extras`
+as a signed `service` document (kind `custom`, roles `["tester"]`, default `on`). The name `echo` is reserved.
+- `--echo-tester NAME` (repeatable; `FAKEHUB_ECHO_TESTERS=a,b`): members whose `service-welcome` carries a signed
+  `tester` role grant. Others get an empty `roles` list.
+- `--echo-extension GIT COMMIT PATH` (`FAKEHUB_ECHO_EXTENSION=git,commit,path`): the `extension` reference in its
+  service document (an https URL, a 40 or 64 hex commit, a relative path).
+- Inbox `https://echo.<domain>/api/peer/v0/inbox`: `service-hello` is accepted only from members of this hub (403
+  `not_member` otherwise); everything else needs the token echo issued. Methods: `echo` (returns `args`), `whoami`
+  (`{address, roles}`: the roles echo honored from the call's grant), `secret` (needs the `tester` role, else the
+  reply is `not_allowed`); an unknown method is `unknown_method`. `service-bye` forgets the member and its token.
+- Welcomes and replies are separate envelopes, sealed to the member and posted to the member's instance hostname
+  through this hub's own routing (to its listener with the member's `Host`), so the member's tunnel must be up. A
+  delivery to an offline member is dropped (no retry). Tokens and members are kept in the state file.
+- Not done: following the member's key rotations beyond accepting a token issued to an earlier key of the same member.
 
 ## Tests, and the conformance suite
 ```

@@ -268,17 +268,6 @@ class Suite:
         if min_rel not in ("0", "0.0", "0.0.0"):
             await self.refused("instance release older than instance_releases.min", 426, "instance_too_old", reg(release="0.0.1"))
 
-        async def own_url():
-            if not self.caps["membership"].get("own_url"):
-                return
-            code = await self.invite()
-            i = Inst(self.domain, new_name())
-            urls = {"instance": "https://own-url-conformance.invalid", "files": "https://own-url-files-conformance.invalid"}
-            expect_error(await self.post_reg(i.registration(code, mode="own-url", own_urls=urls)), 422, "own_url_unreachable")
-            same = {"instance": "https://own-url-conformance.invalid", "files": "https://own-url-conformance.invalid"}
-            expect_error(await self.post_reg(i.registration(await self.invite(), mode="own-url", own_urls=same)), 422, "own_url_unreachable")
-        if self.caps["membership"].get("own_url"):
-            await self.r.step("own-url mode: unreachable URLs and same-origin URLs -> 422 own_url_unreachable", own_url)
 
     # --- 3. self updates and rotation -----------------------------------------------------
 
@@ -748,6 +737,39 @@ class Suite:
             expect(r.status_code in (401, 403), f"a member that left got {r.status_code}")
         await self.r.step("cloudflared: after leaving the member cannot use it (401 or 403)", after_leave)
 
+    # --- hub services (services.md) -------------------------------------------------------
+
+    def service_docs(self) -> list[tuple[int, dict]]:
+        return [(i, e.get("doc")) for i, e in enumerate(self.caps.get("extras", [])) if e.get("kind") == "service"]
+
+    async def services(self) -> None:
+        """Whatever services the hub advertises: each document verifies with the hub key and validates, and the
+        service has a directory entry countersigned by the hub, whose address the document names. No particular
+        service is required."""
+        found = self.service_docs()
+        if not found:
+            self.r.add("SKIP", "service checks", "the hub advertises no services")
+            return
+        seen: set[str] = set()
+        for i, doc in found:
+            label = f"service extras[{i}]"
+
+            async def document(doc=doc):
+                p = payloads.verify_service(doc, self.hub_key, hub_domain=self.domain)
+                expect(p["address"] not in seen, "the same service is listed twice")
+                seen.add(p["address"])
+                return p
+            p = await self.r.step(f"{label}: the document verifies with the hub key and its fields are valid", document)
+            if not isinstance(p, dict):
+                continue
+            name = payloads.split_address(p["address"])[0]
+
+            async def directory(p=p, name=name):
+                r = await self.entry(name)
+                sp = self.verify_entry(r, name)
+                expect(sp["address"] == p["address"], "the directory entry is for another address")
+            await self.r.step(f"{label}: {p['address']} has a directory entry countersigned by the hub", directory)
+
     # --- everything -----------------------------------------------------------------------
 
     async def run(self) -> None:
@@ -773,6 +795,7 @@ class Suite:
                 self.r.add("FAIL", "cloudflared accelerator checks", "not run: registration or the first self failed")
             else:
                 await self.cloudflared(m3, api)
+        await self.services()
         m2 = await self.register("member 2")
         if m2 is None or not await self.after_join(m2):
             self.r.add("FAIL", "tunnel and leave checks", "not run: registration or the first self failed")

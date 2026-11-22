@@ -29,7 +29,7 @@ mv = load_script("make_vectors")
 ms = load_script("make_schemas")
 
 DOC_VECTORS = ["rotation", "rotation-recovery", "self", "self-after-rotation", "revocation", "moved", "hub", "registration", "leave",
-               "reregistration", "tunnel-hello", "accelerator-request"]
+               "reregistration", "tunnel-hello", "accelerator-request", "service", "role-grant"]
 
 
 def vec(name):
@@ -78,6 +78,8 @@ def test_document_vector(name):
                                                        keys.Key.from_dict(vec("keys")["keys"]["member-recover"]["key"]), now),
         "tunnel-hello": lambda: P.verify_tunnel_hello(doc, ks[0], nonce=v["challenge"]["nonce"], hub="hub.example", now=now),
         "accelerator-request": lambda: P.verify_accelerator_request(doc, ks[0], hub="hub.example", address="mara@hub.example", now=now),
+        "service": lambda: P.verify_service(doc, ks[0], hub_domain="hub.example", now=now),
+        "role-grant": lambda: P.verify_role_grant(doc, ks[0], service="board@hub.example", holder="mara@hub.example", now=now),
     }[name]()
     assert typed == payload
     # tampering with the vector fails
@@ -263,7 +265,7 @@ def test_openapi_structure_and_refs():
         assert p in paths, p
     codes = json.dumps(api)
     for c in ("no_such_member", "left", "no_such_invite", "invite_used", "invite_expired", "bad_registration", "needs_invite",
-              "name_taken", "name_reserved", "name_bound", "own_url_unreachable", "instance_too_old", "unsupported_version"):
+              "name_taken", "name_reserved", "name_bound", "instance_too_old", "unsupported_version"):
         assert c in codes, c
 
     def refs(o):

@@ -2,6 +2,15 @@
 
 Tags are `hub-X.Y.Z`. Changes to the hub core only; the instance has its own changelog at the repo root.
 
+## 0.5.0
+
+- Own-URL mode is removed: members join only through the hub's tunnel (protocol/membership.md). A registration's `mode` and
+  `own_urls` and a self description's `own_urls` are ignored if an older instance sends them; `422 own_url_unreachable` and
+  the `OWN_URL` setting are gone. Tunnel and accelerator checks now only ask for an active member.
+- The capabilities still publish `membership.own_url: false`, only because instances released before this change require the
+  field; it can be removed once they are gone.
+- No migration: the `members.mode` and `own_urls` columns stay, and `mode` is always written as `tunnel`.
+
 ## 0.4.0
 
 - Watching active accelerators (protocol/accelerators.md): a cron trigger runs every minute and asks Cloudflare about each

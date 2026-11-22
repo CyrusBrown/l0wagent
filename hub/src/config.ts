@@ -41,7 +41,6 @@ export interface Config {
   minRelease: string;
   limits: Limits;
   policies?: Obj;
-  ownUrl: boolean;
   inviteDays: number;
   keyCreated: string;
   accelerator: AcceleratorConfig | null; // the cloudflared accelerator, when enabled and fully configured
@@ -142,7 +141,6 @@ export function loadConfig(env: Env): Config {
     minRelease: env.MIN_RELEASE?.trim() || "0.8.0",
     limits,
     policies: parseJsonObject(env.POLICIES, "POLICIES"),
-    ownUrl: (env.OWN_URL ?? "true").trim().toLowerCase() !== "false",
     inviteDays: Number.isFinite(days) && days > 0 ? Math.floor(days) : 7,
     keyCreated: env.HUB_KEY_CREATED?.trim() || "2026-11-17T00:00:00Z",
     accelerator,

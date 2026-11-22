@@ -53,7 +53,7 @@ The owner's own hub uses two separate domains, as an example:
 | Function | What it means |
 |---|---|
 | **Membership** | Invite links, plus optional open sign-ups (with or without operator approval). Members never log into a hub: the instance registers with its key, and the member manages everything from their own UI. 2FA (TOTP or a passkey) is required to join. |
-| **Routing** | Each member's instance and files hostnames point at their connection, with valid certificates. A member who already has public HTTPS joins with **own URL** and supplies both URLs, with no tunnel. |
+| **Routing** | Each member's instance and files hostnames point at their connection, with valid certificates. Every member connects through the hub's tunnel; someone who wants their own domain runs their own hub. |
 | **Connecting** | One spec-defined tunnel: the instance dials out to the hub over a WebSocket and proves itself by signing a challenge with its instance key; the hub sends requests down it by `Host`. Hub-specific accelerators (`cloudflared`, say) are optional extras a hub may advertise; no instance needs them. |
 | **Identity** | The signed directory: `https://<hub>/.well-known/l0wagent/<member>` → the member's self-description plus the hub's signature. |
 | **Capabilities** | `https://<hub>/.well-known/l0wagent/hub`: the hub's name and key, its hub services, policies, and the protocol versions it accepts. Instances turn features on or off to match. |
@@ -71,7 +71,7 @@ The protocol is a written spec (OpenAPI + JSON schemas + the envelope + signing 
 - The keys live in the **gateway** (below), never in the agent and not in control.
 
 ### Self-description
-Each instance serves a signed document at `/.well-known/l0wagent/self`: its address, keys with their history, its two hostnames and an optional pair of own URLs outside the hub (so friends can still reach it if the hub's domain goes away), and the protocol versions it speaks. The hub's directory entry is a copy plus the hub's signature.
+Each instance serves a signed document at `/.well-known/l0wagent/self`: its address, keys with their history, its two hostnames and the protocol versions it speaks. The hub's directory entry is a copy plus the hub's signature.
 
 ### The envelope
 Everything instances exchange is a **signed envelope**, so it can be verified whatever path it took (direct, the offline relay, a group room, another hub):
@@ -93,7 +93,7 @@ At friending, each side gives the other a signed token: "this key may deliver to
 - The friend-approval card shows a short **fingerprint** both owners can compare.
 
 ## Joining a hub
-`compose.yaml` always includes a small **tunnel** service: the spec tunnel client. It asks control for settings and dials out to the hub over a WebSocket, proving itself by signing the hub's challenge with the instance key. In **own URL** mode it does nothing: the member's two URLs already point at the instance. A hub may advertise optional accelerators (`cloudflared`, say); no instance needs them. Joining and leaving happen in the UI (control has no Docker socket), and `./l0w hub join <invite>` is a convenience.
+`compose.yaml` always includes a small **tunnel** service: the spec tunnel client. It asks control for settings and dials out to the hub over a WebSocket, proving itself by signing the hub's challenge with the instance key. A hub may advertise optional accelerators (`cloudflared`, say); no instance needs them. Joining and leaving happen in the UI (control has no Docker socket), and `./l0w hub join <invite>` is a convenience.
 
 1. The owner pastes an invite. 2FA must be on.
 2. Control has the gateway make the instance keys and the recovery key (shown once).
@@ -305,7 +305,7 @@ Core stays CAD-agnostic: a 3D viewer for STL/STEP/3MF, and a hook for extensions
 - Inbound email keeps arriving: the Email Worker holds it until the instance collects it.
 - Waiting until it's back: lookups, joins, the board, rooms, shared-space sync and outbound mail.
 
-**A non-Cloudflare hub** (later, if someone wants one): a Docker image with the spec tunnel server and own-URL registration, a reverse proxy with Let's Encrypt, the same core API, and S3-compatible storage and a mail provider for services. It must pass the same conformance tests.
+**A non-Cloudflare hub** (later, if someone wants one): a Docker image with the spec tunnel server, a reverse proxy with Let's Encrypt, the same core API, and S3-compatible storage and a mail provider for services. It must pass the same conformance tests.
 
 **Your hub's own setup** (to plan later): which hub services l0w.run runs at first, and its policies (invites vs. sign-ups, quotas, moderators, retention, the privacy statement).
 

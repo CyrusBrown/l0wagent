@@ -38,7 +38,6 @@ worked examples (two domains, flat, nested), `wrangler.dev.toml` is the local se
 | `MIN_RELEASE` | var, optional | Oldest instance release supported (`instance_releases.min`); default `0.8.0`. Older gets `426` at joining and close `4426` at the tunnel |
 | `LIMITS` | var, optional | JSON: `tunnel_streams` (64), `request_body_bytes` (104857600), `auth_rate_per_minute` (20). Missing keys keep defaults |
 | `POLICIES` | var, optional | JSON object with `terms` / `privacy` URLs, copied into the capabilities document |
-| `OWN_URL` | var, optional | `"true"` (default) or `"false"`: whether members may join with their own URLs |
 | `INVITE_DAYS` | var, optional | Default invite lifetime (7) |
 | `HUB_KEY_CREATED` | var, optional | The `created` time in the hub's key object (default `2026-11-17T00:00:00Z`); keep it fixed once chosen |
 | `CF_ACCELERATOR` | var, optional | `"true"` turns on the `cloudflared` accelerator (below). Default off |

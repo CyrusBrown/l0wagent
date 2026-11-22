@@ -39,6 +39,7 @@ EVENTS = {
     "approval": ("Approvals", "Permissions, secure input and promote requests waiting for you", True),
     "new_device": ("New sign-ins", "A new device or browser signed in to your account", True),
     "hub": ("Hub", "Your hub membership needs attention (a failed self-check, a changed hub key)", True),
+    "friends": ("Friends", "Friend requests, accepted requests, and messages from friends' assistants", True),
     "question": ("Questions", "The assistant asked you something", False),
     "task": ("Tasks", "Something only you can do", False),
     "assistant_message": ("Messages", "The assistant wrote in a thread", False),

@@ -2,29 +2,30 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import inspect
 import secrets
 import time
 from collections.abc import Callable
 from urllib.parse import urlsplit
 
 from l0wproto import b64, docs, hopsig, keys, payloads
+from l0wproto.consts import MAX_ENVELOPE
 from l0wproto.errors import ProtocolError
+from l0wproto.times import format_time
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from .peers import BACKOFF_FIRST, RETIRED_SEAL_KEEP, ApiError, Net, Peers
 from .store import Store
 
 RECOVERY_PREFIX = "l0w-recovery:"
 STATES = ("idle", "connecting", "connected", "offline", "refused")
 ACCEL_STATES = ("off", "starting", "ready", "active", "error")
 ACCEL_ACTIONS = ("enable", "activate", "deactivate", "disable")
-
-
-class ApiError(Exception):
-    def __init__(self, status: int, code: str, detail: str = ""):
-        self.status, self.code, self.detail = status, code, detail
 
 
 def bad(detail: str) -> ApiError:
@@ -67,6 +68,12 @@ def _keypair(entry: dict, use: str) -> keys.KeyPair:
     return kp
 
 
+def peers_age(retired: dict, now: int) -> int:
+    from l0wproto.times import parse_time
+
+    return now - parse_time(retired["retired_at"])
+
+
 def _pub(state: dict) -> list[dict]:
     return [state["sign"]["pub"], state["seal"]["pub"], state["recover"]["pub"]]
 
@@ -75,19 +82,23 @@ def _entry(kp: keys.KeyPair) -> dict:
     return {"seed": b64.encode(kp.private), "pub": kp.key.to_dict()}
 
 
-def create_app(data_dir, control_token: str, tunnel_token: str) -> Starlette:
+def create_app(data_dir, control_token: str, tunnel_token: str, *, net: Net | None = None, clock: Callable[[], float] = time.time,
+               outbox_interval: float = 5.0, backoff_first: int = BACKOFF_FIRST) -> Starlette:
     if not control_token or not tunnel_token:
         raise ValueError("GATEWAY_CONTROL_TOKEN and GATEWAY_TUNNEL_TOKEN are both required")
     if secrets.compare_digest(control_token.encode(), tunnel_token.encode()):
         raise ValueError("GATEWAY_CONTROL_TOKEN and GATEWAY_TUNNEL_TOKEN must differ")
     store = Store(data_dir)
+    peers = Peers(store, net or Net(), clock, backoff_first)
     last_accel_iat = [0]  # the last accelerator-request iat this gateway signed (epoch seconds)
 
     def bearer(request: Request) -> bytes:
         h = request.headers.get("authorization", "")
         return h[7:].encode() if h[:7].lower() == "bearer " else b""
 
-    def endpoint(who: str, fn: Callable[[Request, dict], dict], method_has_body: bool = True):
+    def endpoint(who: str, fn: Callable, method_has_body: bool = True, raw_body: bool = False):
+        """`fn(request, body)` is a plain function (run with the store lock held) or a coroutine function (it takes the lock
+        itself around its state changes, never across a network call). With `raw_body` the body is the request's bytes, at most 16 MiB."""
         token = (control_token if who == "control" else tunnel_token).encode()
 
         async def handler(request: Request) -> JSONResponse:
@@ -95,8 +106,17 @@ def create_app(data_dir, control_token: str, tunnel_token: str) -> Starlette:
                 got = bearer(request)
                 if not got or not secrets.compare_digest(got, token):
                     raise ApiError(401, "unauthorized")
-                body: dict = {}
-                if method_has_body:
+                body: dict | bytes = {}
+                if raw_body:
+                    if int(request.headers.get("content-length") or 0) > MAX_ENVELOPE:
+                        raise ApiError(413, "too_large", "the envelope is over 16 MiB")
+                    buf = bytearray()
+                    async for chunk in request.stream():
+                        buf += chunk
+                        if len(buf) > MAX_ENVELOPE:
+                            raise ApiError(413, "too_large", "the envelope is over 16 MiB")
+                    body = bytes(buf)
+                elif method_has_body:
                     raw = await request.body()
                     try:
                         body = await request.json() if raw else {}
@@ -104,10 +124,12 @@ def create_app(data_dir, control_token: str, tunnel_token: str) -> Starlette:
                         raise bad("body is not valid JSON") from e
                     if not isinstance(body, dict):
                         raise bad("body must be a JSON object")
+                if inspect.iscoroutinefunction(fn):
+                    return JSONResponse(await fn(request, body))
                 with store.lock:
                     return JSONResponse(fn(request, body))
             except ApiError as e:
-                return JSONResponse({"error": e.code, "detail": e.detail}, e.status)
+                return JSONResponse({"error": e.code, "detail": e.detail, **e.extra}, e.status)
             except ProtocolError as e:
                 return JSONResponse({"error": "bad_request", "detail": e.detail}, 400)
 
@@ -127,20 +149,22 @@ def create_app(data_dir, control_token: str, tunnel_token: str) -> Starlette:
 
     def register(_r, b):
         hub, name, invite = _str(b, "hub"), _str(b, "name"), _str(b, "invite")
-        mode = b.get("mode")
-        if mode not in ("tunnel", "own-url"):
-            raise bad("mode must be tunnel or own-url")
-        own = _url_pair(b.get("own_urls"), "own_urls", null=True)
         release = _str(b, "release")
         protocols = b.get("protocols")
         if not isinstance(protocols, list) or not all(isinstance(p, str) for p in protocols):
             raise bad("protocols must be a list of strings")
         sign, seal, rec = keys.generate("sign"), keys.generate("seal"), keys.generate("recover")
-        payload = payloads.build_registration(hub, name, invite, mode, [sign.key, seal.key, rec.key], own_urls=own, release=release, protocols=protocols)
+        payload = payloads.build_registration(hub, name, invite, [sign.key, seal.key, rec.key], release=release, protocols=protocols)
         doc = docs.sign_document("registration", payload, [sign, rec])
         old = store.keys()
         retired = (old["retired"] if old else []) + ([old["sign"]["pub"], old["seal"]["pub"], old["recover"]["pub"]] if old else [])
-        store.save_keys({"sign": _entry(sign), "seal": _entry(seal), "recover": {"pub": rec.key.to_dict()}, "retired": retired, "history": []})
+        # the encryption keys we replace stay usable for 8 days, so envelopes sealed to them still open (peers.seal_seeds)
+        now = int(clock())
+        retired_seal = [x for x in (old.get("retired_seal", []) if old else []) if peers_age(x, now) < RETIRED_SEAL_KEEP]
+        if old:
+            retired_seal.append({"seed": old["seal"]["seed"], "pub": old["seal"]["pub"], "retired_at": format_time(now)})
+        store.save_keys({"sign": _entry(sign), "seal": _entry(seal), "recover": {"pub": rec.key.to_dict()}, "retired": retired, "retired_seal": retired_seal,
+                         "history": []})
         return {"registration": doc, "keys": [k.key.to_dict() for k in (sign, seal, rec)], "recovery_key": RECOVERY_PREFIX + b64.encode(rec.private)}
 
     def sign_self(_r, b):
@@ -152,10 +176,7 @@ def create_app(data_dir, control_token: str, tunnel_token: str) -> Starlette:
         protocols = b.get("protocols")
         if not isinstance(protocols, list) or not all(isinstance(p, str) for p in protocols):
             raise bad("protocols must be a list of strings")
-        extra = {}
-        if b.get("own_urls") is not None:
-            extra["own_urls"] = _url_pair(b["own_urls"], "own_urls", null=False)
-        payload = payloads.build_self(_str(b, "address"), seq, _pub(st), hostnames, protocols=protocols, history=st["history"], **extra)
+        payload = payloads.build_self(_str(b, "address"), seq, _pub(st), hostnames, protocols=protocols, history=st["history"])
         return {"doc": docs.sign_document("self", payload, [_keypair(st["sign"], "sign")])}
 
     def sign_leave(_r, b):
@@ -308,13 +329,65 @@ def create_app(data_dir, control_token: str, tunnel_token: str) -> Starlette:
         store.save_status(saved)
         return {"ok": True}
 
+    # --- friends and messages (control token) ---
+
+    def peer_fingerprint(_r, _b):
+        need_keys()
+        return {"fingerprint": peers.fingerprint()}
+
+    async def peer_pin(_r, b):
+        fp, held = b.get("fingerprint"), b.get("held_token")
+        if fp is not None and not isinstance(fp, str):
+            raise bad("fingerprint must be a string")
+        if held is not None and not isinstance(held, dict):
+            raise bad("held_token must be a token document")
+        return await peers.pin(_str(b, "address"), fp, held)
+
+    def peer_token(_r, b):
+        return peers.issue_token(_str(b, "address"))
+
+    def peer_revoke(_r, b):
+        return peers.revoke(_str(b, "address"))
+
+    def peer_forget(_r, b):
+        return peers.forget(_str(b, "address"))
+
+    async def peer_send(_r, b):
+        rt = b.get("request_token", False)
+        if not isinstance(rt, bool):
+            raise bad("request_token must be a boolean")
+        return await peers.send(_str(b, "to"), _str(b, "kind"), b.get("body"), rt)
+
+    def peer_services(_r, b):
+        return peers.set_services(b.get("addresses"))
+
+    def peer_outbox(r, _b):
+        try:
+            return {"entries": peers.outbox_view(r.query_params.get("since"))}
+        except ProtocolError:
+            raise bad("since must be a time like 2026-11-22T10:00:00Z") from None
+
+    async def peer_open(_r, raw):
+        return await peers.open(raw)
+
     async def healthz(_request: Request) -> JSONResponse:
         return JSONResponse({"ok": True})
 
     def r(path: str, method: str, who: str, fn, body: bool = True) -> Route:
         return Route(path, endpoint(who, fn, body), methods=[method])
 
-    return Starlette(
+    @contextlib.asynccontextmanager
+    async def lifespan(_app):
+        task = asyncio.create_task(peers.run(outbox_interval))
+        try:
+            yield
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    app = Starlette(
+        lifespan=lifespan,
         routes=[
             Route("/healthz", healthz, methods=["GET"]),
             r("/v0/keys", "GET", "control", get_keys, False),
@@ -331,5 +404,16 @@ def create_app(data_dir, control_token: str, tunnel_token: str) -> Starlette:
             r("/v0/tunnel/hello", "POST", "tunnel", tunnel_hello),
             r("/v0/tunnel/accelerator", "POST", "tunnel", tunnel_accelerator),
             r("/v0/tunnel/status", "PUT", "tunnel", tunnel_status_put),
-        ]
+            r("/v0/peer/fingerprint", "GET", "control", peer_fingerprint, False),
+            r("/v0/peer/pin", "POST", "control", peer_pin),
+            r("/v0/peer/token", "POST", "control", peer_token),
+            r("/v0/peer/revoke", "POST", "control", peer_revoke),
+            r("/v0/peer/forget", "POST", "control", peer_forget),
+            r("/v0/peer/send", "POST", "control", peer_send),
+            r("/v0/peer/services", "PUT", "control", peer_services),
+            r("/v0/peer/outbox", "GET", "control", peer_outbox, False),
+            Route("/v0/peer/open", endpoint("control", peer_open, raw_body=True), methods=["POST"]),
+        ],
     )
+    app.state.peers = peers
+    return app

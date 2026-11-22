@@ -55,7 +55,7 @@ describe('Settings → Hub', () => {
   it('a preview with problems shows them and disables Join', async () => {
     overrides['/api/membership'] = base
     overrides['/api/membership/preview'] = {
-      hub, name_hint: 'fern', expires: null, own_url_allowed: false, two_factor_ready: false,
+      hub, name_hint: 'fern', expires: null, two_factor_ready: false,
       example: { instance: 'fern.hub.example', files: 'fern-files.hub.example' }, problems: ['Two-step sign-in is not on'],
     }
     renderAt('/settings/hub')
@@ -70,7 +70,7 @@ describe('Settings → Hub', () => {
   it('previews the hostnames for the typed name from the hub\'s example', async () => {
     overrides['/api/membership'] = base
     overrides['/api/membership/preview'] = {
-      hub, name_hint: null, expires: null, own_url_allowed: false, two_factor_ready: true, problems: [],
+      hub, name_hint: null, expires: null, two_factor_ready: true, problems: [],
       example: { instance: 'username.hub.example', files: 'files--username.hub.example' }, example_name: 'username',
     }
     renderAt('/settings/hub')
@@ -90,7 +90,7 @@ describe('Settings → Hub', () => {
 
   it('a bound invite prefills the name and locks it; an unbound one leaves it editable', async () => {
     overrides['/api/membership'] = base
-    const pv = { hub, name_hint: 'opsname', name_bound: true, expires: null, own_url_allowed: false, two_factor_ready: true, problems: [] }
+    const pv = { hub, name_hint: 'opsname', name_bound: true, expires: null, two_factor_ready: true, problems: [] }
     overrides['/api/membership/preview'] = pv
     renderAt('/settings/hub')
     fireEvent.change(await screen.findByLabelText('Invite'), { target: { value: 'l0w-invite:abc' } })
@@ -105,7 +105,7 @@ describe('Settings → Hub', () => {
 
   it('joined shows the address and the tunnel state', async () => {
     overrides['/api/membership'] = {
-      ...base, state: 'joined', address: 'fern.hub.example', mode: 'tunnel', hub,
+      ...base, state: 'joined', address: 'fern.hub.example', hub,
       urls: { instance: 'https://fern.hub.example', files: 'https://fern-files.hub.example' },
       tunnel: { state: 'connected', since: '2026-11-18T10:00:00Z', error: null },
       check: { ok: true, at: '2026-11-18T10:05:00Z', problems: [] },
@@ -118,7 +118,7 @@ describe('Settings → Hub', () => {
   })
 
   const joined = (tunnel: object, accelerator: object | null) => ({
-    ...base, state: 'joined', address: 'fern@hub.example', mode: 'tunnel', hub,
+    ...base, state: 'joined', address: 'fern@hub.example', hub,
     urls: { instance: 'https://fern.hub.example', files: 'https://fern-files.hub.example' }, tunnel, accelerator,
     sign_key: { kid: 'abcdef0123456789', created: '2026-11-18T09:00:00Z' },
   })

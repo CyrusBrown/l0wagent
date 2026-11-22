@@ -164,10 +164,9 @@ class Inst:
     def key_objs(self) -> list:
         return [self.sign.key, self.seal.key, self.recover.key]
 
-    def registration(self, invite: str, *, mode="tunnel", hub=None, iat=None, release="0.9.0", signers=None,
-                     name=None, own_urls=None, v=VERSION) -> dict:
-        p = payloads.build_registration(hub or self.domain, name or self.name, invite, mode, self.key_objs, own_urls=own_urls,
-                                        release=release, iat=iat)
+    def registration(self, invite: str, *, hub=None, iat=None, release="0.9.0", signers=None,
+                     name=None, v=VERSION) -> dict:
+        p = payloads.build_registration(hub or self.domain, name or self.name, invite, self.key_objs, release=release, iat=iat)
         if v != VERSION:
             p["v"] = v
         return docs.sign_document("registration", p, signers or [self.sign, self.recover], v=v)

@@ -22,7 +22,7 @@ async function lookupMember(env: Env, name: string): Promise<Member | null> {
   const t = Date.now();
   if (hit && t - hit.at < MEMBER_TTL_MS) return hit.m;
   const m = await getMember(env.DB, name);
-  if (m && m.status === "active" && m.mode === "tunnel") {
+  if (m && m.status === "active") {
     if (known.size > 1000) known.clear();
     known.set(name, { m, at: t });
   } else {
@@ -114,7 +114,7 @@ export default {
       const hit = matchHost(cfg, host);
       if (hit) {
         const member = await lookupMember(env, hit.name);
-        if (member && member.mode === "tunnel" && member.hostnames[hit.kind].toLowerCase() === host) {
+        if (member && member.hostnames[hit.kind].toLowerCase() === host) {
           return front(request, env, cfg, member, hit.kind);
         }
       }

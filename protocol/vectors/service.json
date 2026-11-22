@@ -1,0 +1,38 @@
+{
+  "description": "A service document, signed by the hub",
+  "type": "service",
+  "now": "2026-11-17T21:30:00Z",
+  "payload_json": "{\"v\":\"l0w/0.1\",\"type\":\"service\",\"iat\":\"2026-11-17T21:30:00Z\",\"address\":\"board@hub.example\",\"kind\":\"board\",\"title\":\"Board\",\"description\":\"Topics, posts and discussions for members of this hub.\",\"docs\":\"https://hub.example/services/board\",\"roles\":[\"moderator\",\"poster\"],\"extension\":{\"git\":\"https://git.example/hub-services.git\",\"commit\":\"0123456789abcdef0123456789abcdef01234567\",\"path\":\"extensions/board\"},\"default\":\"on\"}",
+  "payload_b64": "eyJ2IjoibDB3LzAuMSIsInR5cGUiOiJzZXJ2aWNlIiwiaWF0IjoiMjAyNi0xMS0xN1QyMTozMDowMFoiLCJhZGRyZXNzIjoiYm9hcmRAaHViLmV4YW1wbGUiLCJraW5kIjoiYm9hcmQiLCJ0aXRsZSI6IkJvYXJkIiwiZGVzY3JpcHRpb24iOiJUb3BpY3MsIHBvc3RzIGFuZCBkaXNjdXNzaW9ucyBmb3IgbWVtYmVycyBvZiB0aGlzIGh1Yi4iLCJkb2NzIjoiaHR0cHM6Ly9odWIuZXhhbXBsZS9zZXJ2aWNlcy9ib2FyZCIsInJvbGVzIjpbIm1vZGVyYXRvciIsInBvc3RlciJdLCJleHRlbnNpb24iOnsiZ2l0IjoiaHR0cHM6Ly9naXQuZXhhbXBsZS9odWItc2VydmljZXMuZ2l0IiwiY29tbWl0IjoiMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2NyIsInBhdGgiOiJleHRlbnNpb25zL2JvYXJkIn0sImRlZmF1bHQiOiJvbiJ9",
+  "signing_input": "l0wagent-sig/1\nservice\neyJ2IjoibDB3LzAuMSIsInR5cGUiOiJzZXJ2aWNlIiwiaWF0IjoiMjAyNi0xMS0xN1QyMTozMDowMFoiLCJhZGRyZXNzIjoiYm9hcmRAaHViLmV4YW1wbGUiLCJraW5kIjoiYm9hcmQiLCJ0aXRsZSI6IkJvYXJkIiwiZGVzY3JpcHRpb24iOiJUb3BpY3MsIHBvc3RzIGFuZCBkaXNjdXNzaW9ucyBmb3IgbWVtYmVycyBvZiB0aGlzIGh1Yi4iLCJkb2NzIjoiaHR0cHM6Ly9odWIuZXhhbXBsZS9zZXJ2aWNlcy9ib2FyZCIsInJvbGVzIjpbIm1vZGVyYXRvciIsInBvc3RlciJdLCJleHRlbnNpb24iOnsiZ2l0IjoiaHR0cHM6Ly9naXQuZXhhbXBsZS9odWItc2VydmljZXMuZ2l0IiwiY29tbWl0IjoiMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2NyIsInBhdGgiOiJleHRlbnNpb25zL2JvYXJkIn0sImRlZmF1bHQiOiJvbiJ9",
+  "signatures": [
+    {
+      "kid": "k1.hmVthpzAnnRyhRX_LZwsYA",
+      "sig": "hpPAfu3U3qc0KWJ_Zsbsq38-_vHFk9uZgMS6_MX4iFoIt_Ig3t_l_y5JW5xjt1_eYpqg9QTF9BnElKZ8Ha0RBg"
+    }
+  ],
+  "verify_keys": [
+    {
+      "kid": "k1.hmVthpzAnnRyhRX_LZwsYA",
+      "alg": "Ed25519",
+      "use": "sign",
+      "pub": "e17MT0LBD425WrvLStwN5P00ObS5N_TAnLkmPVHPddY",
+      "created": "2026-11-17T21:30:00Z"
+    }
+  ],
+  "required": [
+    "k1.hmVthpzAnnRyhRX_LZwsYA"
+  ],
+  "document": {
+    "v": "l0w/0.1",
+    "type": "service",
+    "payload": "eyJ2IjoibDB3LzAuMSIsInR5cGUiOiJzZXJ2aWNlIiwiaWF0IjoiMjAyNi0xMS0xN1QyMTozMDowMFoiLCJhZGRyZXNzIjoiYm9hcmRAaHViLmV4YW1wbGUiLCJraW5kIjoiYm9hcmQiLCJ0aXRsZSI6IkJvYXJkIiwiZGVzY3JpcHRpb24iOiJUb3BpY3MsIHBvc3RzIGFuZCBkaXNjdXNzaW9ucyBmb3IgbWVtYmVycyBvZiB0aGlzIGh1Yi4iLCJkb2NzIjoiaHR0cHM6Ly9odWIuZXhhbXBsZS9zZXJ2aWNlcy9ib2FyZCIsInJvbGVzIjpbIm1vZGVyYXRvciIsInBvc3RlciJdLCJleHRlbnNpb24iOnsiZ2l0IjoiaHR0cHM6Ly9naXQuZXhhbXBsZS9odWItc2VydmljZXMuZ2l0IiwiY29tbWl0IjoiMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2NyIsInBhdGgiOiJleHRlbnNpb25zL2JvYXJkIn0sImRlZmF1bHQiOiJvbiJ9",
+    "sigs": [
+      {
+        "kid": "k1.hmVthpzAnnRyhRX_LZwsYA",
+        "sig": "hpPAfu3U3qc0KWJ_Zsbsq38-_vHFk9uZgMS6_MX4iFoIt_Ig3t_l_y5JW5xjt1_eYpqg9QTF9BnElKZ8Ha0RBg"
+      }
+    ]
+  },
+  "hub_domain": "hub.example"
+}

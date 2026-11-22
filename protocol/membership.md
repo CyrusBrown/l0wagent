@@ -39,16 +39,12 @@ the recovery key (proving the instance holds both). Payload:
 {
   "v": "l0w/0.1", "type": "registration", "iat": "…",
   "hub": "hub.example", "name": "mara", "invite": "<code>",
-  "mode": "tunnel",
-  "own_urls": null,
   "keys": [<sign key>, <seal key>, <recover key>],
   "instance": {"release": "0.9.0", "protocols": ["l0w/0.1"]}
 }
 ```
 
-- `mode`: `"tunnel"` or `"own-url"`. With `"own-url"`, `own_urls` is `{"instance": "https://…", "files": "https://…"}`;
-  the hub MUST check both answer over HTTPS, are different origins, and serve the member's `self`
-  document at the instance URL (identity.md) before accepting, and SHOULD warn when both are the same site.
+- Members are always reached through the hub's tunnel (tunnel.md); a member who wants its own domain runs its own hub. Hubs ignore the `mode` and `own_urls` fields older instances send.
 - `hub` MUST equal the hub's own domain (so a registration can't be replayed at another hub).
 - `iat` within 300 s.
 
@@ -64,11 +60,10 @@ Response `201`:
 }
 ```
 
-`hostnames` are authoritative: the instance uses exactly these and never builds one from the name. In
-own-url mode, `hostnames` is the member's own URLs' hosts and `tunnel` is `null`.
+`hostnames` are authoritative: the instance uses exactly these and never builds one from the name.
 
 Errors: `400 bad_registration` (signature, fields), `403 needs_invite`, `409 name_taken`,
-`409 name_reserved`, `410 invite_used`/`invite_expired`, `422 own_url_unreachable`.
+`409 name_reserved`, `410 invite_used`/`invite_expired`.
 
 After `201` the instance publishes its first `self` document (`PUT {api}members/{name}/self`, below),
 connects the tunnel (tunnel.md), and checks **from outside** that both hostnames answer and that the

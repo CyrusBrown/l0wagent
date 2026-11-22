@@ -5,6 +5,7 @@ import { clearReadCache } from '../api/offline'
 import { useMe, useMeta } from '../api/queries'
 import { Calendar } from '../screens/Calendar'
 import { Files } from '../screens/Files'
+import { Friends } from '../screens/Friends'
 import { Home } from '../screens/Home'
 import { Inbox } from '../screens/Inbox'
 import { Login } from '../screens/Login'
@@ -60,6 +61,8 @@ export const routes: RouteObject[] = [
       { path: 'calendar', element: <Calendar /> },
       { path: 'tools', element: <Tools /> },
       { path: 'network', element: <Network /> },
+      { path: 'friends', element: <Friends /> },
+      { path: 'friends/:address', element: <Friends /> },
       { path: 'x/:ext/*', element: <ExtPage /> },
       { path: 'settings', element: <Settings /> },
       { path: 'settings/:tab', element: <Settings /> },

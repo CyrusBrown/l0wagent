@@ -5,7 +5,8 @@ gateway"), using **HTTP Message Signatures** (RFC 9421) with Ed25519. It says wh
 who wrote a message: H5's envelopes are signed separately and verified end to end.
 
 In this version it's used for: instance → hub calls that aren't already signed documents (H3's daily
-self-check reads), and from H5 on, gateway → gateway delivery.
+self-check reads), and calls between gateways that carry no envelope. Envelope delivery (messages.md) doesn't use it: the
+envelope is signed and carries a delivery token.
 
 ## Signing
 - Signature label `l0w`. Covered components, in this order:

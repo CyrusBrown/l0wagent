@@ -18,8 +18,10 @@ import re
 import sqlite3
 from collections.abc import Callable
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
+from l0wproto.consts import MAX_FILES
 from pydantic import BaseModel
 
 from .api import schemas as s
@@ -27,11 +29,13 @@ from .auth import iso, parse
 from .backends.base import BadRequest, Conflict, NotFound
 from .config import SPECS, Settings, cast, check_range
 from .db import Database
+from .files import clean, guess_mime
 from .live import Live
 from .vault import Vault
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 PREVIEW = 90
+MAX_ATTACHED_FILES = 10  # files the assistant attaches to one message
 SUGGESTION_KINDS = {
     "thread_archive": "thread", "thread_rename": "thread", "thread_move": "thread", "thread_split": "thread", "thread_merge": "thread",
     "project_split": "project", "project_merge": "project", "project_stale": "project", "project_archive": "project",
@@ -46,6 +50,16 @@ def slugify(name: str) -> str:
 
 def _j(v: str | None, default: Any = None) -> Any:
     return json.loads(v) if v else default
+
+
+PEERS_PROMPT = Path(__file__).parent / "prompts" / "peers.md"
+
+
+def peer_text(section: str, name: str = "") -> str:
+    """One section of prompts/peers.md (the wording friends' messages reach the agent with); `{name}` is the friend."""
+    parts = re.split(r"^## (\w+)\n", re.sub(r"<!--.*?-->\n?", "", PEERS_PROMPT.read_text(), flags=re.S), flags=re.M)
+    sections = {parts[i]: parts[i + 1].strip() for i in range(1, len(parts) - 1, 2)}
+    return sections[section].replace("{name}", name)
 
 
 CLAIM_FIRST = ("If a message asks you to do something (more than an answer), claim its thread before you start: "
@@ -65,6 +79,19 @@ class Conversations:
         self.integrations: Any = None  # integrations.Integrations, set by the backend
         # Set by the backend: notifications (kind, title, body, url, ref_kind, ref_id).
         self.notify: Callable[..., None] = lambda *a, **k: None
+        # Set by the backend: the owner wrote in a thread (thread_id, message_id); friends.py sends it on when it's a peer thread.
+        self.on_owner_message: Callable[[int, int], None] | None = None
+        # Set by the backend: the assistant wants to write in a peer thread. `peer_gate(thread_id)` raises Conflict when it may not
+        # (not friends, blocked, peer activity paused); `on_assistant_peer_message` then sends what was stored.
+        self.peer_gate: Callable[[int, int | None], None] | None = None  # (thread_id, run_id)
+        # Set by the backend: friends' messages were delivered into a run (run_id, addresses), and the assistant posted in a thread
+        # that isn't a peer thread (run_id): the spend breaker's peer spans open and close on these (breaker.py).
+        self.on_peer_delivered: Callable[[int | None, list[str]], None] | None = None
+        self.on_nonpeer_post: Callable[[int | None], None] | None = None
+        self.storage: Any = None  # files.Storage, set by the backend: the agent's volumes, read without following symlinks
+        self.on_assistant_peer_message: Callable[[int, int], None] | None = None
+        # Set by the backend: applies an approved wake request (payload, run_id) -> result; see friends.py.
+        self.apply_wake: Callable[[dict], dict] | None = None
         live.getters.update(
             project=lambda i: self.project(i), thread=lambda i: self.thread(int(i)), message=lambda i: self.message(int(i)),
             question=lambda i: self.question(int(i)), permission=lambda i: self.permission(int(i)), task=lambda i: self.task(int(i)),
@@ -134,7 +161,7 @@ class Conversations:
             marks = ",".join("?" * len(chunk))
             asks = " + ".join(f"(SELECT COUNT(*) FROM {tb} x WHERE x.thread_id=t.id AND x.status='open')" for tb in ("questions", "permissions", "tasks"))
             rows = self.db.q(
-                "SELECT t.id, (SELECT COUNT(*) FROM messages m WHERE m.thread_id=t.id AND m.sender='assistant' AND m.id>COALESCE(t.last_read_message_id,0)) AS unread, "
+                "SELECT t.id, (SELECT COUNT(*) FROM messages m WHERE m.thread_id=t.id AND m.sender IN ('assistant','peer') AND m.id>COALESCE(t.last_read_message_id,0)) AS unread, "
                 f"{asks} AS open_asks, "
                 "(SELECT sender FROM messages WHERE thread_id=t.id ORDER BY id DESC LIMIT 1) AS last_sender, "
                 f"(SELECT body FROM messages WHERE thread_id=t.id ORDER BY id DESC LIMIT 1) AS last_body FROM threads t WHERE t.id IN ({marks})", chunk)
@@ -219,6 +246,8 @@ class Conversations:
         return self.question_model(self._get("questions", qid, "question"))
 
     def _scopes(self, r: dict) -> list:
+        if self.db.q1("SELECT 1 FROM permission_actions WHERE permission_id=? AND kind='wake'", (r["id"],)):
+            return ["once"]  # one wake request, one decision
         if self.db.q1("SELECT 1 FROM permission_actions WHERE permission_id=? AND kind='mcp_call'", (r["id"],)):
             return ["once", "always"]  # this exact call once, or the tool always
         has_project = r["thread_id"] and self.db.q1("SELECT project_id FROM threads WHERE id=?", (r["thread_id"],))["project_id"]
@@ -391,6 +420,10 @@ class Conversations:
     def post_owner_message(self, thread_id: int, body: str, upload_ids: list[int], key: str | None, via: str = "web", sender: str = "owner") -> s.Message:
         def make() -> s.Message:
             t = self._thread_row(thread_id)
+            if t["type"] == "peer":  # a friend takes 5 MiB of files in one message; refuse before anything is stored or sent
+                total = sum((u["size"] or 0) for uid in upload_ids if (u := self.db.q1("SELECT size FROM uploads WHERE id=?", (uid,))))
+                if total > MAX_FILES:
+                    raise BadRequest("files_too_large", f"Files sent to a friend can total at most {MAX_FILES // 1024 // 1024} MiB in one message; these are {total / 1024 / 1024:.1f} MiB.")
             if t["status"] == "archived":
                 self.patch_thread(thread_id, {"status": "open"})
             mid = self.db.ex("INSERT INTO messages(thread_id, sender, body, via, created_at) VALUES(?,?,?,?,?)",
@@ -404,20 +437,62 @@ class Conversations:
             self.live.changed("message", mid)
             self._touch_thread(thread_id)
             self.fire("message_posted", {"message_id": mid, "thread_id": thread_id, "sender": sender, "body": self.r(body)})
+            if self.on_owner_message and t["type"] == "peer":
+                self.on_owner_message(thread_id, mid)
             return self.message(mid)
 
         return self.once(key, f"message:{thread_id}", s.Message, make)
 
-    def post_assistant_message(self, thread_id: int, body: str, run_id: int | None) -> s.Message:
+    def _agent_files(self, paths: list[str], peer: bool) -> list[tuple[str, str, str, int, str]]:
+        """Files the agent attaches (full paths under /work or /workspace) -> (name, volume, path, size, media type).
+        Each is checked now, with no symlink followed, so a missing file or a link is refused before anything is stored;
+        for a friend they total at most 5 MiB."""
+        if len(paths) > MAX_ATTACHED_FILES:
+            raise BadRequest("too_many_files", f"At most {MAX_ATTACHED_FILES} files go in one message.")
+        if self.storage is None:
+            raise BadRequest("no_storage", "Control can't read the agent's files here.")
+        out, total = [], 0
+        for raw in paths:
+            text = str(raw).strip()
+            for volume in ("workspace", "work"):
+                if text.startswith(f"/{volume}/"):
+                    rel = text[len(volume) + 2:]
+                    break
+            else:
+                raise BadRequest("bad_file", f"{text!r}: give the file's full path, starting /work/ or /workspace/.")
+            try:
+                parts = clean(rel)
+                if not parts:
+                    raise BadRequest("bad_file", f"{text!r} is a folder, not a file.")
+                size = self.storage.stat(volume, "/".join(parts)).st_size
+            except NotFound:
+                raise BadRequest("file_not_found", f"{text} doesn't exist.") from None
+            total += size
+            out.append((parts[-1], volume, "/".join(parts), size, guess_mime(parts[-1])))
+        if peer and total > MAX_FILES:
+            raise BadRequest("files_too_large", f"Files sent to a friend can total at most {MAX_FILES // 1024 // 1024} MiB in one message; these are {total / 1024 / 1024:.1f} MiB.")
+        return out
+
+    def post_assistant_message(self, thread_id: int, body: str, run_id: int | None, files: list[str] | None = None) -> s.Message:
         t = self._thread_row(thread_id)
         if t["status"] == "archived":
             raise Conflict("archived", f"Thread {thread_id} is archived; start a new thread or suggest reopening it.")
-        mid = self.db.ex("INSERT INTO messages(thread_id, sender, body, run_id, delivery, created_at) VALUES(?,?,?,?,'delivered',?)",
-                         (thread_id, "assistant", self.r(body), run_id, self.db.now()))
+        peer = t["type"] == "peer"
+        if peer and self.peer_gate:
+            self.peer_gate(thread_id, run_id)  # nothing is stored when it can't go out: the agent is told why
+        attached = self._agent_files(files, peer) if files else []
+        mid = self.db.ex("INSERT INTO messages(thread_id, sender, body, run_id, delivery, created_at) VALUES(?,?,?,?,?,?)",
+                         (thread_id, "assistant", self.r(body), run_id, "queued" if peer else "delivered", self.db.now()))  # a peer message is 'queued' until it's delivered
+        for name, volume, path, size, mime in attached:
+            self.db.ex("INSERT INTO attachments(message_id, upload_id, name, volume, path, size, mime) VALUES(?,NULL,?,?,?,?,?)", (mid, name, volume, path, size, mime))
         self.live.changed("message", mid)
         self._touch_thread(thread_id)
         self.fire("message_posted", {"message_id": mid, "thread_id": thread_id, "sender": "assistant", "body": self.r(body)})
         self.notify("assistant_message", f"The assistant in “{t['title']}”", self._preview(self.r(body)), self._url(thread_id), "message", str(mid))
+        if peer and self.on_assistant_peer_message:
+            self.on_assistant_peer_message(thread_id, mid)
+        if not peer and self.on_nonpeer_post:
+            self.on_nonpeer_post(run_id)
         return self.message(mid)
 
     def system_message(self, thread_id: int, body: str) -> None:
@@ -463,20 +538,24 @@ class Conversations:
         return q
 
     def file_permission(self, run_id: int | None, thread_id: int | None, text: str, reason: str | None, actions: list[dict],
-                        trusted: bool = False) -> s.Permission:
-        """`trusted`: filed by control itself (a brokered call), so 'mcp_call' actions are accepted."""
+                        trusted: bool = False, title: str | None = None, tell_agent: bool = True) -> s.Permission:
+        """`trusted`: filed by control itself (a brokered call, a friend's wake request), so 'mcp_call' and 'wake' actions are accepted.
+        `tell_agent=False`: the decision isn't delivered to the agent (it wasn't the agent's question)."""
         self._check_ask_cap(run_id)
         checked = [self._check_routine(a) if a.get("kind") == "routine"
                    else self.integrations.check_action(a) if trusted and a.get("kind") == "mcp_call" and self.integrations
+                   else ("wake", {"address": str(a.get("address", "")), "peer_wake": int(a.get("peer_wake", 0))}) if trusted and a.get("kind") == "wake"
                    else _check_action(a) for a in actions]
         with self.db.tx() as db:
             pid = db.ex("INSERT INTO permissions(thread_id, run_id, text, reason, created_at) VALUES(?,?,?,?,?)",
                         (self._ask_thread(thread_id), run_id, self.r(text), self.r(reason), db.now()))
             for kind, payload in checked:
                 db.ex("INSERT INTO permission_actions(permission_id, kind, payload_json) VALUES(?,?,?)", (pid, kind, json.dumps(payload)))
+        if not tell_agent:
+            self.db.ex("UPDATE permissions SET delivered_at=? WHERE id=?", (self.db.now(), pid))
         self._card("permission", pid, thread_id)
         p = self.permission(pid)
-        title = "Secure input needed" if any(a.kind == "secret" for a in p.actions) else "Approval needed"
+        title = title or ("Secure input needed" if any(a.kind == "secret" for a in p.actions) else "Approval needed")
         self.notify("approval", title, self._preview(p.text), self._url(p.thread_id), "permission", str(pid))
         return p
 
@@ -505,6 +584,8 @@ class Conversations:
         row = self._get(table, id_, kind)
         if row["status"] != "open":
             raise Conflict("not_open", f"{kind} {id_} is {row['status']}")
+        if kind == "permission" and self.db.q1("SELECT 1 FROM permission_actions WHERE permission_id=? AND kind='wake'", (id_,)):
+            raise Conflict("not_yours", "That's a friend's wake request, not one of your asks: only the owner decides it.")
         self.db.ex(f"UPDATE {table} SET status='withdrawn' WHERE id=?", (id_,))
         self._card(kind, id_, row.get("thread_id") if kind != "suggestion" else None)
 
@@ -566,6 +647,10 @@ class Conversations:
                 result["rule_id"] = self.add_egress_rule(payload["pattern"], payload.get("mode", "allow_ro"), f"permission #{a['permission_id']}")
             elif a["kind"] == "routine":
                 result = self.routines.apply(payload, (self.db.q1("SELECT run_id FROM permissions WHERE id=?", (a["permission_id"],)) or {}).get("run_id"))
+            elif a["kind"] == "wake":
+                if self.apply_wake is None:
+                    raise RuntimeError("waking isn't available")
+                result = self.apply_wake(payload)
             elif a["kind"] == "setting":
                 old = self.db.q1("SELECT value_json FROM settings WHERE key=?", (payload["key"],))
                 result["previous"] = old["value_json"] if old else None
@@ -584,8 +669,8 @@ class Conversations:
         undone = []
         for a in rows:
             payload, result = _j(a["payload_json"], {}), _j(a["result_json"], {})
-            if a["kind"] == "mcp_call":
-                continue
+            if a["kind"] in ("mcp_call", "wake"):
+                continue  # used by the call itself / a wake request is a one-off with nothing to undo
             try:
                 if a["kind"] == "egress_rule" and result.get("rule_id") and self.delete_egress_rule:
                     self.delete_egress_rule(int(result["rule_id"]))
@@ -816,9 +901,11 @@ class Conversations:
         t = self.db.q1("SELECT t.title, p.slug FROM threads t LEFT JOIN projects p ON p.id=t.project_id WHERE t.id=?", (thread_id,))
         return f"thread #{thread_id} “{t['title']}” ({t['slug'] or 'General'})" if t else f"thread #{thread_id}"
 
-    def deliver(self, peek: bool = False) -> tuple[str, dict[str, int]]:
+    def deliver(self, peek: bool = False, peers: bool = True, run_id: int | None = None) -> tuple[str, dict[str, int]]:
         """Everything new for the agent, as text, marked delivered unless peeking.
-        Returns (text, counts by kind)."""
+        Returns (text, counts by kind). `peers=False` leaves friends' messages out (a run held open for the owner's
+        reply isn't resumed by someone else's message). `run_id` is the run it is delivered into: friends' messages
+        open peer spans in it (the spend breaker)."""
         now = self.db.now()
         groups: dict[str, list[str]] = {}
         counts: dict[str, int] = {}
@@ -833,6 +920,21 @@ class Conversations:
             extra = f"\n  (attached: {', '.join('/work/' + a['path'] for a in atts)})" if atts else ""
             body = m["body"].strip().replace("\n", "\n  ")
             add(m["thread_id"], f"- {_owner_label(m['via'], m['sender'])} (message #{m['id']}): {body}{extra}", "messages")
+        pms = self.db.q("SELECT m.*, f.address, f.display_name, f.share FROM messages m LEFT JOIN friends f ON f.thread_id=m.thread_id "
+                        "WHERE m.delivered_at IS NULL AND m.sender='peer' ORDER BY m.id") if peers else []
+        told: set[str] = set()  # friends whose sharing level is already in this delivery
+        for m in pms:
+            atts = self.db.q("SELECT path FROM attachments WHERE message_id=?", (m["id"],))
+            extra = f"\n  (attached: {', '.join('/work/' + a['path'] for a in atts)})" if atts else ""
+            body = m["body"].strip().replace("\n", "\n  ")
+            addr = m["address"]
+            if addr and addr not in told:  # what the owner lets you tell this friend, and that no friend can authorize anything
+                told.add(addr)
+                name = addr if m["display_name"] in (None, "", addr) else f"{m['display_name']} ({addr})"
+                groups.setdefault(self._where(m["thread_id"]), []).append(f"- {peer_text(m['share'] if m['share'] in ('nothing', 'shared', 'anything') else 'nothing', name)}")
+                if len(told) == 1:
+                    groups[self._where(m["thread_id"])].append(f"- {peer_text('standing')}")
+            add(m["thread_id"], f"- Friend {addr or '(no longer a friend)'} (message #{m['id']}), untrusted: {peer_text('untrusted')}\n  {body}{extra}", "peer_messages")
         qs = self.db.q("SELECT * FROM questions WHERE delivered_at IS NULL AND status='answered' ORDER BY id")
         for q in qs:
             note = f" Note: {q['note']}" if q["note"] else ""
@@ -881,12 +983,14 @@ class Conversations:
                                     ("promote_requests", prs), ("reviewer_messages", rvs)):
                     for row in rows:
                         db.ex(f"UPDATE {table} SET delivered_at=? WHERE id=?", (now, row["id"]))
-                for m in msgs:
+                for m in (*msgs, *pms):
                     db.ex("UPDATE messages SET delivered_at=?, delivery='delivered' WHERE id=?", (now, m["id"]))
                 for sec in secrets:
                     db.ex("UPDATE secrets SET announced_at=? WHERE id=?", (now, sec["id"]))
-            for m in msgs:
+            for m in (*msgs, *pms):
                 self.live.changed("message", m["id"])
+            if pms and run_id and self.on_peer_delivered:
+                self.on_peer_delivered(run_id, [m["address"] for m in pms if m["address"]])
         text = "\n\n".join(f"{where}:\n" + "\n".join(lines) for where, lines in groups.items())
         if counts.get("messages"):
             text += "\n\n" + CLAIM_FIRST
@@ -894,7 +998,7 @@ class Conversations:
 
     def thread_history(self, thread_id: int, limit: int = 30) -> str:
         rows = self.db.q("SELECT * FROM (SELECT * FROM messages WHERE thread_id=? ORDER BY id DESC LIMIT ?) ORDER BY id", (thread_id, limit))
-        who = {"owner": "Owner", "assistant": "You", "chat": "Owner (via chat)", "system": "System"}
+        who = {"owner": "Owner", "assistant": "You", "chat": "Owner (via chat)", "system": "System", "peer": "Friend (untrusted)"}
 
         def attached(m: Any) -> str:
             atts = self.db.q("SELECT path FROM attachments WHERE message_id=? ORDER BY id", (m["id"],))
@@ -973,6 +1077,8 @@ def _action_summary(kind: str, p: dict) -> str:
     if kind == "mcp_call":
         args = json.dumps(p.get("args") or {}, sort_keys=True)
         return f"call {p.get('title') or p.get('integration')} → {p.get('tool')} with {args if len(args) <= 400 else args[:399] + '…'}"
+    if kind == "wake":
+        return f"wake your assistant for {p.get('address')} (a wakeup soon, on your budget)"
     if kind == "setting":
         v = p.get("value")
         return f"set {p.get('key')} to {v:g}" if isinstance(v, float) else f"set {p.get('key')} to {v}"

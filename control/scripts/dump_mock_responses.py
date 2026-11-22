@@ -22,6 +22,7 @@ GETS = [
     "/api/account/sessions", "/api/system", "/api/secrets", "/api/budget", "/api/calendar", "/api/routines", "/api/providers", "/api/roles",
     "/api/reviewer", "/api/instructions", "/api/system/update", "/api/notifications/settings", "/api/network",
     "/api/integrations", "/api/integrations/presets", "/api/connected-apps",
+    "/api/friends", "/api/friends/requests", "/api/friends/settings", "/api/friends/fingerprint", "/api/friends/codes", "/api/friends/breaker",
 ]
 POSTS = ["/api/system/selftest"]  # the render tests answer by path, whatever the method
 

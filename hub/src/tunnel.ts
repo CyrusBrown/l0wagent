@@ -290,7 +290,7 @@ export class TunnelConn extends DurableObject<Env> {
       [name, domain] = splitAddress(p.address);
       if (domain !== cfg.domain.toLowerCase()) return this.refuse();
       const m = await getMember(this.env.DB, name);
-      if (!m || m.status !== "active" || m.mode !== "tunnel") return this.refuse();
+      if (!m || m.status !== "active") return this.refuse();
       const hello = await verifyTunnelHello(doc, await Key.fromJSON(m.keys.sign), { nonce: b64.encode(this.nonce), hub: cfg.domain });
       if (Date.now() - this.nonceAt > NONCE_MAX_AGE_MS) return this.refuse();
       release = hello.release;

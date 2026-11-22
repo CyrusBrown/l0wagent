@@ -29,7 +29,7 @@ export function General() {
         {list.map((t) => (
           <Link key={t.id} to={`/t/${t.id}`} className="proj-row">
             <div className="stack" style={{ gap: 4, minWidth: 0 }}>
-              <div className="row-start" style={{ gap: 9 }}><span style={{ font: '500 15px var(--sans)' }}>{t.pinned ? '📌 ' : ''}{t.title}</span></div>
+              <div className="row-start" style={{ gap: 9 }}><span style={{ font: '500 15px var(--sans)' }}>{t.pinned ? '📌 ' : ''}{t.title}</span>{t.type === 'peer' && <span className="pill mute">Friend</span>}</div>
               {t.last_message_preview && <span className="ellipsis" style={{ fontSize: 13.5, color: 'var(--muted)' }}>{t.last_message_preview}</span>}
             </div>
             <div className="stack" style={{ gap: 5, alignItems: 'flex-end', whiteSpace: 'nowrap' }}>

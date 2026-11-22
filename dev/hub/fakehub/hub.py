@@ -7,9 +7,7 @@ import json
 import secrets
 import uuid
 from dataclasses import dataclass
-from urllib.parse import urlsplit
 
-import httpx
 from l0wproto import VERSION, b64, docs, payloads
 from l0wproto.consts import SUPPORTED_VERSIONS
 from l0wproto.errors import DocumentError, NameRuleError, SignatureError, UnsupportedVersion
@@ -44,13 +42,8 @@ def release_tuple(s: str) -> tuple:
         return (0,)
 
 
-def origin(url: str) -> tuple:
-    u = urlsplit(url)
-    return (u.scheme, (u.hostname or "").lower(), u.port or (443 if u.scheme == "https" else 80))
-
-
 class Hub:
-    def __init__(self, cfg: Config, *, http_client_factory=None):
+    def __init__(self, cfg: Config):
         self.cfg = cfg
         self.store = Store(cfg.state_path)
         self.key = load_hub_key(cfg.seed_path)
@@ -58,8 +51,11 @@ class Hub:
         #: member name -> {tunnel_id, token, active, last_iat}; in memory only (the fake has no Cloudflare)
         self.cloudflared: dict[str, dict] = {}
         self.cloudflared_iat: dict[str, int] = {}  # member name -> last accepted iat
-        self._http_factory = http_client_factory or (
-            lambda: httpx.AsyncClient(verify=cfg.own_url_verify_tls, timeout=5.0, follow_redirects=False))
+        self.echo = None
+        if cfg.echo:
+            from .echo import EchoService
+
+            self.echo = EchoService(self)
 
     # --- helpers --------------------------------------------------------------------------
 
@@ -71,11 +67,11 @@ class Hub:
         return f"{name}@{self.cfg.domain}"
 
     def host_map(self) -> dict[str, tuple[str, str]]:
-        """Hostnames of active tunnel-mode members -> (name, "instance" | "files")."""
+        """Hostnames of active members -> (name, "instance" | "files")."""
         out = {}
         with self.store.read() as s:
             for name, m in s["members"].items():
-                if m["status"] == "active" and m["mode"] == "tunnel":
+                if m["status"] == "active" and not m.get("builtin"):  # a built-in service is served by the hub itself
                     out[m["hostnames"]["instance"].lower()] = (name, "instance")
                     out[m["hostnames"]["files"].lower()] = (name, "files")
         return out
@@ -109,13 +105,16 @@ class Hub:
 
     async def capabilities(self, request: Request):
         c = self.cfg
+        extras = [{"kind": "accelerator", "id": "cloudflared", "doc": f"{c.base_url}/docs/cloudflared",
+                   "api": f"{c.api}accelerators/cloudflared"}]
+        if self.echo:
+            extras.append(self.echo.service_extra())
         payload = payloads.build_hub(
             c.name, c.domain, [self.key.key], c.api, c.tunnel_url, min_release=c.min_release,
-            membership={"invites": True, "signups": "closed", "own_url": True, "require_2fa": True},
+            membership={"invites": True, "signups": "closed", "require_2fa": True},
             hostnames={"layout": "two-domains", "example": {"name": "username", **c.hostnames_for("username")}},
             limits=c.limits,
-            extras=[{"kind": "accelerator", "id": "cloudflared", "doc": f"{c.base_url}/docs/cloudflared",
-                     "api": f"{c.api}accelerators/cloudflared"}])
+            extras=extras)
         doc = docs.sign_document("hub", payload, [self.key])
         return JSONResponse(doc, headers={"Cache-Control": "max-age=300"})
 
@@ -159,24 +158,6 @@ class Hub:
                 raise HubError(409, e.code, e.detail) from e
         return inv
 
-    async def _check_own_urls(self, p: dict, sign_key: Key) -> None:
-        urls = p["own_urls"]
-        if origin(urls["instance"]) == origin(urls["files"]):
-            raise HubError(422, "own_url_unreachable", "the instance and files URLs must be different origins")
-        try:
-            async with self._http_factory() as c:
-                r = await c.get(urls["instance"].rstrip("/") + "/.well-known/l0wagent/self")
-                if r.status_code != 200:
-                    raise HubError(422, "own_url_unreachable", f"self document answered {r.status_code}")
-                sp = payloads.verify_self(r.json())
-                if sp["address"] != self.address(p["name"]) or payloads.self_signing_key(sp).kid != sign_key.kid:
-                    raise HubError(422, "own_url_unreachable", "the served self document is not this member's")
-                await c.get(urls["files"])  # any answer over HTTPS counts
-        except HubError:
-            raise
-        except Exception as e:
-            raise HubError(422, "own_url_unreachable", f"{type(e).__name__}: {e}") from e
-
     async def register(self, request: Request):
         doc = await self.body(request, "bad_registration")
         p = self.parse_signed(payloads.verify_registration, "bad_registration", doc, self.cfg.domain)
@@ -186,20 +167,16 @@ class Hub:
         with self.store.read() as s:
             self._admission_checks(s, p)
         name = p["name"]
-        if p["mode"] == "own-url":
-            await self._check_own_urls(p, keys["sign"])
-            hostnames = {k: urlsplit(p["own_urls"][k]).netloc.lower() for k in ("instance", "files")}
-        else:
-            hostnames = self.cfg.hostnames_for(name)
+        hostnames = self.cfg.hostnames_for(name)
         reregistered = p.get("reregister") is True
         with self.store.write() as s:
             self._admission_checks(s, p)
             s["invites"][p["invite"]]["used_by"] = name
             old = s["members"].get(name)
             member = {
-                "name": name, "address": self.address(name), "status": "active", "mode": p["mode"],
+                "name": name, "address": self.address(name), "status": "active",
                 "keys": {u: k.to_dict() for u, k in keys.items()}, "kid_history": [k.kid for k in keys.values()],
-                "seq": -1, "self_doc": None, "hostnames": hostnames, "own_urls": p["own_urls"],
+                "seq": -1, "self_doc": None, "hostnames": hostnames,
                 "joined": format_time(now()), "release": p["instance"]["release"],
             }
             if reregistered and old:
@@ -215,8 +192,7 @@ class Hub:
         if reregistered:
             self.cloudflared.pop(name, None)
             await self.tunnels.drop(name, 4401)
-        tunnel = self.cfg.tunnel_url if p["mode"] == "tunnel" else None
-        return JSONResponse(payloads.build_join_response(self.address(name), hostnames, self.key.key, tunnel), status_code=201)
+        return JSONResponse(payloads.build_join_response(self.address(name), hostnames, self.key.key, self.cfg.tunnel_url), status_code=201)
 
     # --- self description -----------------------------------------------------------------
 
@@ -253,8 +229,6 @@ class Hub:
                 raise HubError(400, "bad_self", "address does not match the member")
             if p["hostnames"] != m["hostnames"]:
                 raise HubError(400, "bad_self", "hostnames do not match what the hub assigned")
-            if m["mode"] == "own-url" and p.get("own_urls") != m["own_urls"]:
-                raise HubError(400, "bad_self", "own_urls do not match the registration")
             expected = self._walk_history(m, p)
             given = {k["use"]: Key.from_dict(k) for k in p["keys"]}
             if any(given[u].kid != expected[u].kid for u in USES):
@@ -338,8 +312,8 @@ class Hub:
             raise HubError(401, "bad_sig", str(e)) from e
         except DocumentError as e:
             raise HubError(400, "bad_request", str(e)) from e
-        if m["status"] != "active" or m["mode"] != "tunnel":
-            raise HubError(403, "not_member", "only active tunnel-mode members may use the accelerator")
+        if m["status"] != "active":
+            raise HubError(403, "not_member", "only active members may use the accelerator")
         iat = parse_time(p["iat"])
         last = self.cloudflared_iat.get(name)
         if last is not None and iat <= last:
@@ -370,9 +344,9 @@ class Hub:
         return out
 
 
-def create_app(cfg: Config, *, http_client_factory=None):
+def create_app(cfg: Config):
     """The ASGI app: the hub API, behind the front that sends member hostnames down their tunnels."""
-    hub = Hub(cfg, http_client_factory=http_client_factory)
+    hub = Hub(cfg)
 
     def wrap(fn):
         async def handler(request: Request):

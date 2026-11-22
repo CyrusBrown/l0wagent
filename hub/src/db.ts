@@ -14,13 +14,11 @@ export interface Member {
   name: string;
   address: string;
   status: "active" | "left";
-  mode: "tunnel" | "own-url";
   keys: KeySet;
   kidHistory: string[];
   seq: number;
   selfDoc: Doc | null;
   hostnames: Hostnames;
-  ownUrls: Hostnames | null;
   joined: number;
   release: string;
   leftAt: number | null;
@@ -47,13 +45,11 @@ function toMember(r: Row): Member {
     name: r.name,
     address: r.address,
     status: r.status,
-    mode: r.mode,
     keys: JSON.parse(r.keys),
     kidHistory: JSON.parse(r.kid_history),
     seq: r.seq,
     selfDoc: json<Doc>(r.self_doc),
     hostnames: JSON.parse(r.hostnames),
-    ownUrls: json<Hostnames>(r.own_urls),
     joined: r.joined,
     release: r.release,
     leftAt: r.left_at ?? null,
@@ -118,10 +114,8 @@ export function isUniqueViolation(e: unknown): boolean {
 export interface NewMember {
   name: string;
   address: string;
-  mode: "tunnel" | "own-url";
   keys: KeySet;
   hostnames: Hostnames;
-  ownUrls: Hostnames | null;
   release: string;
   now: number;
 }
@@ -130,18 +124,16 @@ export interface NewMember {
 export async function insertMember(db: D1Database, m: NewMember): Promise<void> {
   await db
     .prepare(
-      "INSERT INTO members (name, lookalike, address, status, mode, keys, kid_history, seq, self_doc, hostnames, own_urls, joined, release) " +
-        "VALUES (?1, ?2, ?3, 'active', ?4, ?5, ?6, -1, NULL, ?7, ?8, ?9, ?10)",
+      "INSERT INTO members (name, lookalike, address, status, mode, keys, kid_history, seq, self_doc, hostnames, joined, release) " +
+        "VALUES (?1, ?2, ?3, 'active', 'tunnel', ?4, ?5, -1, NULL, ?6, ?7, ?8)",
     )
     .bind(
       m.name,
       lookalikeKey(m.name),
       m.address,
-      m.mode,
       JSON.stringify(m.keys),
       JSON.stringify(Object.values(m.keys).map((k) => k.kid)),
       JSON.stringify(m.hostnames),
-      m.ownUrls ? JSON.stringify(m.ownUrls) : null,
       m.now,
       m.release,
     )
@@ -160,16 +152,14 @@ export async function reregisterMember(
   const stmts = [
     db
       .prepare(
-        "UPDATE members SET mode = ?2, keys = ?3, kid_history = ?4, seq = -1, self_doc = NULL, hostnames = ?5, own_urls = ?6, " +
-          "joined = ?7, release = ?8 WHERE name = ?1 AND status = 'active'",
+        "UPDATE members SET mode = 'tunnel', own_urls = NULL, keys = ?2, kid_history = ?3, seq = -1, self_doc = NULL, hostnames = ?4, " +
+          "joined = ?5, release = ?6 WHERE name = ?1 AND status = 'active'",
       )
       .bind(
         m.name,
-        m.mode,
         JSON.stringify(m.keys),
         JSON.stringify([...oldKidHistory, ...Object.values(m.keys).map((k) => k.kid)]),
         JSON.stringify(m.hostnames),
-        m.ownUrls ? JSON.stringify(m.ownUrls) : null,
         m.now,
         m.release,
       ),

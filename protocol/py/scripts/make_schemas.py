@@ -75,7 +75,7 @@ S["self"] = payload("self", {
     "address": ADDRESS, "seq": {"type": "integer", "minimum": 0},
     "keys": {**keys_arr(3), "description": "Exactly one current key each for use sign, seal and recover"},
     "history": {"type": "array", "items": ref("signed-document"), "description": "Signed rotation documents, oldest first"},
-    "hostnames": URLPAIR, "own_urls": {"oneOf": [URLPAIR, {"type": "null"}]},
+    "hostnames": URLPAIR,
     "protocols": {"type": "array", "items": {"type": "string"}},
 }, ["address", "seq", "keys", "history", "hostnames", "protocols"], "Payload of a self document (identity.md)")
 S["rotation"] = payload("rotation", {
@@ -89,9 +89,9 @@ S["hub"] = payload("hub", {
     "protocols": {"type": "array", "items": {"type": "string"}},
     "instance_releases": {"type": "object", "required": ["min"], "properties": {"min": {"type": "string"}}},
     "api": {"type": "string", "pattern": "/$"}, "tunnel": {"type": "string"},
-    "membership": {"type": "object", "required": ["invites", "signups", "own_url", "require_2fa"], "properties": {
+    "membership": {"type": "object", "required": ["invites", "signups", "require_2fa"], "properties": {
         "invites": {"type": "boolean"}, "signups": {"enum": ["closed", "open", "approval"]},
-        "own_url": {"type": "boolean"}, "require_2fa": {"type": "boolean"}}},
+        "require_2fa": {"type": "boolean"}}},
     "hostnames": {"type": "object", "properties": {"layout": {"type": "string"}, "example": EXAMPLE}},
     "policies": {"type": "object", "additionalProperties": {"type": "string"}},
     "limits": {"type": "object", "required": ["tunnel_streams", "request_body_bytes", "auth_rate_per_minute"], "properties": {
@@ -100,11 +100,11 @@ S["hub"] = payload("hub", {
 }, ["name", "domain", "keys", "protocols", "instance_releases", "api", "tunnel", "membership", "hostnames", "limits"],
     "Payload of the hub's capabilities document (capabilities.md)")
 S["registration"] = payload("registration", {
-    "hub": {"type": "string"}, "name": NAME, "invite": {"type": "string"}, "mode": {"enum": ["tunnel", "own-url"]},
-    "own_urls": {"oneOf": [URLPAIR, {"type": "null"}]}, "keys": keys_arr(3), "reregister": {"type": "boolean"},
+    "hub": {"type": "string"}, "name": NAME, "invite": {"type": "string"},
+    "keys": keys_arr(3), "reregister": {"type": "boolean"},
     "instance": {"type": "object", "required": ["release", "protocols"], "properties": {
         "release": {"type": "string"}, "protocols": {"type": "array", "items": {"type": "string"}}}},
-}, ["hub", "name", "invite", "mode", "keys", "instance"], "Payload of a registration document; signed by the new signing key AND the recovery key")
+}, ["hub", "name", "invite", "keys", "instance"], "Payload of a registration document; signed by the new signing key AND the recovery key")
 S["leave"] = payload("leave", {"address": ADDRESS, "moved_to": {"oneOf": [ADDRESS, {"type": "null"}]}},
                      ["address", "moved_to"], "Payload of a leave document")
 S["reregistration"] = payload("reregistration", {
@@ -160,7 +160,46 @@ S["tunnel-ready"] = {
     "properties": {"t": {"const": "ready"}, "session": {"type": "string"}, "limits": {"type": "object"}}, "additionalProperties": True,
 }
 
-PAYLOAD_TYPES = ["self", "rotation", "revocation", "moved", "hub", "registration", "leave", "reregistration", "tunnel-hello", "accelerator-request"]
+S["delivery-token"] = payload("delivery-token", {
+    "id": {**B64, "description": "base64url of 16 random bytes"},
+    "issuer": ADDRESS, "issuer_kid": KID, "holder": ADDRESS, "holder_kid": KID,
+}, ["id", "issuer", "issuer_kid", "holder", "holder_kid"], "Payload of a delivery-token document (messages.md)")
+S["same-owner"] = payload("same-owner", {"a": ADDRESS, "a_kid": KID, "b": ADDRESS, "b_kid": KID},
+                          ["a", "a_kid", "b", "b_kid"], "Payload of a same-owner document; signed by both keys (messages.md)")
+ROLE = {"type": "string", "pattern": r"^[a-z][a-z0-9_-]{0,31}$", "description": "A short role name"}
+S["service"] = payload("service", {
+    "address": ADDRESS,
+    "kind": {"type": "string", "description": "relay, rooms, board, email, spaces, directory, admin, or custom"},
+    "title": {"type": "string"}, "description": {"type": "string"},
+    "docs": {"type": "string", "pattern": r"^https://"},
+    "roles": {"type": "array", "items": ROLE, "uniqueItems": True},
+    "extension": {"type": "object", "required": ["git", "commit", "path"], "properties": {
+        "git": {"type": "string", "pattern": r"^https://"},
+        "commit": {"type": "string", "pattern": r"^([0-9a-f]{40}|[0-9a-f]{64})$"},
+        "path": {"type": "string", "minLength": 1, "description": "Relative, no '..' segments"}}},
+    "default": {"enum": ["on", "off"]},
+}, ["address", "kind", "title", "roles", "default"], "Payload of a service document, signed by the hub (services.md)")
+S["role-grant"] = payload("role-grant", {
+    "service": ADDRESS, "holder": ADDRESS, "holder_kid": KID, "role": ROLE,
+}, ["service", "holder", "holder_kid", "role"], "Payload of a role-grant document, signed by the service (services.md)")
+S["envelope"] = {
+    **payload("envelope", {
+        "id": {**B64, "description": "base64url of 16 random bytes, unique per sender"},
+        "from": ADDRESS, "from_kid": KID, "to": ADDRESS, "to_kid": KID,
+        "seq": {"type": "integer", "minimum": 1},
+        "kind": {"type": "string", "description": "friend-request, friend-accept, friend-decline, unfriend, message, presence, "
+                                                   "wake-request, same-owner, wake-reply, service-hello, service-welcome, service-bye, service-call, "
+                                                   "service-reply or service-event; others answer 422 unknown_kind"},
+        "token": {**ref("signed-document"), "description": "A delivery-token document; required unless kind is friend-request or service-hello, and then absent"},
+        "sealed": {"type": "object", "required": ["alg", "enc", "ct"], "properties": {
+            "alg": {"const": "HPKE-v1-X25519-SHA256-ChaCha20Poly1305"}, "enc": B64, "ct": B64}, "additionalProperties": True},
+    }, ["id", "from", "from_kid", "to", "to_kid", "seq", "kind", "sealed"], "Payload of an envelope document (messages.md)"),
+}
+S["envelope"]["if"] = {"properties": {"kind": {"enum": ["friend-request", "service-hello"]}}}
+S["envelope"]["then"] = {"not": {"required": ["token"]}}
+S["envelope"]["else"] = {"required": ["token"]}
+
+PAYLOAD_TYPES = ["self", "rotation", "revocation", "moved", "hub", "registration", "leave", "reregistration", "tunnel-hello", "accelerator-request", "delivery-token", "same-owner", "envelope", "service", "role-grant"]
 
 
 def schema_files() -> dict[str, str]:
@@ -240,7 +279,6 @@ def openapi() -> dict:
                     "403": err("An invite is required.", "needs_invite"),
                     "409": err("The name is taken or reserved, or the invite is bound to another name.", "name_taken", "name_reserved", "name_bound"),
                     "410": err("The invite was used or has expired.", "invite_used", "invite_expired"),
-                    "422": err("Own-URL mode: the URLs failed the hub's checks.", "own_url_unreachable"),
                     "426": err("The instance release is older than `instance_releases.min`.", "instance_too_old")}}},
             "/members/{name}/self": {"parameters": [NAME_PARAM], "put": {
                 "operationId": "putSelf", "summary": "Publish a new self-description",
@@ -270,7 +308,7 @@ def openapi() -> dict:
                     "200": json_resp("The member's accelerator state.", sref("accelerator-state")),
                     "400": err("Malformed, unknown action, or bad `service`.", "bad_request"),
                     "401": err("Signature, `iat`, `hub`, `accelerator` or address check failed.", "bad_sig"),
-                    "403": err("Not an active tunnel-mode member.", "not_member"),
+                    "403": err("Not an active member.", "not_member"),
                     "409": err("`stale` (body has `last_iat`), `not_enabled`, or `not_connected`.", "stale", "not_enabled", "not_connected"),
                     "502": err("The hub's provider failed.", "upstream")}}},
         },

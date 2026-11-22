@@ -357,7 +357,7 @@ class RunManager:
                 thread_id=t.id, title=t.title, project=t.project or "General", budget=f"{run['budget'] or 0:g}",
                 promote_wait=f"{min(promote_min, 9.5):g}", promote_expiry=f"{promote_min:g}")
             brief += reply + "\n\n" + self.conv.thread_history(t.id)
-        inbox, counts = self.conv.deliver()
+        inbox, counts = self.conv.deliver(run_id=run_id)
         brief += "\n\n## Inbox\n\n" + (inbox or "Nothing new.")
         if counts:
             self.timeline(run_id, Item("control", "Delivered in the brief: " + _counts_text(counts), True, {"counts": counts}))
@@ -757,7 +757,7 @@ class RunManager:
         while utcnow() < until:  # type: ignore[operator]
             if self.db.q1("SELECT stop_requested_at FROM runs WHERE id=?", (run_id,))["stop_requested_at"]:
                 return False
-            if self.conv.deliver(peek=True)[0]:
+            if self.conv.deliver(peek=True, peers=False)[0]:  # a friend's message doesn't end the wait for the owner
                 break
             await asyncio.sleep(1)
         else:
@@ -765,7 +765,7 @@ class RunManager:
             self.timeline(run_id, Item("control", "No reply in time; finishing", True))
             return False
         self._end_hold(run_id)
-        text, counts = self.conv.deliver()
+        text, counts = self.conv.deliver(peers=False)
         self.db.ex("UPDATE runs SET waiting_until=NULL, hold_rounds=hold_rounds+1, now_sentence=? WHERE id=?", ("Reading your reply", run_id))
         try:
             await self._start_session(run_id, resume=sess.runtime_session, prompt=f"[control] The owner responded while you were waiting:\n\n{text}")
@@ -951,5 +951,5 @@ def _strip_comment(text: str) -> str:
 
 def _counts_text(counts: dict[str, int]) -> str:
     names = {"messages": "message", "answers": "answer", "decisions": "decision", "tasks": "finished task", "suggestions": "suggestion decision",
-             "secrets": "new secret", "notes": "note to itself", "reviewer": "reviewer reply"}
+             "secrets": "new secret", "notes": "note to itself", "reviewer": "reviewer reply", "peer_messages": "friend message"}
     return ", ".join(f"{n} {names.get(k, k)}{'s' if n != 1 else ''}" for k, n in counts.items())

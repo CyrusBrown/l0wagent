@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import type { S } from '../api/client'
 import {
-  problem, useInvitePreview, useJoinHub, useLeaveHub, useMembership, useMembershipCheck, useRecoverMembership, useRotateMemberKey, useSetAccelerator,
+  problem, useFriendSettings, useInvitePreview, useJoinHub, useLeaveHub, useMembership, useMembershipCheck, useRecoverMembership, useRotateMemberKey, useSetAccelerator, useSetFriendSettings,
 } from '../api/queries'
 import { ago, stamp } from '../components/format'
+import { Row, Saved, Seg, Switch } from '../components/settings'
 
 // Settings → Hub (H1): join a hub for two internet hostnames, see the tunnel and key state, leave.
 
@@ -79,15 +80,12 @@ function Join({ m, onJoined }: { m: S['Membership']; onJoined: (key: string) => 
   const [invite, setInvite] = useState('')
   const [name, setName] = useState('')
   const [locked, setLocked] = useState(false)
-  const [mode, setMode] = useState<'tunnel' | 'own-url'>('tunnel')
-  const [urls, setUrls] = useState({ instance: '', files: '' })
   const [backup, setBackup] = useState<'made' | 'skipped' | null>(null)
   const p = preview.data
   const nameOk = name.length >= 3 && name.length <= 32 && NAME_RE.test(name)
-  const urlsOk = mode === 'tunnel' || (/^https:\/\/\S+$/.test(urls.instance) && /^https:\/\/\S+$/.test(urls.files))
-  const yours = mode === 'tunnel' && nameOk ? previewHostnames(p?.example, p?.example_name, name) : null
+  const yours = nameOk ? previewHostnames(p?.example, p?.example_name, name) : null
   const blocked = !!p?.problems?.length
-  const ready = !!p && !blocked && nameOk && urlsOk && !!backup && !join.isPending
+  const ready = !!p && !blocked && nameOk && !!backup && !join.isPending
   return (
     <>
       <section className="set-section">
@@ -99,7 +97,7 @@ function Join({ m, onJoined }: { m: S['Membership']; onJoined: (key: string) => 
         </div>
         <form className="set-form" style={{ maxWidth: 520 }} onSubmit={(e) => {
           e.preventDefault()
-          preview.mutate(invite.trim(), { onSuccess: (r) => { if (r.name_hint) setName(r.name_hint); setLocked(!!r.name_bound && !!r.name_hint); if (!r.own_url_allowed) setMode('tunnel') } })
+          preview.mutate(invite.trim(), { onSuccess: (r) => { if (r.name_hint) setName(r.name_hint); setLocked(!!r.name_bound && !!r.name_hint) } })
         }}>
           <input className="input mono" autoComplete="off" spellCheck={false} placeholder="l0w-invite:…" aria-label="Invite" value={invite} onChange={(e) => setInvite(e.target.value)} />
           {preview.error && <div className="error" role="alert">{problem(preview.error)}</div>}
@@ -127,7 +125,7 @@ function Join({ m, onJoined }: { m: S['Membership']; onJoined: (key: string) => 
             // mutateAsync, not mutate's per-call onSuccess: the membership refetch swaps this form for the joined
             // view before the answer arrives, and React Query drops per-call callbacks of an unmounted caller,
             // which would lose the recovery key (shown once, never refetchable). The parent keeps it.
-            join.mutateAsync({ invite: invite.trim(), name, mode, backup, ...(mode === 'own-url' ? { own_urls: urls } : {}) })
+            join.mutateAsync({ invite: invite.trim(), name, backup })
               .then((r) => { onJoined(r.recovery_key); setInvite(''); preview.reset() }, () => {})
           }}>
             <label className="stack" style={{ gap: 4 }}>
@@ -143,19 +141,6 @@ function Join({ m, onJoined }: { m: S['Membership']; onJoined: (key: string) => 
                 <span className="sub" style={{ fontSize: 12.5 }}>A preview: the hub confirms them when you join.</span>
               </div>
             )}
-            {p.own_url_allowed && (
-              <div className="stack" style={{ gap: 6 }}>
-                <span style={{ fontWeight: 500, fontSize: 13.5 }}>How it's reached</span>
-                <label className="hub-opt"><input type="radio" name="hub-mode" checked={mode === 'tunnel'} onChange={() => setMode('tunnel')} /><span>Through the hub's tunnel (default)</span></label>
-                <label className="hub-opt"><input type="radio" name="hub-mode" checked={mode === 'own-url'} onChange={() => setMode('own-url')} /><span>My own URLs</span></label>
-                {mode === 'own-url' && (
-                  <div className="hub-sub">
-                    <input className="input" placeholder="https:// app address" aria-label="App URL" value={urls.instance} onChange={(e) => setUrls({ ...urls, instance: e.target.value.trim() })} />
-                    <input className="input" placeholder="https:// files address (a different origin)" aria-label="Files URL" value={urls.files} onChange={(e) => setUrls({ ...urls, files: e.target.value.trim() })} />
-                  </div>
-                )}
-              </div>
-            )}
             <div className="stack" style={{ gap: 6 }}>
               <span style={{ fontWeight: 500, fontSize: 13.5 }}>Backup</span>
               <label className="hub-opt"><input type="radio" name="hub-backup" checked={backup === 'made'} onChange={() => setBackup('made')} /><span>I've made a backup (<code>./l0w backup</code>)</span></label>
@@ -168,6 +153,35 @@ function Join({ m, onJoined }: { m: S['Membership']; onJoined: (key: string) => 
         </section>
       )}
     </>
+  )
+}
+
+const REQUESTS_FROM: [S['FriendSettings']['requests_from'], string][] = [['anyone', 'Anyone'], ['hub', 'Members of my hub'], ['codes', 'Only with a friend code']]
+
+/** Settings → Hub → Friends: who may ask, and the pause switch. Both save as you change them. */
+function FriendSettings() {
+  const q = useFriendSettings()
+  const set = useSetFriendSettings()
+  const [savedAt, setSavedAt] = useState(0)
+  const d = q.data
+  const pending = set.isPending ? set.variables : undefined
+  const save = (b: S['FriendSettingsPatch']) => set.mutate(b, { onSuccess: () => setSavedAt((n) => n + 1) })
+  return (
+    <section className="set-section">
+      <div className="set-head"><div className="set-title">Friends</div><Saved token={savedAt} error={set.error ? problem(set.error) : null} /></div>
+      {q.error && <div className="error" role="alert">{problem(q.error)}</div>}
+      {d && (
+        <div className="set-rows one">
+          <Row label="Who can send you friend requests" hint="Requests wait for your approval: nobody becomes a friend until you say so.">
+            <Seg value={pending?.requests_from ?? d.requests_from} options={REQUESTS_FROM} onChange={(v) => save({ requests_from: v })} label="Who can send you friend requests" />
+          </Row>
+          <Row label="Pause all friend activity" hint="Nothing goes out, and what comes in is refused so senders try again later. Your friends and their settings stay as they are.">
+            <Switch on={pending?.paused ?? d.paused} onChange={(v) => save({ paused: v })} label="Pause all friend activity" />
+          </Row>
+        </div>
+      )}
+      <div className="sub" style={{ fontSize: 13 }}><Link to="/friends">Open Friends</Link></div>
+    </section>
   )
 }
 
@@ -205,7 +219,6 @@ function Joined({ m }: { m: S['Membership'] }) {
               </button>
             </div>
           )}
-          <div className="set-row"><span className="k">Mode</span><span>{m.mode === 'own-url' ? 'Own URLs' : 'Hub tunnel'}</span></div>
           {m.joined_at && <div className="set-row"><span className="k">Joined</span><span>{ago(m.joined_at)}</span></div>}
           {t && (
             <div className="set-row">
@@ -220,6 +233,8 @@ function Joined({ m }: { m: S['Membership'] }) {
         {t?.accelerator?.state === 'error' && <div className="error" role="alert">cloudflared isn't working{t.accelerator.error ? `: ${t.accelerator.error}` : ''}. The normal tunnel is carrying your traffic.</div>}
         {accel.error && <div className="error" role="alert">{problem(accel.error)}</div>}
       </section>
+
+      <FriendSettings />
 
       <section className="set-section">
         <div className="row-between">

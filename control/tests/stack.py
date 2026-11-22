@@ -68,6 +68,7 @@ class Stack:
         hook.chmod(0o755)
         self.bindir = bindir
         self.url = f"http://127.0.0.1:{self.ports['control']}"
+        self.dual_stack = False  # HubStack(tunnel_from_ipv6=True): control listens on 127.0.0.1 and [::1]
         self.client = httpx.Client(base_url=self.url, timeout=30, headers={"x-l0w-client": "test"})
 
     def _spawn(self, name: str, argv: list[str], env: dict) -> None:
@@ -98,7 +99,9 @@ class Stack:
         wait_http(f"http://127.0.0.1:{self.ports['runner']}/health", {"X-Runner-Token": TOKENS["runner"]})
 
     def start_control(self) -> None:
-        self._spawn("control", [sys.executable, "-m", "uvicorn", "l0w_control.app:app", "--host", "127.0.0.1", "--port", str(self.ports["control"])], {
+        argv = ([sys.executable, str(Path(__file__).parent / "dual_stack_control.py"), str(self.ports["control"])] if self.dual_stack else
+                [sys.executable, "-m", "uvicorn", "l0w_control.app:app", "--host", "127.0.0.1", "--port", str(self.ports["control"])])
+        self._spawn("control", argv, {
             "L0W_BACKEND": "sqlite", "L0W_DATA_DIR": str(self.tmp / "control"), "L0W_AGENT_TOKEN": TOKENS["agent"],
             "L0W_RUNNER_URL": f"http://127.0.0.1:{self.ports['runner']}", "L0W_RUNNER_TOKEN": TOKENS["runner"],
             "L0W_EGRESS_URL": f"http://127.0.0.1:{self.ports['admin']}", "L0W_EGRESS_TOKEN": TOKENS["egress"],
@@ -129,7 +132,7 @@ class Stack:
         for name in list(self.procs):
             try:
                 self.kill(name)
-            except (ProcessLookupError, subprocess.TimeoutExpired):
+            except (ProcessLookupError, PermissionError, subprocess.TimeoutExpired):  # (macOS says EPERM for the group of a process that already exited)
                 pass
         self.client.close()
 
@@ -169,22 +172,31 @@ class Stack:
 class HubStack(Stack):
     """A Stack plus the fake hub, the gateway and the tunnel service (dev_stack.py --hub uses it too)."""
 
-    def __init__(self, tmp: Path, hub_port: int | None = None, control_env: dict | None = None, **kw):
-        self.hub_port, self.gw_port = hub_port or free_port(), free_port()
-        self.hub_base = f"http://hub.localhost:{self.hub_port}"
+    def __init__(self, tmp: Path, hub_port: int | None = None, control_env: dict | None = None, hub_host: str = "hub.localhost",
+                 gateway_env: dict | None = None, hub_env: dict | None = None, tunnel_from_ipv6: bool = False, **kw):
+        """`tunnel_from_ipv6`: everything here is on 127.0.0.1, so control can't tell the tunnel service (the one caller allowed to reach
+        `/api/peer/*`) from anyone else. With this, control listens on 127.0.0.1 and [::1] (dual_stack_control.py), the tunnel reaches it at
+        `[::1]`, and `L0W_TUNNEL_SUBNET` is `::1/128`: the owner's client, the runner and the tests stay on 127.0.0.1 and are not the tunnel.
+        `hub_host` is the hub's domain (the part after `@`): two hubs in one test need two. `gateway_env` and `hub_env` add to the gateway's and the fake hub's
+        environment (a test reaching a second hub sets `L0W_HUB_ALLOW_HTTP` and `L0W_HUB_CONNECT_TO=domain=127.0.0.1:port,...`)."""
+        self.hub_port, self.gw_port, self.accel_port = hub_port or free_port(), free_port(), free_port()  # (the tunnel's accelerator listens on its own port)
+        self.hub_host, self.gateway_env, self.hub_env, self.tunnel_from_ipv6 = hub_host, gateway_env or {}, hub_env or {}, tunnel_from_ipv6
+        self.hub_base = f"http://{hub_host}:{self.hub_port}"
         super().__init__(tmp, **kw, control_env={
             "L0W_GATEWAY_URL": f"http://127.0.0.1:{self.gw_port}", "L0W_GATEWAY_TOKEN": GW_CONTROL,
             "L0W_VERSION": "0.9.0", "L0W_HUB_ALLOW_HTTP": "1", "L0W_HUB_CONNECT_TO": f"127.0.0.1:{self.hub_port}",
+            **({"L0W_TUNNEL_SUBNET": "::1/128"} if tunnel_from_ipv6 else {}),
             **(control_env or {}),
         })
+        self.dual_stack = tunnel_from_ipv6
 
     def _uv(self, project: str, *args: str) -> list[str]:
         return ["uv", "run", "--quiet", "--project", str(REPO / project), "python", *args]
 
     def start_hub(self) -> None:
         self._spawn("hub", self._uv("dev/hub", "-m", "fakehub", "--base-url", self.hub_base, "--state", str(self.tmp / "hub" / "state.json"),
-                                    "serve", "--port", str(self.hub_port)), {})
-        wait_http(f"http://127.0.0.1:{self.hub_port}/.well-known/l0wagent/hub", {"Host": f"hub.localhost:{self.hub_port}"}, timeout=60)
+                                    "serve", "--port", str(self.hub_port)), self.hub_env)
+        wait_http(f"http://127.0.0.1:{self.hub_port}/.well-known/l0wagent/hub", {"Host": f"{self.hub_host}:{self.hub_port}"}, timeout=60)
 
     def invite(self) -> str:
         out = subprocess.run(self._uv("dev/hub", "-m", "fakehub", "--base-url", self.hub_base, "--state", str(self.tmp / "hub" / "state.json"), "invite"),
@@ -194,13 +206,15 @@ class HubStack(Stack):
     def start_gateway(self) -> None:
         self._spawn("gateway", self._uv("gateway", "-m", "l0w_gateway"), {
             "GATEWAY_DATA_DIR": str(self.tmp / "gateway"), "GATEWAY_CONTROL_TOKEN": GW_CONTROL, "GATEWAY_TUNNEL_TOKEN": GW_TUNNEL,
-            "GATEWAY_PORT": str(self.gw_port)})
+            "GATEWAY_PORT": str(self.gw_port), **self.gateway_env})
         wait_http(f"http://127.0.0.1:{self.gw_port}/healthz", timeout=60)
 
     def start_tunnel(self) -> None:
         self._spawn("tunnel", self._uv("tunnel", "-m", "l0w_tunnel"), {
             "TUNNEL_GATEWAY_URL": f"http://127.0.0.1:{self.gw_port}", "TUNNEL_GATEWAY_TOKEN": GW_TUNNEL,
-            "TUNNEL_CONTROL_URL": self.url, "TUNNEL_FILES_URL": f"http://127.0.0.1:{self.ports['files']}", "TUNNEL_POLL_SECONDS": "0.5"})
+            "TUNNEL_CONTROL_URL": f"http://[::1]:{self.ports['control']}" if self.tunnel_from_ipv6 else self.url,
+            "TUNNEL_FILES_URL": f"http://127.0.0.1:{self.ports['files']}", "TUNNEL_POLL_SECONDS": "0.5",
+            "L0W_ACCELERATOR_PORT": str(self.accel_port)})
 
     def up(self, runner: bool = False) -> HubStack:
         (self.tmp / "hub").mkdir(exist_ok=True)

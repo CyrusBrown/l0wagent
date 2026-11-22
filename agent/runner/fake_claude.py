@@ -25,6 +25,12 @@ Scenarios (with FAKE_CALL_ASSISTANT=1), picked from the prompt:
   wakeup "fake:wrapup" / "fake:noidle"   end with a wrap-up line then IDLE:, or without IDLE at all
                       (control nudges that once; the resumed session then ends IDLE)
   wakeup with mail    reply to the owner's queued messages (so control holds the run open)
+  friends             "fake:friends" in the standing instructions, or a friend's message in the brief: list the friends
+                      (`assistant friends`), reply in the friend's peer thread, and, with "fake:befriend ADDRESS" or
+                      "fake:wake ADDRESS" in the instructions, draft a friend request / ask that friend's assistant to wake;
+                      "fake:sendfile PATH" attaches that file (`send --file`) to each reply
+  hub services        "fake:hubnet" in the standing instructions: `assistant hubnet ls`, calls to the echo service (`echo`, `whoami`,
+                      `secret` with no role), and with "fake:hubrole ROLE" `secret --role ROLE`
   resumed for reply   control resumed the session with the owner's reply: answer it
   otherwise           the M1 session: tidy the journal
 After every tool call it runs `assistant-hook` like Claude Code's PostToolUse hook does.
@@ -314,6 +320,38 @@ def mail_scenario(sess: Session, prompt: str) -> int:
     return sess.finish("IDLE: answered the queued messages.")
 
 
+def friends_scenario(sess: Session, prompt: str) -> int:
+    """Friends: read the list, answer whoever wrote (their peer thread is the thread of their message), draft a request, ask for a wake."""
+    sess.run("run", "describe", "Look at my friends, answer the ones who wrote, and follow the owner's friends instructions.")
+    sess.run("status", "Looking at my friends")
+    listing = sess.run("friends")
+    threads = sorted(set(int(t) for t in re.findall(r"^thread #(\d+) ", prompt, re.M)))
+    if not threads:  # no message to answer: write to the first friend the list shows
+        threads = [int(x) for x in re.findall(r"thread #(\d+)", listing)][:1]
+    attach = [x for f in re.findall(r"fake:sendfile (\S+)", prompt) for x in ("--file", f)]
+    for t in threads:
+        sess.run("send", "--thread", str(t), *attach, "Thanks for the note. I'll tell my owner; nothing about their projects, though.")
+    for friend in re.findall(r"fake:befriend (\S+)", prompt):
+        sess.run("friends", "request", friend, "My owner may like to be friends")
+    for friend in re.findall(r"fake:wake (\S+)", prompt):
+        sess.run("friends", "wake", friend, "Our results are ready, when you have a minute")
+    return sess.finish("IDLE: answered my friends and filed what the owner has to decide.")
+
+
+def hubnet_scenario(sess: Session, prompt: str) -> int:
+    """Hub services: list them, call echo's `echo` and `whoami`, then `secret` without a role (refused by the service) and with
+    `--role tester` (when "fake:hubrole" is in the instructions, naming the role the service granted)."""
+    sess.run("run", "describe", "Look at the hub's services and call the echo service.")
+    sess.run("status", "Calling the hub's echo service")
+    sess.run("hubnet", "ls")
+    sess.run("hubnet", "call", "echo", "echo", '{"x": 1}')
+    sess.run("hubnet", "call", "echo", "whoami", "--role", "tester")
+    sess.run("hubnet", "call", "echo", "secret")
+    for role in re.findall(r"fake:hubrole (\S+)", prompt):
+        sess.run("hubnet", "call", "echo", "secret", "--role", role)
+    return sess.finish("IDLE: called the hub's echo service.")
+
+
 def resumed_scenario(sess: Session, prompt: str) -> int:
     threads = sorted(set(int(t) for t in re.findall(r"^thread #(\d+) ", prompt, re.M)))
     for t in threads:
@@ -366,6 +404,10 @@ def scenario(sess: Session, prompt: str, resume: str | None) -> int | None:
         return noidle_scenario(sess)
     if "- Owner (message #" in prompt:
         return mail_scenario(sess, prompt)
+    if "fake:hubnet" in prompt:
+        return hubnet_scenario(sess, prompt)
+    if "fake:friends" in prompt or "), untrusted: " in prompt:
+        return friends_scenario(sess, prompt)
     return None
 
 

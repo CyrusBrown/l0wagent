@@ -11,7 +11,6 @@ TUNNEL_URL = "ws://hub.localhost:8787/v0/tunnel"
 INSTANCE_HOST_PATTERN = "{name}.hub.localhost:8787"
 FILES_HOST_PATTERN = "files--{name}.hubfiles.localhost:8787"
 MIN_RELEASE = "0.8.0"
-OWN_URL = "true"
 HUB_SIGNING_SEED = "lecYjx28aUdQ7GyN8sVZ3kZZdkBrMHqfDC8drU5zC9M"
 ADMIN_TOKEN = "dev-admin-token"
 # a name the conformance suite binds an invite to (bound invites, protocol/membership.md)

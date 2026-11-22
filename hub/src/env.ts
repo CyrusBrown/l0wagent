@@ -17,7 +17,6 @@ export interface Env {
   MIN_RELEASE?: string;
   LIMITS?: string;
   POLICIES?: string;
-  OWN_URL?: string;
   INVITE_DAYS?: string;
   HUB_KEY_CREATED?: string;
   CF_ACCELERATOR?: string;

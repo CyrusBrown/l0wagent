@@ -70,7 +70,7 @@ def utcnow() -> datetime:
 SCOPES = ("full", "cli", "read")
 # What a `cli` token may not change (prefixes under /api; reads stay allowed).
 CLI_DENY = ("/api/account", "/api/secrets", "/api/security-alerts", "/api/connector", "/api/connected-apps", "/api/integrations",
-            "/api/settings", "/api/notifications/settings", "/api/extensions", "/api/hub", "/api/backups", "/api/membership")
+            "/api/settings", "/api/notifications/settings", "/api/extensions", "/api/hub", "/api/backups", "/api/membership", "/api/friends")
 READ_ALLOW = ("/api/auth/logout",)  # the only write a read-only token may make
 
 

@@ -59,3 +59,31 @@ class Store:
 
     def save_status(self, status: dict | None) -> None:
         _write(self.dir / "tunnel-status.json", status)
+
+    def peers(self) -> dict:
+        """peers.json: friends by lowercase address (see peers.py for the record)."""
+        return _read(self.dir / "peers.json", {})  # type: ignore[return-value]
+
+    def save_peers(self, peers: dict) -> None:
+        _write(self.dir / "peers.json", peers)
+
+    def outbox(self) -> list:
+        """outbox.json: the envelopes waiting to be delivered, and the recently finished ones."""
+        return _read(self.dir / "outbox.json", [])  # type: ignore[return-value]
+
+    def save_outbox(self, entries: list) -> None:
+        _write(self.dir / "outbox.json", entries)
+
+    def hubs(self) -> dict:
+        """hubs.json: the hub signing key pinned on first contact, by hub domain."""
+        return _read(self.dir / "hubs.json", {})  # type: ignore[return-value]
+
+    def save_hubs(self, hubs: dict) -> None:
+        _write(self.dir / "hubs.json", hubs)
+
+    def services(self) -> list:
+        """services.json: the addresses of the hub's services, as control last told us."""
+        return _read(self.dir / "services.json", [])  # type: ignore[return-value]
+
+    def save_services(self, addresses: list) -> None:
+        _write(self.dir / "services.json", addresses)

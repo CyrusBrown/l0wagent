@@ -1,0 +1,20 @@
+{
+  "note": "Crockford base32 (alphabet 0123456789ABCDEFGHJKMNPQRSTVWXYZ) of the first 10 bytes of SHA-256 of the raw public key",
+  "cases": [
+    {
+      "pub": "_-2c7_nOJRpW5HfxP2irxtVfhWWwU-IqTcETdZVWCv4",
+      "sha256_hex": "a8d9db3e83b84e0c12a9740ab7cf6774e519095e892603aa51ef3eadf0342c87",
+      "fingerprint": "N3CX-PFM3-Q170-R4N9"
+    },
+    {
+      "pub": "cNdi9_uLQkp1HIHSqPrfYKiMOWg3IvJ82wj3NcXLiyo",
+      "sha256_hex": "e7d9e43e0597caeda0f538d71ab285119f5ffbbd9566a33fba509450da23805f",
+      "fingerprint": "WZCY-8FG5-JZ5E-V87N"
+    },
+    {
+      "pub": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "sha256_hex": "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925",
+      "fingerprint": "CSM7-NBFR-CAYQ-EV4F"
+    }
+  ]
+}
