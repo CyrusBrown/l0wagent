@@ -51,8 +51,10 @@ class Shelf:
             size = last["size"] if last else None
         else:
             size = r["last_size"]
+        upd = self.db.q1("SELECT run_id FROM shelf_versions WHERE item_id=? AND run_id IS NOT NULL ORDER BY n DESC LIMIT 1", (r["id"],))
+        run_id = upd["run_id"] if upd else r["run_id"]  # the newest run that stored a version, else the creating run
         return s.ShelfItem(id=r["id"], project=r["slug"], label=r["label"], volume=r["volume"], path=r["path"], mode=r["mode"], keep_versions=r["keep_versions"],
-                           versions=versions, added_by=r["added_by"], run_id=r["run_id"], created_at=parse(r["created_at"]), updated_at=parse(r["updated_at"]),  # type: ignore[arg-type]
+                           versions=versions, added_by=r["added_by"], run_id=run_id, created_at=parse(r["created_at"]), updated_at=parse(r["updated_at"]),  # type: ignore[arg-type]
                            size=size, mime=guess_mime(r["path"]), missing=bool(r["missing"]) and r["mode"] == "live")
 
     def item(self, item_id: int) -> s.ShelfItem:

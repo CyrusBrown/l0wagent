@@ -272,3 +272,29 @@ def test_files_origin_pdf_is_sandboxed_too(c, tree):
     assert r.headers["content-security-policy"].startswith("sandbox allow-scripts")
     r = TestClient(c.be.files_app).get(url[url.index("/f/"):], headers={"Range": "bytes=0-3"})
     assert r.status_code == 206 and r.headers["content-security-policy"].startswith("sandbox")
+
+
+def test_shelf_item_shows_the_run_that_last_updated_it(c, tree):
+    ok(c.post("/api/projects", json={"name": "Garden"}), 201)
+    out = tree / "work" / "garden" / "out" / "summary.txt"
+    sh = c.be.shelf_
+    for rid in (11, 12):
+        c.be.db.ex("INSERT INTO runs(id, kind, why, status, started_at) VALUES(?,?,?,?,?)", (rid, "wakeup", "manual", "done", c.be.db.now()))
+    item = ok(c.post("/api/projects/garden/shelf", json={"volume": "work", "path": "garden/out/summary.txt", "keep_versions": 5}), 201)
+    c.be.db.ex("UPDATE shelf_items SET run_id=11 WHERE id=?", (item["id"],))
+    c.be.db.ex("UPDATE shelf_versions SET run_id=11 WHERE item_id=?", (item["id"],))
+
+    def shown():
+        return next(i for i in ok(c.get("/api/projects/garden/shelf")) if i["id"] == item["id"])["run_id"]
+
+    assert shown() == 11  # never updated: the creating run
+
+    def change(text, n, run):
+        out.write_text(text)
+        os.utime(out, (time.time() + n, time.time() + n))
+        assert sh.check(run) == [item["id"]]
+
+    change("b\n", 2, 12)
+    assert shown() == 12  # updated by run B
+    change("c\n", 3, None)  # a scan with no run active
+    assert shown() == 12  # does not hide the earlier update
