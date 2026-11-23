@@ -183,6 +183,10 @@ class AnthropicClient:
         u = msg.usage
         out.usage = {"input_tokens": u.input_tokens or 0, "output_tokens": u.output_tokens or 0,
                      "cache_read_input_tokens": getattr(u, "cache_read_input_tokens", 0) or 0, "cache_creation_input_tokens": getattr(u, "cache_creation_input_tokens", 0) or 0}
+        cc = getattr(u, "cache_creation", None)  # the split by TTL, when the API gives it (priced differently)
+        if cc is not None:
+            out.usage["cache_creation"] = {"ephemeral_5m_input_tokens": getattr(cc, "ephemeral_5m_input_tokens", 0) or 0,
+                                           "ephemeral_1h_input_tokens": getattr(cc, "ephemeral_1h_input_tokens", 0) or 0}
         out.cost_usd = price(out.model, out.usage)
         return out
 

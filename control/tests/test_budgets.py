@@ -118,7 +118,7 @@ def test_message_usage_is_counted_once_and_replaced_by_the_total(be):
     u = {"input_tokens": 1_000_000, "output_tokens": 0}
     be.budgets.record_message(rid, sid, "claude-subscription", "assistant", "allowance", "m1", "claude-sonnet", u)
     be.budgets.record_message(rid, sid, "claude-subscription", "assistant", "allowance", "m1", "claude-sonnet", u)  # same message, another block
-    assert be.budgets.run_cost(rid) == pytest.approx(3.0) and be.budgets.run_pts(rid) == pytest.approx(6.0)
+    assert be.budgets.run_cost(rid) == pytest.approx(2.0) and be.budgets.run_pts(rid) == pytest.approx(4.0)  # Sonnet 5.5: $2 per million input tokens
     be.budgets.record_total(rid, sid, "claude-subscription", "assistant", "allowance", 2.5)
     assert be.budgets.run_pts(rid) == pytest.approx(5.0)
     be.budgets.calibrate(delta_pts=20, cost_usd=2.5)  # the meter moved 2%: 8 pts per dollar, blended in
@@ -493,3 +493,21 @@ def test_the_owner_can_give_a_running_run_more_points(c, be):
     be.db.ex("UPDATE runs SET status='done' WHERE id=?", (rid,))
     r = c.post(f"/api/runs/{rid}/budget", json={"add": 10})
     assert r.status_code == 409 and "not_running" in r.text
+
+
+def test_claude_prices_match_what_claude_code_reports():
+    """The live estimate prices tokens at current list prices, per model, with 1-hour cache writes at 2x: a real Sonnet 5.5 session
+    (run #31 on the owner's instance) that Claude Code reported at $0.6738 prices the same, where the old family table said $1.21."""
+    from l0w_control.budgets import model_prices, price
+
+    session = {"input_tokens": 98, "output_tokens": 17825, "cache_read_input_tokens": 2319698, "cache_creation_input_tokens": 65842,
+               "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 65842}}
+    assert abs(price("claude-sonnet-5-5", session) - 0.6738) < 0.0005
+    # without the split by TTL, writes count as 5-minute ones (1.25x)
+    plain = {k: v for k, v in session.items() if k != "cache_creation"}
+    assert abs(price("claude-sonnet-5-5", plain) - (0.6738 - 65842 * 2.0 * 0.75 / 1e6)) < 0.0005
+    assert model_prices("claude-opus-5-5[1m]") == (4.0, 20.0, 0.20)  # longest prefix: not Opus 5's
+    assert model_prices("claude-opus-5") == (5.0, 25.0, 0.50)
+    assert model_prices("claude-haiku-5-5") == (0.10, 0.50, 0.01)
+    assert model_prices("claude-fable-5-2") == (8.0, 40.0, 0.20)
+    assert model_prices("opus") == (4.0, 20.0, 0.20) and model_prices(None) == (2.0, 10.0, 0.10)  # a family name or nothing: the current model

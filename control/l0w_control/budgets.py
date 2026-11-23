@@ -77,10 +77,19 @@ PLAN_HORIZON_DAYS = 8
 ALL_DAYS = [0, 1, 2, 3, 4, 5, 6]
 WEEKDAYS = [0, 1, 2, 3, 4]
 
-# API prices per million tokens (input, output), by model family: for the live estimate only.
-# The runtime's own total replaces it when the session ends.
-PRICES = {"opus": (5.0, 25.0), "sonnet": (3.0, 15.0), "haiku": (1.0, 5.0)}
-CACHE_READ, CACHE_WRITE = 0.1, 1.25
+# Claude API list prices, $ per million tokens: (input, output, cache read). Cache writes are 1.25x input for the
+# 5-minute TTL and 2x for the 1-hour TTL (Claude Code writes 1-hour entries). For the live estimate and the 1:1 chat;
+# a run's session total from the runtime replaces the estimate when the session ends. A model id matches its longest
+# prefix here (so `claude-opus-5-5[1m]` is Opus 5.5); anything else falls back to its family's current model.
+MODEL_PRICES = {
+    "claude-fable-5-2": (8.0, 40.0, 0.20), "claude-mythos-5-2": (8.0, 40.0, 0.20),
+    "claude-fable-5-1": (10.0, 50.0, 0.25), "claude-mythos-5-1": (10.0, 50.0, 0.25), "claude-fable-5": (10.0, 50.0, 1.0),
+    "claude-opus-5-5": (4.0, 20.0, 0.20), "claude-opus-5": (5.0, 25.0, 0.50), "claude-opus-4": (5.0, 25.0, 0.50),
+    "claude-sonnet-5-5": (2.0, 10.0, 0.10), "claude-sonnet-5": (2.0, 10.0, 0.20), "claude-sonnet-4": (3.0, 15.0, 0.30),
+    "claude-haiku-5-5": (0.10, 0.50, 0.01), "claude-haiku-4": (1.0, 5.0, 0.10),
+}
+FAMILY_CURRENT = {"fable": "claude-fable-5-2", "mythos": "claude-mythos-5-2", "opus": "claude-opus-5-5", "sonnet": "claude-sonnet-5-5", "haiku": "claude-haiku-5-5"}
+CACHE_WRITE_5M, CACHE_WRITE_1H = 1.25, 2.0
 
 TIERS = ["haiku/low", "sonnet/low", "sonnet/medium", "sonnet/high", "opus/low", "opus/medium", "opus/high"]
 
@@ -205,10 +214,21 @@ def hours_text(windows: list[dict]) -> str:
 def price(model: str | None, usage: dict) -> float:
     if "cost_usd" in usage:  # opencode reports each step's cost itself
         return float(usage["cost_usd"] or 0)
-    fam = next((f for f in PRICES if f in (model or "").lower()), "sonnet")
-    pin, pout = PRICES[fam]
-    return (usage.get("input_tokens", 0) * pin + usage.get("output_tokens", 0) * pout
-            + usage.get("cache_read_input_tokens", 0) * pin * CACHE_READ + usage.get("cache_creation_input_tokens", 0) * pin * CACHE_WRITE) / 1e6
+    pin, pout, pread = model_prices(model)
+    writes = usage.get("cache_creation") or {}
+    w1h = int(writes.get("ephemeral_1h_input_tokens") or 0)
+    w5m = int(writes.get("ephemeral_5m_input_tokens") or 0) if writes else int(usage.get("cache_creation_input_tokens") or 0)
+    return (usage.get("input_tokens", 0) * pin + usage.get("output_tokens", 0) * pout + usage.get("cache_read_input_tokens", 0) * pread
+            + w5m * pin * CACHE_WRITE_5M + w1h * pin * CACHE_WRITE_1H) / 1e6
+
+
+def model_prices(model: str | None) -> tuple[float, float, float]:
+    """(input, output, cache read) $ per million tokens for a Claude model id."""
+    m = (model or "").lower()
+    key = max((k for k in MODEL_PRICES if m.startswith(k)), key=len, default=None)
+    if key is None:
+        key = next((v for f, v in FAMILY_CURRENT.items() if f in m), FAMILY_CURRENT["sonnet"])
+    return MODEL_PRICES[key]
 
 
 class Budgets:
