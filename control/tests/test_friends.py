@@ -42,6 +42,7 @@ class FakeGateway:
     send_state: str = "queued"
     outbox: list[dict] = field(default_factory=list)
     down: bool = False
+    refused: int = 0  # calls made while down
     n: int = 0
 
     def paths(self) -> list[str]:
@@ -52,6 +53,7 @@ class FakeGateway:
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         if self.down:
+            self.refused += 1
             raise httpx.ConnectError("gateway down", request=request)
         path = request.url.path
         raw = request.content
@@ -488,7 +490,7 @@ def test_the_owners_message_is_sent_and_its_delivery_follows_the_outbox(w):
     w.be.vault.set("MY_KEY", "sk-live/abc+123=XYZ_9876")
     m = ok(w.c.post(f"/api/threads/{tid}/messages", json={"body": "the key is sk-live/abc+123=XYZ_9876", "idempotency_key": "m-1"}), 201)
     w.run(w.be.friends_.flush())
-    send = w.gw.bodies("/v0/peer/send")[0]
+    send = sent(w)[0]
     assert send["to"] == BOB and send["kind"] == "message"
     assert send["body"] == {"thread": str(tid), "reply_to": None, "text": "the key is [secret:MY_KEY]", "files": []}
     ob = w.be.db.q1("SELECT * FROM peer_outbox")
@@ -558,6 +560,9 @@ def test_a_file_that_went_missing_before_sending_fails_the_message_and_tells_the
     w.gw.down = True  # the message waits for the gateway, so there's time to swap the file
     (tmp_path / "work" / "a.txt").write_bytes(b"a")
     ok(w.c.post("/api/agent/messages", headers=AGENT, json={"thread": tid, "body": "see a.txt", "files": ["/work/a.txt"]}))
+    # posting starts a flush in the background, which reads the file before it finds the gateway down: let it end first, or it
+    # holds the old contents and sends them once the gateway is back
+    _wait(lambda: w.gw.refused > 0 and not w.be.friends_._inflight, 3.0)
     (tmp_path / "work" / "a.txt").unlink()
     (tmp_path / "work" / "a.txt").symlink_to("/etc/hostname")  # swapped for a link after it was checked
     w.gw.down = False
