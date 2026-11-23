@@ -371,3 +371,16 @@ def test_hub_sdk_events_go_to_the_extensions_that_asked(hubby):
     assert hw.arrive(ECHO, "service-event", {"event": "roles", "data": {"grants": []}}).status_code == 202
     time.sleep(0.3)
     assert hw.be.ext.kv_get("hubby", "data:by_kind") == expected
+
+
+def test_git_sources_come_from_extensions_toml_and_the_ops_file(client, exts):
+    """extensions.toml (the owner's) and extensions/.ops.toml (written by the ops container) both name sources; the owner's wins."""
+    mgr = client.be.ext
+    sha = "a" * 40
+    (exts.parent / "extensions.toml").write_text(f'[extension.plantlog]\ngit = "https://x/mine.git"\ncommit = "{sha}"\n')
+    (exts / ".ops.toml").write_text(f'[extension.plantlog]\ngit = "https://x/ui.git"\ncommit = "{"b" * 40}"\n[extension.other]\ngit = "https://x/o.git"\ncommit = "{"c" * 40}"\n')
+    assert mgr._sources() == {"plantlog": f"https://x/mine.git@{sha[:12]}", "other": f"https://x/o.git@{'c' * 12}"}
+    (exts.parent / "extensions.toml").unlink()
+    assert mgr._sources()["plantlog"].startswith("https://x/ui.git@")
+    (exts / ".ops.toml").write_text("not [toml")
+    assert mgr._sources() == {}

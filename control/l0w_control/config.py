@@ -51,6 +51,9 @@ class Env:
     chat_control_url: str = field(default_factory=lambda: _env("L0W_CHAT_CONTROL_URL", "http://control:8000").rstrip("/"))
     # Dev only (dev_stack.py, tests): let /api/agent/* be called from any address, not just the sandbox subnet.
     agent_api_any_address: bool = field(default_factory=lambda: _env("L0W_AGENT_API_ANY_ADDRESS") == "1")
+    # The ops container (ops.py): installs extensions and, if the owner opted in, updates the install. Unset: every feature of it is hidden.
+    ops_url: str = field(default_factory=lambda: _env("L0W_OPS_URL").rstrip("/"))
+    ops_token: str = field(default_factory=lambda: _env("L0W_OPS_TOKEN"))
 
 
 class Spec(NamedTuple):
@@ -126,6 +129,7 @@ SPECS: dict[str, Spec] = {
     "PEER_DAY_PCT": Spec("float", 5.0, "The spend breaker: peer spending may use this share (%) of the period's allowance per local day before replies to friends pause and you're asked.",
                          lo=0.5, hi=100),
     "PEER_DAY_PCT_STEP": Spec("float", 5.0, "How many points of percent 'Allow more today' adds to today's limit on peer spending.", lo=0.5, hi=100),
+    "UPDATE_IDLE_WAIT_MINUTES": Spec("int", 60, "Update now (the update banner) waits this long for the assistant to be idle before it gives up and lets runs start again.", lo=1, hi=1440),
     "PEER_SPAN_MINUTES": Spec("int", 10, "Turns spent on a friend's message count as peer spending until the assistant posts elsewhere, the run ends, "
                               "or this many minutes pass after the last friend message.",
                               lo=1, hi=240),
@@ -184,6 +188,7 @@ ADVANCED: dict[str, tuple[str, str, str | None]] = {
     "RUN_EVENTS_KEEP_DAYS": ("System", "Keep raw run logs for", "days"),
     "DISK_WARN_FREE_GB": ("System", "Warn when free disk is below", "GB"),
     "UPDATE_CHECK": ("System", "Check for updates", None),
+    "UPDATE_IDLE_WAIT_MINUTES": ("System", "Update now waits for the assistant to be idle for up to", "min"),
     "SELFTEST_LAN_TARGETS": ("System", "Self-test LAN addresses", None),
 }
 

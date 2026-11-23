@@ -92,6 +92,8 @@ class Conversations:
         self.on_assistant_peer_message: Callable[[int, int], None] | None = None
         # Set by the backend: applies an approved wake request (payload, run_id) -> result; see friends.py.
         self.apply_wake: Callable[[dict], dict] | None = None
+        # Set by the backend: applies an approved hub extension update (payload) -> result; see ops.py.
+        self.apply_extension_update: Callable[[dict], dict] | None = None
         live.getters.update(
             project=lambda i: self.project(i), thread=lambda i: self.thread(int(i)), message=lambda i: self.message(int(i)),
             question=lambda i: self.question(int(i)), permission=lambda i: self.permission(int(i)), task=lambda i: self.task(int(i)),
@@ -246,8 +248,8 @@ class Conversations:
         return self.question_model(self._get("questions", qid, "question"))
 
     def _scopes(self, r: dict) -> list:
-        if self.db.q1("SELECT 1 FROM permission_actions WHERE permission_id=? AND kind='wake'", (r["id"],)):
-            return ["once"]  # one wake request, one decision
+        if self.db.q1("SELECT 1 FROM permission_actions WHERE permission_id=? AND kind IN ('wake', 'extension_update')", (r["id"],)):
+            return ["once"]  # one wake request or extension update, one decision
         if self.db.q1("SELECT 1 FROM permission_actions WHERE permission_id=? AND kind='mcp_call'", (r["id"],)):
             return ["once", "always"]  # this exact call once, or the tool always
         has_project = r["thread_id"] and self.db.q1("SELECT project_id FROM threads WHERE id=?", (r["thread_id"],))["project_id"]
@@ -539,12 +541,14 @@ class Conversations:
 
     def file_permission(self, run_id: int | None, thread_id: int | None, text: str, reason: str | None, actions: list[dict],
                         trusted: bool = False, title: str | None = None, tell_agent: bool = True) -> s.Permission:
-        """`trusted`: filed by control itself (a brokered call, a friend's wake request), so 'mcp_call' and 'wake' actions are accepted.
+        """`trusted`: filed by control itself (a brokered call, a friend's wake request, a hub's extension update), so 'mcp_call', 'wake'
+        and 'extension_update' actions are accepted.
         `tell_agent=False`: the decision isn't delivered to the agent (it wasn't the agent's question)."""
         self._check_ask_cap(run_id)
         checked = [self._check_routine(a) if a.get("kind") == "routine"
                    else self.integrations.check_action(a) if trusted and a.get("kind") == "mcp_call" and self.integrations
                    else ("wake", {"address": str(a.get("address", "")), "peer_wake": int(a.get("peer_wake", 0))}) if trusted and a.get("kind") == "wake"
+                   else ("extension_update", {k: str(a.get(k, ""))[:200] for k in ("address", "name", "from_commit", "to_commit")}) if trusted and a.get("kind") == "extension_update"
                    else _check_action(a) for a in actions]
         with self.db.tx() as db:
             pid = db.ex("INSERT INTO permissions(thread_id, run_id, text, reason, created_at) VALUES(?,?,?,?,?)",
@@ -584,8 +588,8 @@ class Conversations:
         row = self._get(table, id_, kind)
         if row["status"] != "open":
             raise Conflict("not_open", f"{kind} {id_} is {row['status']}")
-        if kind == "permission" and self.db.q1("SELECT 1 FROM permission_actions WHERE permission_id=? AND kind='wake'", (id_,)):
-            raise Conflict("not_yours", "That's a friend's wake request, not one of your asks: only the owner decides it.")
+        if kind == "permission" and self.db.q1("SELECT 1 FROM permission_actions WHERE permission_id=? AND kind IN ('wake', 'extension_update')", (id_,)):
+            raise Conflict("not_yours", "That's not one of your asks (a friend's wake request, or an extension update from the hub): only the owner decides it.")
         self.db.ex(f"UPDATE {table} SET status='withdrawn' WHERE id=?", (id_,))
         self._card(kind, id_, row.get("thread_id") if kind != "suggestion" else None)
 
@@ -651,6 +655,10 @@ class Conversations:
                 if self.apply_wake is None:
                     raise RuntimeError("waking isn't available")
                 result = self.apply_wake(payload)
+            elif a["kind"] == "extension_update":
+                if self.apply_extension_update is None:
+                    raise RuntimeError("extension updates aren't available")
+                result = self.apply_extension_update(payload)
             elif a["kind"] == "setting":
                 old = self.db.q1("SELECT value_json FROM settings WHERE key=?", (payload["key"],))
                 result["previous"] = old["value_json"] if old else None
@@ -669,8 +677,8 @@ class Conversations:
         undone = []
         for a in rows:
             payload, result = _j(a["payload_json"], {}), _j(a["result_json"], {})
-            if a["kind"] in ("mcp_call", "wake"):
-                continue  # used by the call itself / a wake request is a one-off with nothing to undo
+            if a["kind"] in ("mcp_call", "wake", "extension_update"):
+                continue  # used by the call itself / a wake request or an extension update is a one-off with nothing to undo
             try:
                 if a["kind"] == "egress_rule" and result.get("rule_id") and self.delete_egress_rule:
                     self.delete_egress_rule(int(result["rule_id"]))
@@ -1079,6 +1087,8 @@ def _action_summary(kind: str, p: dict) -> str:
         return f"call {p.get('title') or p.get('integration')} → {p.get('tool')} with {args if len(args) <= 400 else args[:399] + '…'}"
     if kind == "wake":
         return f"wake your assistant for {p.get('address')} (a wakeup soon, on your budget)"
+    if kind == "extension_update":
+        return f"update the extension {p.get('name')} (from {p.get('address')}) from commit {str(p.get('from_commit'))[:10]} to {str(p.get('to_commit'))[:10]}"
     if kind == "setting":
         v = p.get("value")
         return f"set {p.get('key')} to {v:g}" if isinstance(v, float) else f"set {p.get('key')} to {v}"

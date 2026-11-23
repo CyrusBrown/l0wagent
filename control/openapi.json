@@ -6068,6 +6068,54 @@
             "device": []
           }
         ]
+      },
+      "patch": {
+        "tags": [
+          "hub"
+        ],
+        "summary": "Membership Patch",
+        "description": "Change a choice about the joined hub, such as asking before its services' extensions are updated.",
+        "operationId": "membership_patch_api_membership_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MembershipPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Membership"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
       }
     },
     "/api/membership/preview": {
@@ -7386,6 +7434,56 @@
         ]
       }
     },
+    "/api/system/update/apply": {
+      "post": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Apply Update",
+        "description": "Online only. Starts the update the check offers: the assistant finishes what it is doing, then the ops container updates and restarts the app.\nRefused unless updating from the web app was turned on at install (./l0w ops enable-updates).",
+        "operationId": "apply_update_api_system_update_apply_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
     "/api/system/update/cancel": {
       "post": {
         "tags": [
@@ -8356,6 +8454,157 @@
             "device": []
           }
         ]
+      }
+    },
+    "/api/extensions/resolve": {
+      "post": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "Resolve Extension",
+        "description": "Online only. Looks a branch or tag up in a git repository and answers the commit it points to now (the ops container does the git work).",
+        "operationId": "resolve_extension_api_extensions_resolve_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtensionResolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionResolved"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/extensions/install": {
+      "post": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "Install Extension",
+        "description": "Online only. Installs an extension from a git repository at one commit (from /extensions/resolve). It stays off until you turn it on.",
+        "operationId": "install_extension_api_extensions_install_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtensionInstallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ]
+      }
+    },
+    "/api/extensions/{name}": {
+      "delete": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "Remove Extension",
+        "description": "Online only. Removes an extension the web app installed (its data and settings stay in the database).",
+        "operationId": "remove_extension_api_extensions__name__delete",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionRemoved"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/extensions/rescan": {
@@ -9668,6 +9917,12 @@
             "type": "array",
             "title": "Extensions",
             "default": []
+          },
+          "ops": {
+            "type": "boolean",
+            "title": "Ops",
+            "description": "The ops container is set up: extensions can be installed from a git URL and hub services can install theirs.",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -10978,7 +11233,18 @@
           "source": {
             "type": "string",
             "title": "Source",
-            "description": "'local', or the git URL and commit from extensions.toml."
+            "description": "'local', or the git URL and commit from extensions.toml, `.ops.toml` or a hub service."
+          },
+          "ops": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExtensionOps"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when the ops container installed it (it can be removed from the web app)."
           },
           "description": {
             "type": "string",
@@ -11081,6 +11347,176 @@
           "routines"
         ],
         "title": "ExtensionInfo"
+      },
+      "ExtensionInstallRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 31,
+            "minLength": 2,
+            "title": "Name",
+            "description": "The extension's name: it must match `name` in its extension.toml."
+          },
+          "git": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Git"
+          },
+          "commit": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 40,
+            "title": "Commit",
+            "description": "A full commit from /extensions/resolve."
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 300
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path",
+            "description": "The extension's folder inside the repository; empty is the top."
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key",
+            "description": "Client-generated key; repeating a create with the same key returns the first result."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "git",
+          "commit"
+        ],
+        "title": "ExtensionInstallRequest"
+      },
+      "ExtensionOps": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "toml",
+              "hub"
+            ],
+            "title": "Source",
+            "description": "owner: installed from a git URL in the web app; toml: from extensions.toml; hub: a hub service's extension."
+          },
+          "git": {
+            "type": "string",
+            "title": "Git"
+          },
+          "commit": {
+            "type": "string",
+            "title": "Commit"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "installed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installed At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "source",
+          "git",
+          "commit"
+        ],
+        "title": "ExtensionOps"
+      },
+      "ExtensionRemoved": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "still_in_extensions_toml": {
+            "type": "boolean",
+            "title": "Still In Extensions Toml",
+            "description": "Its folder is gone, but your own extensions.toml still lists it, so ./l0w extensions sync would fetch it again.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ExtensionRemoved"
+      },
+      "ExtensionResolveRequest": {
+        "properties": {
+          "git": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Git",
+            "description": "An https git URL."
+          },
+          "ref": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Ref",
+            "description": "A branch, tag or commit; empty is the default branch.",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "git"
+        ],
+        "title": "ExtensionResolveRequest"
+      },
+      "ExtensionResolved": {
+        "properties": {
+          "commit": {
+            "type": "string",
+            "title": "Commit",
+            "description": "The full commit the ref points to now. Installing pins this commit, never the branch."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "commit"
+        ],
+        "title": "ExtensionResolved"
       },
       "ExtensionSetting": {
         "properties": {
@@ -12597,7 +13033,67 @@
                 "type": "null"
               }
             ],
-            "description": "The instance-side extension the hub names for this service (installing it is separate)."
+            "description": "The instance-side extension the hub names for this service."
+          },
+          "extension_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extension Name",
+            "description": "The name it installs under (the service's name on the hub)."
+          },
+          "extension_enabled": {
+            "type": "boolean",
+            "title": "Extension Enabled",
+            "description": "The owner's switch for the extension: on installs it (and applies the hub's updates), off removes it.",
+            "default": true
+          },
+          "extension_state": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "installing",
+                  "installed",
+                  "waiting",
+                  "error"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extension State",
+            "description": "waiting: a newer commit waits for the owner's OK."
+          },
+          "extension_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extension Commit",
+            "description": "The commit installed now."
+          },
+          "extension_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extension Error"
           },
           "default_on": {
             "type": "boolean",
@@ -12689,15 +13185,32 @@
       "HubServicePatch": {
         "properties": {
           "enabled": {
-            "type": "boolean",
-            "title": "Enabled"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled",
+            "description": "The service's switch."
+          },
+          "extension_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extension Enabled",
+            "description": "The extension's own switch."
           }
         },
         "additionalProperties": false,
         "type": "object",
-        "required": [
-          "enabled"
-        ],
         "title": "HubServicePatch"
       },
       "InboxCounts": {
@@ -13981,6 +14494,12 @@
               }
             ],
             "title": "Hub Key Alarm"
+          },
+          "ask_before_extension_updates": {
+            "type": "boolean",
+            "title": "Ask Before Extension Updates",
+            "description": "Ask me before a newer commit of an extension this hub's services installed is applied; off applies it and logs it.",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -14018,6 +14537,24 @@
           "at"
         ],
         "title": "MembershipCheck"
+      },
+      "MembershipPatch": {
+        "properties": {
+          "ask_before_extension_updates": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ask Before Extension Updates"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "MembershipPatch"
       },
       "Message": {
         "properties": {
@@ -14669,7 +15206,8 @@
               "setting",
               "routine",
               "mcp_call",
-              "wake"
+              "wake",
+              "extension_update"
             ],
             "title": "Kind"
           },
@@ -18655,6 +19193,73 @@
         ],
         "title": "TunnelStatus"
       },
+      "UpdateApplyRequest": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Version",
+            "description": "The version the update check offers (info.latest)."
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key",
+            "description": "Client-generated key; repeating a create with the same key returns the first result."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "UpdateApplyRequest"
+      },
+      "UpdateApplying": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "waiting",
+              "updating",
+              "restarting"
+            ],
+            "title": "State",
+            "description": "waiting: for the assistant to be idle; updating: pulling the new images; restarting: replacing the stack."
+          },
+          "step": {
+            "type": "string",
+            "title": "Step",
+            "description": "One sentence for the owner."
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "state",
+          "step",
+          "started_at"
+        ],
+        "title": "UpdateApplying"
+      },
       "UpdateInfo": {
         "properties": {
           "current": {
@@ -18751,6 +19356,40 @@
             "type": "array",
             "title": "Waiting For",
             "description": "What a pending update waits for (a run in progress, don't-interrupt jobs)."
+          },
+          "ops_available": {
+            "type": "boolean",
+            "title": "Ops Available",
+            "description": "The ops container is set up.",
+            "default": false
+          },
+          "ops_docker": {
+            "type": "boolean",
+            "title": "Ops Docker",
+            "description": "Updating from the web app is on (the owner opted in at install): the Update now button works.",
+            "default": false
+          },
+          "applying": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpdateApplying"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An update started from the web app and not finished yet."
+          },
+          "last_result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpdateResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How the last update started from the web app ended; shown for a day."
           }
         },
         "additionalProperties": false,
@@ -18768,6 +19407,42 @@
           "waiting_for"
         ],
         "title": "UpdateInfo"
+      },
+      "UpdateResult": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "ok",
+          "at"
+        ],
+        "title": "UpdateResult"
       },
       "Upload": {
         "properties": {
@@ -19278,7 +19953,8 @@
               "extension",
               "membership",
               "friend",
-              "friend_request"
+              "friend_request",
+              "update"
             ],
             "title": "Type",
             "type": "string"

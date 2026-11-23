@@ -27,6 +27,7 @@ jobs:
           - { name: chat-runtime, context: chat-runtime, file: chat-runtime/Dockerfile }
           - { name: gateway, context: ., file: gateway/Dockerfile }
           - { name: tunnel, context: ., file: tunnel/Dockerfile }
+          - { name: ops, context: ., file: ops/Dockerfile }
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }  # edge versions name the latest release tag

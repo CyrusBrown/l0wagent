@@ -63,6 +63,8 @@ export function invalidateFor(qc: QueryClient, e: S['LiveEvent']) {
       return inv(['runs'], ['run'], ['status'], ['system'])
     case 'membership':
       return inv(['membership'])
+    case 'update':
+      return inv(['system'], ['status'])
     case 'friend':
     case 'friend_request':
       return inv(['friends'], ['friend-requests'], ['friend-breaker'], ['threads'])

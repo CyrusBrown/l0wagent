@@ -1,6 +1,7 @@
 """./l0w update's pull step and checkout check (issue #2), without Docker."""
 
 import importlib.util
+import json
 import subprocess
 from pathlib import Path
 
@@ -96,6 +97,7 @@ def setup_update(l0w, monkeypatch, calls):
     monkeypatch.setattr(l0w, "env_file", lambda: {"L0W_PORT": "8000"})
     monkeypatch.setattr(l0w, "add_chat_settings", lambda env: False)
     monkeypatch.setattr(l0w, "add_hub_settings", lambda env: False)
+    monkeypatch.setattr(l0w, "add_ops_settings", lambda env: False)
     monkeypatch.setattr(l0w, "check_checkout", lambda v: None)
     monkeypatch.setattr(l0w, "pull_images", lambda: None)
     monkeypatch.setattr(l0w, "wait_healthy", lambda port: True)
@@ -180,3 +182,152 @@ def test_add_hub_settings_keeps_what_is_there(l0w, monkeypatch):
     before = dict(env)
     assert l0w.add_hub_settings(env) is False
     assert env == before
+
+
+# ── the ops containers (H6) ───────────────────────────────────────────────────
+
+
+def test_no_drain_skips_the_wait_but_still_recreates_and_clears_the_hold(l0w, monkeypatch):
+    calls = drain_calls(l0w, monkeypatch, lambda: pytest.fail("must not wait for idle"))
+    setup_update(l0w, monkeypatch, calls)
+    seen = []
+    monkeypatch.setattr(l0w, "compose", lambda *a, **k: seen.append(a) or subprocess.CompletedProcess(a, 0, "1.0.0", ""))
+    l0w.cmd_update(update_args(l0w, no_drain=True))
+    assert ("up", "-d", "--remove-orphans") in seen
+    assert [c[:2] for c in calls] == [("drain", "off")]  # no drain on, no idle polling; the hold is cleared at the end
+
+
+def test_add_ops_settings_fills_an_older_env(l0w, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    env = {"L0W_AGENT_TOKEN": "x"}
+    assert l0w.add_ops_settings(env) is True
+    a, b = env["L0W_OPS_TOKEN"], env["L0W_OPS_DOCKER_TOKEN"]
+    assert len(a) >= 32 and len(b) >= 32 and a != b
+    st = tmp_path.stat()
+    assert (env["L0W_UID"], env["L0W_GID"]) == (str(st.st_uid), str(st.st_gid))
+    before = dict(env)
+    assert l0w.add_ops_settings(env) is False and env == before
+    assert "COMPOSE_PROFILES" not in env  # updates from the web UI are the owner's choice
+
+
+def test_updates_profile_toggles_and_keeps_other_profiles(l0w):
+    env = {"COMPOSE_PROFILES": "tools"}
+    l0w.set_updates(env, True)
+    assert env["COMPOSE_PROFILES"] == "tools,ops-docker" and l0w.profiles(env) == ["tools", "ops-docker"]
+    l0w.set_updates(env, True)
+    assert env["COMPOSE_PROFILES"] == "tools,ops-docker"
+    l0w.set_updates(env, False)
+    assert env["COMPOSE_PROFILES"] == "tools"
+    l0w.set_updates(env, False)
+    env2 = {}
+    l0w.set_updates(env2, True)
+    l0w.set_updates(env2, False)
+    assert "COMPOSE_PROFILES" not in env2
+
+
+def test_ops_enable_and_disable(l0w, tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    saved, ran = {}, []
+    monkeypatch.setattr(l0w, "need_docker", lambda: None)
+    monkeypatch.setattr(l0w, "env_file", lambda: dict(saved) or {"L0W_AGENT_TOKEN": "x", "COMPOSE_PROFILES": ""})
+    monkeypatch.setattr(l0w, "write_env", lambda env: saved.clear() or saved.update(env))
+    monkeypatch.setattr(l0w, "compose", lambda *a, **k: ran.append(a) or subprocess.CompletedProcess(a, 0, "", ""))
+    import argparse
+    l0w.cmd_ops(argparse.Namespace(action="enable-updates", yes=True))
+    assert saved["COMPOSE_PROFILES"] == "ops-docker" and saved["L0W_OPS_DOCKER_TOKEN"]
+    assert ("up", "-d", "--remove-orphans") in ran
+    ran.clear()
+    l0w.cmd_ops(argparse.Namespace(action="enable-updates", yes=True))
+    assert ran == [] and "already on" in capsys.readouterr().out
+    l0w.cmd_ops(argparse.Namespace(action="disable-updates", yes=True))
+    assert "COMPOSE_PROFILES" not in saved
+    assert ("--profile", "ops-docker", "rm", "-sf", "ops-docker") in ran and ran[-1] == ("up", "-d", "--remove-orphans")
+
+
+def test_ops_enable_asks_and_defaults_to_no(l0w, monkeypatch):
+    monkeypatch.setattr(l0w, "need_docker", lambda: None)
+    monkeypatch.setattr(l0w, "env_file", lambda: {"L0W_AGENT_TOKEN": "x"})
+    monkeypatch.setattr(l0w, "write_env", lambda env: pytest.fail("must not write"))
+    monkeypatch.setattr("builtins.input", lambda prompt="": "")
+    import argparse
+    with pytest.raises(SystemExit):
+        l0w.cmd_ops(argparse.Namespace(action="enable-updates", yes=False))
+
+
+def test_install_files_exist_for_the_bind_mounts(l0w, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    l0w.ensure_install_files()
+    assert (tmp_path / "extensions").is_dir() and (tmp_path / "extensions.toml").is_file()
+    (tmp_path / "extensions.toml").write_text("# mine\n")
+    l0w.ensure_install_files()
+    assert (tmp_path / "extensions.toml").read_text() == "# mine\n"
+    # Docker makes a folder when the file is missing at `up`: an empty one is put right
+    (tmp_path / "extensions.toml").unlink()
+    (tmp_path / "extensions.toml").mkdir()
+    l0w.ensure_install_files()
+    assert (tmp_path / "extensions.toml").is_file()
+    (tmp_path / "extensions.toml").unlink()
+    (tmp_path / "extensions.toml").mkdir()
+    (tmp_path / "extensions.toml" / "x").write_text("1")
+    with pytest.raises(SystemExit):
+        l0w.ensure_install_files()
+
+
+def test_wait_healthy_in_the_updater_asks_control_from_inside(l0w, monkeypatch):
+    monkeypatch.setenv("L0W_IN_UPDATER", "1")
+    seen = []
+    monkeypatch.setattr(l0w, "compose", lambda *a, **k: seen.append(a) or subprocess.CompletedProcess(a, 0, "", ""))
+    monkeypatch.setattr(l0w._opener, "open", lambda *a, **k: pytest.fail("the host's port isn't this container's"))
+    assert l0w.wait_healthy("8000") is True
+    assert seen[0][:4] == ("exec", "-T", "control", "python")
+
+
+EXT = "a" * 40
+
+
+def sync_env(l0w, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "extensions").mkdir()
+    monkeypatch.setattr(l0w, "call", lambda *a, **k: [])
+    runs = []
+    monkeypatch.setattr(l0w.subprocess, "run", lambda cmd, **k: runs.append(cmd) or subprocess.CompletedProcess(cmd, 0, "", ""))
+    return runs
+
+
+def test_sync_reads_both_toml_files_and_the_owners_wins(l0w, tmp_path, monkeypatch, capsys):
+    runs = sync_env(l0w, tmp_path, monkeypatch)
+    (tmp_path / "extensions.toml").write_text(f'[extension.alpha]\ngit = "https://x/mine.git"\ncommit = "{EXT}"\n')
+    (tmp_path / "extensions" / ".ops.toml").write_text(f'[extension.alpha]\ngit = "https://x/ui.git"\ncommit = "{EXT}"\n[extension.beta]\ngit = "https://x/b.git"\ncommit = "{EXT}"\n')
+    l0w.cmd_extensions_sync()
+    clones = {c[-2]: c[-1] for c in runs if c[:3] == ["git", "clone", "--quiet"]}
+    assert set(clones) == {"https://x/mine.git", "https://x/b.git"}
+    assert "alpha: https://x/mine.git" in capsys.readouterr().out
+
+
+def test_sync_leaves_what_the_web_ui_installed_alone(l0w, tmp_path, monkeypatch, capsys):
+    runs = sync_env(l0w, tmp_path, monkeypatch)
+    (tmp_path / "extensions" / ".ops.toml").write_text(f'[extension.alpha]\ngit = "https://x/a.git"\ncommit = "{EXT}"\n[extension.beta]\ngit = "https://x/b.git"\ncommit = "{EXT}"\n')
+    for name, commit in (("alpha", EXT), ("beta", "b" * 40)):
+        (tmp_path / "extensions" / name).mkdir()
+        (tmp_path / "extensions" / name / ".l0w-source.json").write_text(json.dumps({"commit": commit}))
+    with pytest.raises(SystemExit):  # beta is at another commit than the file says: reported, not touched
+        l0w.cmd_extensions_sync()
+    cap = capsys.readouterr()
+    assert "alpha: https://x/a.git @ aaaaaaaaaaaa (installed from the web UI)" in cap.out and "beta: installed from the web UI" in cap.err
+    assert not [c for c in runs if c[0] == "git"]
+
+
+def test_sync_skips_entries_with_a_path(l0w, tmp_path, monkeypatch, capsys):
+    runs = sync_env(l0w, tmp_path, monkeypatch)
+    (tmp_path / "extensions" / ".ops.toml").write_text(f'[extension.alpha]\ngit = "https://x/a.git"\ncommit = "{EXT}"\npath = "ext/alpha"\n')
+    with pytest.raises(SystemExit):
+        l0w.cmd_extensions_sync()
+    assert "has a path" in capsys.readouterr().err and not runs
+
+
+def test_backup_placeholders_cover_the_compose_files_required_variables(l0w):
+    import re
+    from pathlib import Path
+    text = (Path(l0w.__file__).resolve().parents[1] / "compose.yaml").read_text()
+    required = set(re.findall(r"\$\{([A-Z0-9_]+):\?", text))
+    assert required <= set(l0w.BACKUP_PLACEHOLDERS), required - set(l0w.BACKUP_PLACEHOLDERS)

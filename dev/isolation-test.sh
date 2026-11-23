@@ -21,9 +21,9 @@ for c in checks:
     print("%4s  %s%s" % (c["result"], c["label"], detail))
 sys.exit(1 if any(c["result"] == "fail" for c in checks) else 0)' || SELF_FAIL=1
 
-# The hub's services (gateway, tunnel) are never on the sandbox network: the agent must reach neither, by name or by any of their addresses.
+# The hub's services (gateway, tunnel) and the ops containers are never on the sandbox network: the agent must reach none of them, by name or by any of their addresses.
 HUB_FAIL=0
-for svc_port in gateway:8780 tunnel:80; do
+for svc_port in gateway:8780 tunnel:80 ops:8795 ops-docker:8796; do
   svc=${svc_port%%:*}; port=${svc_port##*:}
   ids=$(docker compose -f "$FILE" ps -q "$svc")
   [ -n "$ids" ] || { echo "skip  $svc is not running"; continue; }

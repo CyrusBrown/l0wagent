@@ -9,7 +9,8 @@
    "push": false,
    "passkeys": false,
    "chat": false,
-   "extensions": []
+   "extensions": [],
+   "ops": true
   },
   "setup_complete": true,
   "instance_name": "l0wagent (mock)"
@@ -65,7 +66,8 @@
   "accelerator": null,
   "check": null,
   "sign_key": null,
-  "hub_key_alarm": null
+  "hub_key_alarm": null,
+  "ask_before_extension_updates": false
  },
  "/api/inbox/counts": {
   "waiting": 12,
@@ -2572,7 +2574,11 @@
   "checked_at": "2026-11-18T22:40:05Z",
   "error": null,
   "draining_until": null,
-  "waiting_for": []
+  "waiting_for": [],
+  "ops_available": true,
+  "ops_docker": true,
+  "applying": null,
+  "last_result": null
  },
  "/api/notifications/settings": {
   "events": {
@@ -3149,5 +3155,6 @@
    }
   ],
   "at": "2026-11-22T22:04:03Z"
- }
+ },
+ "/api/membership/services": []
 }

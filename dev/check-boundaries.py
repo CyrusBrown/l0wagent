@@ -2,7 +2,7 @@
 """The import boundary (docs/plans/hub-development.md, "Repos and layout"): the instance and `hub/`
 depend only on `protocol/`, never on each other, and the instance never ships the fake hub.
 
-- Instance code (control, gateway, tunnel, agent, egress, chat-runtime, cli) must not import `fakehub`
+- Instance code (control, gateway, tunnel, ops, agent, egress, chat-runtime, cli) must not import `fakehub`
   or anything from `hub/` (tests may use the fake hub: it's how the instance is tested).
 - `hub/src` must not import from outside `hub/` (it may read `protocol/` files in its tests).
 - Path dependencies in the instance's pyproject.toml files point only into `protocol/` (dev groups
@@ -17,7 +17,7 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-INSTANCE = ["control/l0w_control", "gateway/l0w_gateway", "tunnel/l0w_tunnel", "agent", "egress", "chat-runtime", "cli"]
+INSTANCE = ["control/l0w_control", "gateway/l0w_gateway", "tunnel/l0w_tunnel", "ops/l0w_ops", "agent", "egress", "chat-runtime", "cli"]
 PY_IMPORT = re.compile(r"^\s*(?:from|import)\s+(fakehub|hub)\b", re.M)
 TS_IMPORT = re.compile(r"""(?:from\s+|import\s*\(\s*|require\s*\(\s*)["']([^"']+)["']""")
 
@@ -39,7 +39,7 @@ def main() -> int:
                     target = (f.parent / spec).resolve()
                     if not target.is_relative_to(ROOT / "hub"):
                         bad.append(f"{f.relative_to(ROOT)}: imports {spec} (outside hub/)")
-    for proj in ("control", "gateway", "tunnel"):
+    for proj in ("control", "gateway", "tunnel", "ops"):
         pp = ROOT / proj / "pyproject.toml"
         if not pp.exists():
             continue

@@ -63,7 +63,7 @@ NOT_TEXT = {
     "peer_spans": {"address", "last_at", "closed_by"},  # the spend breaker's spans: an address, times and how it closed
     # hub services (H6): what the hub's signed documents and our connection state say (the hub's text isn't ours to scrub); a call's text is in vault.SCRUB
     "hub_services": {"address", "kind", "title", "description", "docs", "roles_json", "extension_json", "state", "error", "connected_at", "grants_json",
-                     "sign_key_json"},
+                     "sign_key_json", "doc_json", "ext_state", "ext_commit", "ext_error", "ext_approved", "ext_asked"},
     "service_calls": {"id", "address", "role", "by", "state", "done_at"},
     "runtime_totals": {"conversation"},  # a runtime's conversation id
     "extensions": {"name", "version", "sdk", "source", "found_at"}, "extension_kv": {"ext", "key"}, "extension_cards": {"ext", "kind", "status"},

@@ -816,6 +816,12 @@ def membership(be: Be) -> s.Membership:
     return be.membership()
 
 
+@api.patch("/membership", tags=["hub"])
+def membership_patch(req: s.MembershipPatch, be: Be) -> s.Membership:
+    """Change a choice about the joined hub, such as asking before its services' extensions are updated."""
+    return be.membership_patch(req)
+
+
 @api.post("/membership/preview", tags=["hub"])
 def membership_preview(req: s.InvitePreviewRequest, be: Be) -> s.InvitePreview:
     """Online only. Reads an invite: fetches and verifies the hub's capabilities, checks the invite, and lists what would stop a join."""
@@ -986,6 +992,13 @@ def unfriend(address: str, be: Be) -> s.Ok:
 @api.post("/system/update/check", tags=["system"])
 def check_update(be: Be) -> s.UpdateInfo:
     return be.check_update()
+
+
+@api.post("/system/update/apply", tags=["system"])
+def apply_update(req: s.UpdateApplyRequest, be: Be) -> s.UpdateInfo:
+    """Online only. Starts the update the check offers: the assistant finishes what it is doing, then the ops container updates and restarts the app.
+    Refused unless updating from the web app was turned on at install (./l0w ops enable-updates)."""
+    return be.apply_update(req)
 
 
 @api.post("/system/update/cancel", tags=["system"])
@@ -1174,6 +1187,24 @@ async def upload(
 def list_extensions(be: Be) -> list[s.ExtensionInfo]:
     """Everything found under extensions/, on or off, with errors. An extension's own routes are at /api/ext/<name>/."""
     return be.extensions()
+
+
+@api.post("/extensions/resolve", tags=["extensions"])
+def resolve_extension(req: s.ExtensionResolveRequest, be: Be) -> s.ExtensionResolved:
+    """Online only. Looks a branch or tag up in a git repository and answers the commit it points to now (the ops container does the git work)."""
+    return be.extension_resolve(req)
+
+
+@api.post("/extensions/install", tags=["extensions"], status_code=201)
+def install_extension(req: s.ExtensionInstallRequest, be: Be) -> s.ExtensionInfo:
+    """Online only. Installs an extension from a git repository at one commit (from /extensions/resolve). It stays off until you turn it on."""
+    return be.extension_install(req)
+
+
+@api.delete("/extensions/{name}", tags=["extensions"])
+def remove_extension(name: str, be: Be) -> s.ExtensionRemoved:
+    """Online only. Removes an extension the web app installed (its data and settings stay in the database)."""
+    return be.extension_remove(name)
 
 
 @api.post("/extensions/rescan", tags=["extensions"])

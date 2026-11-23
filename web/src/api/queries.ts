@@ -317,7 +317,12 @@ export const usePatchRoutine = () =>
 export const useDeleteRoutine = () => useInvalidating((id: number) => ok(api.DELETE('/api/routines/{routine_id}', { params: { path: { routine_id: id } } })), budgetKeys)
 
 // ── M5: updates, notifications, logging the agent in ───────────────────────
-export const useUpdateInfo = () => useQuery({ queryKey: ['system', 'update'], queryFn: () => ok(api.GET('/api/system/update')), refetchInterval: 30 * 60_000 })
+// While an update from the web app runs, look every 3 s: the live stream drops when the app restarts, and this finds the result afterwards.
+export const useUpdateInfo = () =>
+  useQuery({ queryKey: ['system', 'update'], queryFn: () => ok(api.GET('/api/system/update')), refetchInterval: (q) => (q.state.data?.applying ? 3000 : 30 * 60_000) })
+/** Update now (needs the ops container with updating turned on): the assistant finishes what it is doing, then the app updates and restarts. */
+export const useApplyUpdate = () =>
+  useInvalidating((version: string) => ok(api.POST('/api/system/update/apply', { body: { version, idempotency_key: newKey() } })), [['system'], ['status']])
 export const useCancelUpdate = () => useInvalidating(() => ok(api.POST('/api/system/update/cancel')), [['system'], ['status']])
 export const useCheckUpdate = () => useInvalidating(() => ok(api.POST('/api/system/update/check')), [['system']])
 export const useNotificationSettings = () => useQuery({ queryKey: ['notifications'], queryFn: () => ok(api.GET('/api/notifications/settings')) })
@@ -384,6 +389,12 @@ export const useSetAccelerator = () =>
 export const useRotateMemberKey = () => useInvalidating(() => ok(api.POST('/api/membership/rotate')), [['membership']])
 export const useRecoverMembership = () =>
   useInvalidating((recovery_key: string) => ok(api.POST('/api/membership/recover', { body: { recovery_key } })), [['membership']])
+export const useHubServices = (enabled = true) => useQuery({ queryKey: ['membership', 'services'], enabled, queryFn: () => ok(api.GET('/api/membership/services')) })
+/** Switch a hub service, or its extension, on or off. Saves as you change it. */
+export const usePatchHubService = () =>
+  useInvalidating((a: { address: string; body: S['HubServicePatch'] }) =>
+    ok(api.PATCH('/api/membership/services/{address}', { params: { path: { address: a.address } }, body: a.body })), [['membership']])
+export const useSetHubPolicy = () => useInvalidating((b: S['MembershipPatch']) => ok(api.PATCH('/api/membership', { body: b })), [['membership']])
 export const useLeaveHub = () => useInvalidating((confirm: string) => ok(api.POST('/api/membership/leave', { body: { confirm } })), [['membership']])
 
 

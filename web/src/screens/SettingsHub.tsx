@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import type { S } from '../api/client'
 import {
-  problem, useFriendSettings, useInvitePreview, useJoinHub, useLeaveHub, useMembership, useMembershipCheck, useRecoverMembership, useRotateMemberKey, useSetAccelerator, useSetFriendSettings,
+  problem, useFriendSettings, useHubServices, useInvitePreview, useJoinHub, useLeaveHub, useMembership, useMembershipCheck, useMeta, usePatchHubService, useRecoverMembership,
+  useRotateMemberKey, useSetAccelerator, useSetFriendSettings, useSetHubPolicy,
 } from '../api/queries'
 import { ago, stamp } from '../components/format'
 import { Row, Saved, Seg, Switch } from '../components/settings'
@@ -185,6 +186,85 @@ function FriendSettings() {
   )
 }
 
+const SERVICE_DOT: Record<S['HubService']['state'], string> = { connected: 'ok', connecting: 'warn', error: 'bad', off: 'mute' }
+const EXT_PILL: Record<NonNullable<S['HubService']['extension_state']>, [string, string]> = {
+  installed: ['ok', 'Installed'], installing: ['warn', 'Installing…'], waiting: ['warn', 'Newer version waiting for you'], error: ['bad', 'Not installed'], off: ['mute', 'Off'],
+}
+
+/** Settings → Hub → Services: what the hub offers this instance, each with its own switch, and its extension (installed by the ops
+ *  container at the commit the hub's signed document names) with another. Every switch saves as you change it. */
+export function HubServices({ m }: { m: S['Membership'] }) {
+  const q = useHubServices()
+  const patch = usePatchHubService()
+  const policy = useSetHubPolicy()
+  const ops = !!useMeta().data?.capabilities.ops
+  const [savedAt, setSavedAt] = useState(0)
+  const done = { onSuccess: () => setSavedAt((n) => n + 1) }
+  const list = q.data ?? []
+  const withExt = list.some((x) => x.extension)
+  if (!q.data && !q.error) return null
+  return (
+    <section className="set-section">
+      <div className="set-head"><div className="set-title">Services</div><Saved token={savedAt} error={patch.error || policy.error ? problem(patch.error ?? policy.error) : null} /></div>
+      {q.error && <div className="error" role="alert">{problem(q.error)}</div>}
+      {!list.length && !q.error && <div className="empty">{m.hub?.name ?? 'Your hub'} offers no services.</div>}
+      <div className="svc-list">
+        {list.map((x) => {
+          const pend = patch.isPending && patch.variables?.address === x.address ? patch.variables.body : undefined
+          const on = pend?.enabled ?? x.enabled
+          const extOn = pend?.extension_enabled ?? x.extension_enabled ?? true
+          return (
+            <div key={x.address} className="svc" data-testid={`svc-${x.address}`}>
+              <div className="set-row">
+                <div className="stack" style={{ gap: 3, minWidth: 0 }}>
+                  <span style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span className={`dot ${SERVICE_DOT[x.state]}`} aria-hidden />
+                    {x.title}
+                    <span className="pill mute">{x.kind}</span>
+                    <span className="sub">{x.state}</span>
+                  </span>
+                  {x.description && <span className="sub">{x.description}</span>}
+                  <span className="sub">{x.address}{x.roles_held?.length ? ` · roles held: ${x.roles_held.join(', ')}` : ''}</span>
+                  {x.error && <span className="sub" style={{ color: 'var(--badInk)' }}>{x.error}</span>}
+                </div>
+                <Switch on={on} label={`${x.title} on`} onChange={(enabled) => { if (!patch.isPending) patch.mutate({ address: x.address, body: { enabled } }, done) }} />
+              </div>
+              {x.extension && (
+                <div className="set-row svc-ext">
+                  <div className="stack" style={{ gap: 3, minWidth: 0 }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span className="k">Extension <code>{x.extension_name}</code></span>
+                      {ops && x.extension_state && <span className={`pill ${EXT_PILL[x.extension_state][0]}`}>{EXT_PILL[x.extension_state][1]}</span>}
+                      {x.extension_commit && <span className="sub mono" title={x.extension_commit}>{x.extension_commit.slice(0, 10)}</span>}
+                    </span>
+                    {!ops && <span className="sub">Installing it needs the ops container, which this install doesn't have.</span>}
+                    {x.extension_state === 'waiting' && <span className="sub">The hub published <span className="mono">{x.extension.commit.slice(0, 10)}</span>.</span>}
+                    {x.extension_error && <span className="sub" style={{ color: 'var(--badInk)' }}>{x.extension_error}</span>}
+                  </div>
+                  <div className="btns">
+                    {x.extension_state === 'waiting' && (
+                      <button className="btn small" disabled={patch.isPending} onClick={() => patch.mutate({ address: x.address, body: { extension_enabled: true } }, done)}>Update now</button>
+                    )}
+                    <Switch on={extOn} label={`${x.title} extension on`} onChange={(extension_enabled) => { if (ops && !patch.isPending) patch.mutate({ address: x.address, body: { extension_enabled } }, done) }} />
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+      {withExt && ops && (
+        <div className="set-rows one">
+          <Row label="Ask before a hub updates its extensions" hint="Off: when the hub publishes a newer version of an extension it installed, it is applied and logged. On: you get a card in your inbox and the old version stays until you agree.">
+            <Switch on={policy.isPending ? !!policy.variables?.ask_before_extension_updates : !!m.ask_before_extension_updates} label="Ask before a hub updates its extensions"
+              onChange={(ask_before_extension_updates) => policy.mutate({ ask_before_extension_updates }, done)} />
+          </Row>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function Joined({ m }: { m: S['Membership'] }) {
   const check = useMembershipCheck()
   const rotate = useRotateMemberKey()
@@ -233,6 +313,8 @@ function Joined({ m }: { m: S['Membership'] }) {
         {t?.accelerator?.state === 'error' && <div className="error" role="alert">cloudflared isn't working{t.accelerator.error ? `: ${t.accelerator.error}` : ''}. The normal tunnel is carrying your traffic.</div>}
         {accel.error && <div className="error" role="alert">{problem(accel.error)}</div>}
       </section>
+
+      <HubServices m={m} />
 
       <FriendSettings />
 

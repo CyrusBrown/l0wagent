@@ -44,6 +44,7 @@ EVENTS = {
     "task": ("Tasks", "Something only you can do", False),
     "assistant_message": ("Messages", "The assistant wrote in a thread", False),
     "run_failed": ("Failed runs", "A run ended with an error", False),
+    "update": ("Updates", "An update you started from the web app finished or failed", True),
     "disk_low": ("Low disk space", "The server's free disk space dropped below your warning level", True),
 }
 ASKS = ("approval", "question", "task")  # what an agent can raise; capped per hour so a loop can't flood the owner

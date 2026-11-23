@@ -291,8 +291,8 @@ def asks(request: Request, status: str | None = None) -> list[dict]:
     for kind, table, model in (("question", "questions", be.conv.question_model), ("permission", "permissions", be.conv.permission_model),
                                ("task", "tasks", be.conv.task_model)):
         for r in be.db.q(f"SELECT * FROM {table} WHERE (? IS NULL OR status=?) ORDER BY id DESC LIMIT 100", (status, status)):
-            if kind == "permission" and be.db.q1("SELECT 1 FROM permission_actions WHERE permission_id=? AND kind='wake'", (r["id"],)):
-                continue  # a friend's wake request is the owner's to decide; it isn't one of the agent's asks
+            if kind == "permission" and be.db.q1("SELECT 1 FROM permission_actions WHERE permission_id=? AND kind IN ('wake', 'extension_update')", (r["id"],)):
+                continue  # a friend's wake request or a hub's extension update is the owner's to decide; it isn't one of the agent's asks
             out.append({"kind": kind, **model(r).model_dump(mode="json")})
     return sorted(out, key=lambda x: x["created_at"], reverse=True)
 

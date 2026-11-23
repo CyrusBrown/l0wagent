@@ -5,9 +5,13 @@ Install and update (run in the folder with compose.yaml):
   l0w install [--channel stable|edge] [--port 8000] [--yes]
                          check Docker, pick a sandbox subnet, write .env (fresh tokens) and
                          compose.override.yaml, pull the images, start, print the address
-  l0w update [--timeout 120] [--force] [--version X.Y.Z]
+  l0w update [--timeout 120] [--force] [--version X.Y.Z] [--no-drain]
                          pull, wait until the assistant is idle (no run, no don't-interrupt
                          jobs; no new runs start meanwhile), recreate, check it's healthy
+                         (--no-drain: skip the wait; the web UI's updater uses it after control drained)
+  l0w ops enable-updates|disable-updates
+                         let the web UI update this install (starts ops-docker, the one container with
+                         the Docker socket) or take that away again; asked once at install
   l0w up | down | restart | ps | logs [SERVICE]
   l0w claude-login       log the assistant's computer in to your Claude subscription (interactive)
   l0w migrate --from OLD_DIR [--old-project assistant] [--stop-old] [--force] [--no-claude-login]
@@ -34,7 +38,7 @@ Talk to it (log in once; the device token is kept in ~/.config/l0w/config.json, 
   l0w calendar           this week's planned wakeups
   l0w secrets  ·  l0w secret set NAME [VALUE|@file|-] [--desc …]  ·  l0w secret rm NAME   (write-only)
   l0w selftest  ·  l0w update-check
-  l0w extensions list|enable NAME|disable NAME|rescan|sync   (sync: git sources from extensions.toml)
+  l0w extensions list|enable NAME|disable NAME|rescan|sync   (sync: git sources from extensions.toml and extensions/.ops.toml)
 
 L0W_URL and L0W_TOKEN override the saved login (for scripts and coding agents).
 """
@@ -223,6 +227,7 @@ def need_docker() -> None:
         die("Docker Compose v2 is missing (`docker compose`). See docs/install.md.")
     if not Path("compose.yaml").is_file():
         die("Run this in the folder with compose.yaml (the l0wagent checkout or release).")
+    ensure_install_files()
 
 
 def env_file() -> dict[str, str]:
@@ -288,6 +293,61 @@ def add_hub_settings(env: dict[str, str]) -> bool:
     return env != before
 
 
+def add_ops_settings(env: dict[str, str]) -> bool:
+    """The ops containers' two tokens and the host user they write extensions as, for .env files that predate them. True if anything was added."""
+    before = dict(env)
+    for k in ("L0W_OPS_TOKEN", "L0W_OPS_DOCKER_TOKEN"):
+        if not env.get(k):
+            env[k] = secrets.token_urlsafe(32)
+    if "L0W_UID" not in env:  # the ops container writes extensions/ as whoever owns this folder
+        st = Path.cwd().stat()
+        env["L0W_UID"], env["L0W_GID"] = str(st.st_uid), str(st.st_gid)
+    return env != before
+
+
+def profiles(env: dict[str, str]) -> list[str]:
+    return [p.strip() for p in env.get("COMPOSE_PROFILES", "").split(",") if p.strip()]
+
+
+def set_updates(env: dict[str, str], on: bool) -> None:
+    """Add or drop the ops-docker compose profile in .env's COMPOSE_PROFILES (other profiles are kept)."""
+    rest = [p for p in profiles(env) if p != OPS_DOCKER]
+    new = rest + ([OPS_DOCKER] if on else [])
+    if new:
+        env["COMPOSE_PROFILES"] = ",".join(new)
+    else:
+        env.pop("COMPOSE_PROFILES", None)
+
+
+OPS_DOCKER = "ops-docker"
+UPDATES_ASK = "Let the web UI update this install? It gives a small container access to Docker (root-equivalent on this machine; it can only pull this project's images and start the updater)"
+EXTENSIONS_TOML_HEADER = ("# The extensions to fetch from git: `./l0w extensions sync` clones each at its pinned commit.\n"
+                          "# [extension.NAME]\n# git = \"https://github.com/you/your-extension.git\"\n# commit = \"<full commit id>\"\n"
+                          "# Extensions installed from the web UI are recorded in extensions/.ops.toml instead.\n")
+
+
+def ensure_install_files() -> None:
+    """The folder and file the ops container mounts. Docker makes a folder of any bind-mounted path that doesn't exist, and
+    ./extensions.toml is mounted as a single file, so both must exist before `compose up`."""
+    made = []
+    if not Path("extensions").exists():
+        Path("extensions").mkdir()
+        made.append(Path("extensions"))
+    toml = Path("extensions.toml")
+    if toml.is_dir():
+        try:
+            toml.rmdir()  # Docker made it (an empty folder); a real folder with files in it is left for the owner to sort out
+        except OSError:
+            die("extensions.toml is a folder (Docker makes one when the file is missing). Move its contents out, remove it and run this again.")
+    if not toml.exists():
+        toml.write_text(EXTENSIONS_TOML_HEADER)
+        made.append(toml)
+    if made and hasattr(os, "geteuid") and os.geteuid() == 0:  # the web UI's updater runs as root: leave these to the folder's owner
+        st = Path.cwd().stat()
+        for p in made:
+            os.chown(p, st.st_uid, st.st_gid)
+
+
 def lan_ip() -> str:
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -302,6 +362,13 @@ def lan_ip() -> str:
 def wait_healthy(port: str, timeout: float = 120) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
+        if os.environ.get("L0W_IN_UPDATER"):
+            # Run by the web UI's updater container: the host's ports aren't this container's. Ask control from inside its own container.
+            r = compose("exec", "-T", "control", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/meta', timeout=3)", capture=True, check=False)
+            if r.returncode == 0:
+                return True
+            time.sleep(2)
+            continue
         try:
             with _opener.open(f"http://127.0.0.1:{port}/api/meta", timeout=3) as r:
                 if r.status == 200:
@@ -330,7 +397,8 @@ def ask(prompt: str, default: str, yes: bool) -> str:
 def cmd_install(a) -> None:
     need_docker()
     env = env_file()
-    if env.get("L0W_AGENT_TOKEN"):
+    fresh = not env.get("L0W_AGENT_TOKEN")
+    if not fresh:
         print("Found .env: keeping its tokens and subnet.")
     else:
         env.update({
@@ -339,6 +407,10 @@ def cmd_install(a) -> None:
         })
     add_chat_settings(env)
     add_hub_settings(env)
+    add_ops_settings(env)
+    if fresh and OPS_DOCKER not in profiles(env):
+        if a.web_updates or ask(UPDATES_ASK + "? (y/n)", "n", a.yes).lower().startswith("y"):
+            set_updates(env, True)
     if "L0W_SETUP_CODE" not in env:
         env["L0W_SETUP_CODE"] = secrets.token_urlsafe(12)  # one-time: the first owner setup asks for it
     env.setdefault("L0W_CHANNEL", a.channel)
@@ -347,7 +419,7 @@ def cmd_install(a) -> None:
     env.setdefault("L0W_INSTANCE_NAME", ask("A name for this assistant", platform.node().split(".")[0] or "l0wagent", a.yes))
     env.setdefault("TZ", os.environ.get("TZ") or _host_tz())
     write_env(env)
-    print(f"Wrote .env (sandbox subnet {env['SANDBOX_SUBNET']}).")
+    print(f"Wrote .env (sandbox subnet {env['SANDBOX_SUBNET']})." + (" The web UI can update this install." if OPS_DOCKER in profiles(env) else " Updates stay on this machine (./l0w update); ./l0w ops enable-updates changes that."))
 
     if not Path("compose.override.yaml").exists():
         gpu = shutil.which("nvidia-smi") is not None and "nvidia" in subprocess.run(["docker", "info", "--format", "{{json .Runtimes}}"], capture_output=True, text=True).stdout
@@ -395,6 +467,9 @@ def cmd_update(a) -> None:
     if add_hub_settings(env):
         write_env(env)
         print("Added the hub gateway's tokens and network to .env.")
+    if add_ops_settings(env):
+        write_env(env)
+        print("Added the ops container's tokens to .env. (The web UI can't update this install until you run ./l0w ops enable-updates.)")
     if a.version:
         env["L0W_VERSION"] = a.version.lstrip("v")
         write_env(env)
@@ -406,7 +481,8 @@ def cmd_update(a) -> None:
     check_checkout(env.get("L0W_VERSION", "stable"))
     print("Pulling the new images (the assistant keeps working meanwhile)…")
     pull_images()
-    print("Waiting until the assistant is idle (no new runs start meanwhile)…")
+    if not getattr(a, "no_drain", False):
+        print("Waiting until the assistant is idle (no new runs start meanwhile)…")
     # The drain is short and renewed while we work, and cleared on any way out (Ctrl-C, kill, an error),
     # so an update that dies can't leave the assistant refusing runs.
     restore = _signals_raise()
@@ -453,6 +529,12 @@ def _renew_drain(last: float) -> float:
 
 
 def _drain_and_restart(a, port: str) -> None:
+    if getattr(a, "no_drain", False):
+        # The web UI's updater: control drained and waited for idle before asking, so go straight to the restart.
+        compose("up", "-d", "--remove-orphans")
+        if not wait_healthy(port):
+            die("Control didn't come back within 2 minutes: `./l0w logs control`. The previous images are still on disk.")
+        return
     try:
         hostctl("drain", "on", str(DRAIN_MINUTES), "l0w update")
     except (RuntimeError, OSError, ValueError) as e:
@@ -511,7 +593,7 @@ def cmd_compose(a) -> None:
 
 BACKUP_PLACEHOLDERS = {
     "L0W_AGENT_TOKEN": "x", "L0W_RUNNER_TOKEN": "x", "L0W_EGRESS_TOKEN": "x", "L0W_CHAT_RUNTIME_TOKEN": "x",
-    "L0W_GATEWAY_TOKEN": "x", "L0W_GATEWAY_TUNNEL_TOKEN": "x",
+    "L0W_GATEWAY_TOKEN": "x", "L0W_GATEWAY_TUNNEL_TOKEN": "x", "L0W_OPS_TOKEN": "x", "L0W_OPS_DOCKER_TOKEN": "x",
     "SANDBOX_SUBNET": "172.31.250.0/24", "CHAT_SUBNET": "172.31.251.0/24", "TUNNEL_SUBNET": "172.31.252.0/24",
 }
 
@@ -573,6 +655,7 @@ def cmd_restore(a) -> None:
         rc = subprocess.run([*BACKUP_RUN, "restore"], stdin=f, env=backup_env(pw)).returncode
     if rc != 0:
         die("The restore failed. If the passphrase was wrong or the file damaged, nothing was changed; the stack is still stopped (./l0w up starts it).", rc)
+    ensure_install_files()
     compose("up", "-d", check=False)
     print("Restored and started.")
 
@@ -899,6 +982,31 @@ def cmd_update_check(a) -> None:
         print(f"Up to date ({u['current']}, {u['channel']})." + (f" Check failed: {u['error']}" if u.get("error") else ""))
 
 
+def cmd_ops(a) -> None:
+    """`./l0w ops enable-updates|disable-updates`: whether the web UI may update this install (the ops-docker container)."""
+    need_docker()
+    env = env_file()
+    if not env.get("L0W_AGENT_TOKEN"):
+        die("This instance isn't installed yet. Run `./l0w install` first.")
+    on = a.action == "enable-updates"
+    if on == (OPS_DOCKER in profiles(env)):
+        print("Updates from the web UI are already " + ("on." if on else "off."))
+        return
+    if on:
+        add_ops_settings(env)
+        if not a.yes and input(UPDATES_ASK + ". Turn it on? [y/N] ").strip().lower() not in ("y", "yes"):
+            die("Cancelled.")
+    set_updates(env, on)
+    write_env(env)
+    if not on:
+        compose("--profile", OPS_DOCKER, "rm", "-sf", OPS_DOCKER, check=False)
+    pull = compose("pull", "--quiet", "ops-docker", capture=True, check=False) if on else None
+    if pull is not None and pull.returncode != 0:
+        print(f"Couldn't pull the ops image ({(pull.stderr.strip().splitlines() or ['?'])[-1]}); using the copy on this machine if there is one.")
+    compose("up", "-d", "--remove-orphans")  # ops is recreated too: it reads COMPOSE_PROFILES to know whether updates are on
+    print("The web UI can now update this install." if on else "The web UI can no longer update this install; ./l0w update on this machine still does.")
+
+
 # ── commands: extensions ───────────────────────────────────────────────────
 EXT_NAME = re.compile(r"^[a-z][a-z0-9-]{1,30}$")
 GIT_ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
@@ -929,17 +1037,24 @@ def cmd_extensions(a) -> None:
     print(f"{a.name} {'enabled' if on else 'disabled'}")
 
 
-def cmd_extensions_sync() -> None:
-    """Clone or update each [extension.NAME] in extensions.toml to its pinned commit under extensions/NAME."""
-    root = Path.cwd()
-    toml = root / "extensions.toml"
-    if not toml.is_file():
-        print("No extensions.toml next to compose.yaml.")
-        return
+def read_ext_entries(path: Path) -> dict:
     try:
-        entries = tomllib.loads(toml.read_text()).get("extension") or {}
-    except tomllib.TOMLDecodeError as e:
-        die(f"extensions.toml isn't valid TOML: {e}")
+        entries = tomllib.loads(path.read_text()).get("extension") or {}
+    except FileNotFoundError:
+        return {}
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        die(f"{path} isn't valid TOML: {e}")
+    return entries if isinstance(entries, dict) else {}
+
+
+def cmd_extensions_sync() -> None:
+    """Clone or update each [extension.NAME] in extensions.toml (yours) and extensions/.ops.toml (written by the web UI)
+    to its pinned commit under extensions/NAME. An entry in extensions.toml wins over the same name in .ops.toml."""
+    root = Path.cwd()
+    entries = {**read_ext_entries(root / "extensions" / ".ops.toml"), **read_ext_entries(root / "extensions.toml")}
+    if not entries:
+        print("No [extension.NAME] entries in extensions.toml (next to compose.yaml) or extensions/.ops.toml.")
+        return
     failed = 0
     for name, spec in entries.items():
         if not EXT_NAME.match(name):
@@ -952,7 +1067,26 @@ def cmd_extensions_sync() -> None:
             print(f"{name}: needs git = \"URL\" and commit = \"COMMIT\" in extensions.toml; skipped.", file=sys.stderr)
             failed += 1
             continue
+        if spec.get("path"):
+            print(f"{name}: has a path (a folder inside the repository); ./l0w extensions sync can't do that. Install it from the web UI (Settings → Extensions); skipped.", file=sys.stderr)
+            failed += 1
+            continue
         target = root / "extensions" / name
+        try:
+            made_by_ops = (target / ".l0w-source.json").is_file()
+        except OSError:
+            made_by_ops = False
+        if made_by_ops:
+            try:
+                have = json.loads((target / ".l0w-source.json").read_text()).get("commit")
+            except (OSError, ValueError, AttributeError):
+                have = None
+            if have == commit:
+                print(f"{name}: {url} @ {commit[:12]} (installed from the web UI)")
+            else:
+                print(f"{name}: installed from the web UI at {str(have)[:12] or 'another commit'}; update it there, or remove it there and sync again; skipped.", file=sys.stderr)
+                failed += 1
+            continue
         try:
             if not target.exists():
                 subprocess.run(["git", "clone", "--quiet", "--", url, str(target)], check=True, capture_output=True, text=True, env=GIT_ENV)
@@ -996,11 +1130,16 @@ def main(argv: list[str] | None = None) -> None:
     i.add_argument("--channel", choices=["stable", "edge"], default="stable")
     i.add_argument("--port", type=int, default=8000)
     i.add_argument("--yes", "-y", action="store_true", help="accept the defaults")
+    i.add_argument("--web-updates", action="store_true", help="let the web UI update this install (starts ops-docker, which holds the Docker socket)")
     u = sub.add_parser("update")
     u.add_argument("--timeout", type=float, default=120, help="minutes to wait for idle")
     u.add_argument("--force", action="store_true", help="don't wait for idle")
     u.add_argument("--version", help="pin a version (X.Y.Z), or stable / edge")
     u.add_argument("--cancel", action="store_true", help="clear a stuck update hold and exit")
+    u.add_argument("--no-drain", action="store_true", help="don't wait for idle (control already did; used by the web UI's updater)")
+    op = sub.add_parser("ops", help="the ops containers: let the web UI update this install, or not")
+    op.add_argument("action", choices=["enable-updates", "disable-updates"])
+    op.add_argument("--yes", "-y", action="store_true", help="don't ask for confirmation")
     dr = sub.add_parser("drain", help="clear a stuck update hold on new runs")
     dr.add_argument("action", choices=["off"])
     sub.add_parser("2fa-reset", help="turn off the owner's 2FA (lost your phone and recovery codes)")
@@ -1084,7 +1223,7 @@ def main(argv: list[str] | None = None) -> None:
     sc.add_argument("--desc")
     sub.add_parser("selftest")
     sub.add_parser("update-check")
-    ex = sub.add_parser("extensions", help="the owner's extensions: list, enable, disable, rescan, sync (git sources from extensions.toml)")
+    ex = sub.add_parser("extensions", help="the owner's extensions: list, enable, disable, rescan, sync (git sources from extensions.toml and extensions/.ops.toml)")
     ex.add_argument("action", choices=["list", "enable", "disable", "rescan", "sync"])
     ex.add_argument("name", nargs="?")
     a = p.parse_args(argv)
@@ -1096,7 +1235,7 @@ def main(argv: list[str] | None = None) -> None:
         "threads": cmd_threads, "read": cmd_read, "send": cmd_send, "runs": cmd_runs, "run": cmd_run, "wake": cmd_wake, "stop": cmd_stop,
         "jobs": cmd_jobs, "budget": cmd_budget, "level": cmd_level, "boost": cmd_boost, "calendar": cmd_calendar, "secrets": cmd_secrets,
         "secret": cmd_secrets, "selftest": cmd_selftest, "update-check": cmd_update_check,
-        "extensions": cmd_extensions,
+        "extensions": cmd_extensions, "ops": cmd_ops,
     }[a.cmd](a)
 
 

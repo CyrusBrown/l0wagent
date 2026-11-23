@@ -1752,7 +1752,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Membership Patch
+         * @description Change a choice about the joined hub, such as asking before its services' extensions are updated.
+         */
+        patch: operations["membership_patch_api_membership_patch"];
         trace?: never;
     };
     "/api/membership/preview": {
@@ -2253,6 +2257,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/system/update/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Update
+         * @description Online only. Starts the update the check offers: the assistant finishes what it is doing, then the ops container updates and restarts the app.
+         *     Refused unless updating from the web app was turned on at install (./l0w ops enable-updates).
+         */
+        post: operations["apply_update_api_system_update_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/system/update/cancel": {
         parameters: {
             query?: never;
@@ -2535,6 +2560,66 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Extension
+         * @description Online only. Looks a branch or tag up in a git repository and answers the commit it points to now (the ops container does the git work).
+         */
+        post: operations["resolve_extension_api_extensions_resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install Extension
+         * @description Online only. Installs an extension from a git repository at one commit (from /extensions/resolve). It stays off until you turn it on.
+         */
+        post: operations["install_extension_api_extensions_install_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Extension
+         * @description Online only. Removes an extension the web app installed (its data and settings stay in the database).
+         */
+        delete: operations["remove_extension_api_extensions__name__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3051,6 +3136,12 @@ export interface components {
              * @default []
              */
             extensions?: string[];
+            /**
+             * Ops
+             * @description The ops container is set up: extensions can be installed from a git URL and hub services can install theirs.
+             * @default false
+             */
+            ops?: boolean;
         };
         /**
          * Chat
@@ -3600,9 +3691,11 @@ export interface components {
             sdk: string;
             /**
              * Source
-             * @description 'local', or the git URL and commit from extensions.toml.
+             * @description 'local', or the git URL and commit from extensions.toml, `.ops.toml` or a hub service.
              */
             source: string;
+            /** @description Set when the ops container installed it (it can be removed from the web app). */
+            ops?: components["schemas"]["ExtensionOps"] | null;
             /** Description */
             description: string;
             /** Enabled */
@@ -3630,6 +3723,81 @@ export interface components {
             ui: components["schemas"]["ExtensionUi"] | null;
             /** Routines */
             routines: number[];
+        };
+        /** ExtensionInstallRequest */
+        ExtensionInstallRequest: {
+            /**
+             * Name
+             * @description The extension's name: it must match `name` in its extension.toml.
+             */
+            name: string;
+            /** Git */
+            git: string;
+            /**
+             * Commit
+             * @description A full commit from /extensions/resolve.
+             */
+            commit: string;
+            /**
+             * Path
+             * @description The extension's folder inside the repository; empty is the top.
+             */
+            path?: string | null;
+            /**
+             * Idempotency Key
+             * @description Client-generated key; repeating a create with the same key returns the first result.
+             */
+            idempotency_key?: string | null;
+        };
+        /** ExtensionOps */
+        ExtensionOps: {
+            /**
+             * Source
+             * @description owner: installed from a git URL in the web app; toml: from extensions.toml; hub: a hub service's extension.
+             * @enum {string}
+             */
+            source: "owner" | "toml" | "hub";
+            /** Git */
+            git: string;
+            /** Commit */
+            commit: string;
+            /** Path */
+            path?: string | null;
+            /** Installed At */
+            installed_at?: string | null;
+        };
+        /** ExtensionRemoved */
+        ExtensionRemoved: {
+            /** Name */
+            name: string;
+            /**
+             * Still In Extensions Toml
+             * @description Its folder is gone, but your own extensions.toml still lists it, so ./l0w extensions sync would fetch it again.
+             * @default false
+             */
+            still_in_extensions_toml?: boolean;
+        };
+        /** ExtensionResolveRequest */
+        ExtensionResolveRequest: {
+            /**
+             * Git
+             * @description An https git URL.
+             */
+            git: string;
+            /**
+             * Ref
+             * @description A branch, tag or commit; empty is the default branch.
+             * @default
+             */
+            ref?: string;
+        };
+        /** ExtensionResolved */
+        ExtensionResolved: {
+            /**
+             * Commit
+             * @description The full commit the ref points to now. Installing pins this commit, never the branch.
+             */
+            commit: string;
         };
         /** ExtensionSetting */
         ExtensionSetting: {
@@ -4257,8 +4425,31 @@ export interface components {
              * @default []
              */
             roles_held?: string[];
-            /** @description The instance-side extension the hub names for this service (installing it is separate). */
+            /** @description The instance-side extension the hub names for this service. */
             extension?: components["schemas"]["HubServiceExtension"] | null;
+            /**
+             * Extension Name
+             * @description The name it installs under (the service's name on the hub).
+             */
+            extension_name?: string | null;
+            /**
+             * Extension Enabled
+             * @description The owner's switch for the extension: on installs it (and applies the hub's updates), off removes it.
+             * @default true
+             */
+            extension_enabled?: boolean;
+            /**
+             * Extension State
+             * @description waiting: a newer commit waits for the owner's OK.
+             */
+            extension_state?: ("off" | "installing" | "installed" | "waiting" | "error") | null;
+            /**
+             * Extension Commit
+             * @description The commit installed now.
+             */
+            extension_commit?: string | null;
+            /** Extension Error */
+            extension_error?: string | null;
             /**
              * Default On
              * @description Whether the service asks to be on unless the owner says otherwise.
@@ -4295,8 +4486,16 @@ export interface components {
         };
         /** HubServicePatch */
         HubServicePatch: {
-            /** Enabled */
-            enabled: boolean;
+            /**
+             * Enabled
+             * @description The service's switch.
+             */
+            enabled?: boolean | null;
+            /**
+             * Extension Enabled
+             * @description The extension's own switch.
+             */
+            extension_enabled?: boolean | null;
         };
         /** InboxCounts */
         InboxCounts: {
@@ -4712,6 +4911,12 @@ export interface components {
             sign_key?: components["schemas"]["MemberKey"] | null;
             /** Hub Key Alarm */
             hub_key_alarm?: string | null;
+            /**
+             * Ask Before Extension Updates
+             * @description Ask me before a newer commit of an extension this hub's services installed is applied; off applies it and logs it.
+             * @default false
+             */
+            ask_before_extension_updates?: boolean;
         };
         /** MembershipCheck */
         MembershipCheck: {
@@ -4727,6 +4932,11 @@ export interface components {
              * @default []
              */
             problems?: string[];
+        };
+        /** MembershipPatch */
+        MembershipPatch: {
+            /** Ask Before Extension Updates */
+            ask_before_extension_updates?: boolean | null;
         };
         /** Message */
         Message: {
@@ -4980,7 +5190,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "egress_rule" | "secret" | "setting" | "routine" | "mcp_call" | "wake";
+            kind: "egress_rule" | "secret" | "setting" | "routine" | "mcp_call" | "wake" | "extension_update";
             /** Summary */
             summary: string;
             /** Payload */
@@ -6525,6 +6735,40 @@ export interface components {
             error?: string | null;
             accelerator?: components["schemas"]["AcceleratorStatus"] | null;
         };
+        /** UpdateApplyRequest */
+        UpdateApplyRequest: {
+            /**
+             * Version
+             * @description The version the update check offers (info.latest).
+             */
+            version: string;
+            /**
+             * Idempotency Key
+             * @description Client-generated key; repeating a create with the same key returns the first result.
+             */
+            idempotency_key?: string | null;
+        };
+        /** UpdateApplying */
+        UpdateApplying: {
+            /** Version */
+            version: string;
+            /**
+             * State
+             * @description waiting: for the assistant to be idle; updating: pulling the new images; restarting: replacing the stack.
+             * @enum {string}
+             */
+            state: "waiting" | "updating" | "restarting";
+            /**
+             * Step
+             * @description One sentence for the owner.
+             */
+            step: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+        };
         /** UpdateInfo */
         UpdateInfo: {
             /** Current */
@@ -6562,6 +6806,36 @@ export interface components {
              * @description What a pending update waits for (a run in progress, don't-interrupt jobs).
              */
             waiting_for: string[];
+            /**
+             * Ops Available
+             * @description The ops container is set up.
+             * @default false
+             */
+            ops_available?: boolean;
+            /**
+             * Ops Docker
+             * @description Updating from the web app is on (the owner opted in at install): the Update now button works.
+             * @default false
+             */
+            ops_docker?: boolean;
+            /** @description An update started from the web app and not finished yet. */
+            applying?: components["schemas"]["UpdateApplying"] | null;
+            /** @description How the last update started from the web app ended; shown for a day. */
+            last_result?: components["schemas"]["UpdateResult"] | null;
+        };
+        /** UpdateResult */
+        UpdateResult: {
+            /** Version */
+            version: string;
+            /** Ok */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
         };
         /** Upload */
         Upload: {
@@ -6733,7 +7007,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "hello" | "heartbeat" | "status" | "message" | "thread" | "project" | "card" | "claim" | "timeline" | "run" | "inbox_counts" | "unread" | "job" | "shelf" | "upload" | "question" | "permission" | "task" | "suggestion" | "promote" | "security" | "budget" | "calendar" | "chat" | "chat_delta" | "extension" | "membership" | "friend" | "friend_request";
+            type: "hello" | "heartbeat" | "status" | "message" | "thread" | "project" | "card" | "claim" | "timeline" | "run" | "inbox_counts" | "unread" | "job" | "shelf" | "upload" | "question" | "permission" | "task" | "suggestion" | "promote" | "security" | "budget" | "calendar" | "chat" | "chat_delta" | "extension" | "membership" | "friend" | "friend_request" | "update";
             /**
              * Cursor
              * @description Sync cursor after this event, when it changed cached data.
@@ -10380,6 +10654,39 @@ export interface operations {
             };
         };
     };
+    membership_patch_api_membership_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MembershipPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Membership"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     membership_preview_api_membership_preview_post: {
         parameters: {
             query?: never;
@@ -11210,6 +11517,39 @@ export interface operations {
             };
         };
     };
+    apply_update_api_system_update_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     cancel_update_api_system_update_cancel_post: {
         parameters: {
             query?: never;
@@ -11741,6 +12081,103 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExtensionInfo"][];
+                };
+            };
+        };
+    };
+    resolve_extension_api_extensions_resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtensionResolveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionResolved"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    install_extension_api_extensions_install_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExtensionInstallRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_extension_api_extensions__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionRemoved"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

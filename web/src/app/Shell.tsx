@@ -2,7 +2,7 @@ import { type CSSProperties, useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import type { S } from '../api/client'
 import { useLive } from '../api/live'
-import { useChats, useInboxCounts, useMembership, useProjects, useResume, useStatus, useStopRun, useThreads, useUpdateInfo, useCancelUpdate } from '../api/queries'
+import { useChats, useInboxCounts, useMembership, useProjects, useResume, useStatus, useStopRun, useThreads, useUpdateInfo } from '../api/queries'
 import { pts, stamp, until, usageText } from '../components/format'
 import { useOnline } from '../components/online'
 import { useEscape } from '../components/useEscape'
@@ -14,6 +14,7 @@ import { Caret } from '../components/Caret'
 import { Overlay } from '../components/Overlay'
 import { useIsPhone } from '../components/useIsPhone'
 import { Icon } from './icons'
+import { UpdateBanner } from './UpdateBanner'
 import { ExtSlot } from '../ext/ExtElement'
 import { pages, slotItems } from '../ext/registry'
 import { useExtensions } from '../ext/useExtensions'
@@ -24,6 +25,7 @@ export function Shell() {
   const live = useLive(true)
   const online = useOnline()
   const waiting = useOutbox().filter((i) => !i.error).length
+  const restarting = !!useUpdateInfo().data?.applying  // an update from the web app is replacing the app: the banner says so, the offline bar would only repeat it
   const loc = useLocation()
   const nav = useNavigate()
   const [palette, setPalette] = useState(false)
@@ -57,8 +59,8 @@ export function Shell() {
     <div className="app">
       <Header onSearch={() => setPalette(true)} moreOpen={moreOpen} setMoreOpen={setMoreOpen} onDrawer={phone && inConversation ? () => setDrawer(true) : undefined} drawerOpen={drawer} />
       <PauseBanner />
-      <UpdateBanner />
-      {(!online || live === 'offline') && (
+      <UpdateBanner live={live} />
+      {(!online || (live === 'offline' && !restarting)) && (
         <div className="offline-bar">{!online ? `Offline. ${waiting ? `${waiting} item${waiting === 1 ? '' : 's'} waiting on this device until the connection returns.` : 'Thread messages, answers and finished tasks wait on this device until the connection returns; chat needs a connection.'}` : 'Reconnecting to the server…'}</div>
       )}
       <OutboxFailures />
@@ -343,37 +345,6 @@ function PauseBanner() {
       <span style={{ flex: 1 }} />
       <Link to="/settings/system">Settings</Link>
       <button className="btn" disabled={resume.isPending} onClick={() => resume.mutate(undefined)}>Resume</button>
-    </div>
-  )
-}
-
-/** The mockup's update banner. Applying an update happens on the server (`./l0w update`, which
- * waits for the current run and don't-interrupt jobs), so the button shows how. Dismissed per version. */
-function UpdateBanner() {
-  const u = useUpdateInfo().data
-  const key = `l0w-update-dismissed-${u?.latest}`
-  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(key) === '1' } catch { return false } })
-  const [how, setHow] = useState(false)
-  const cancel = useCancelUpdate()
-  useEffect(() => { try { setHidden(localStorage.getItem(key) === '1') } catch { /* private mode */ } }, [key])
-  if (u?.draining_until) {
-    return <div className="banner"><span style={{ fontWeight: 500 }}>Updating</span><span>Waiting for {u.waiting_for.length ? u.waiting_for.join('; ') : 'the assistant to be idle'}. No new runs start meanwhile.</span>
-      <span style={{ flex: 1 }} />
-      <button className="btn" disabled={cancel.isPending} onClick={() => cancel.mutate()} title="Clear this if ./l0w update isn't running any more">Cancel update</button>
-    </div>
-  }
-  if (!u?.available || hidden) return null
-  const summary = (u.notes ?? '').split('\n').map((l) => l.replace(/^[-#*\s]+/, '')).find((l) => l.trim()) ?? ''
-  return (
-    <div className="banner" role="status">
-      <span style={{ fontWeight: 500 }}>l0wagent {u.latest} is available</span>
-      {summary && <span className="ellipsis muted-text" style={{ minWidth: 0 }}>{summary}</span>}
-      {u.url && <a href={u.url} target="_blank" rel="noreferrer">Release notes</a>}
-      <span style={{ flex: 1 }} />
-      {how
-        ? <span>On the server, in the l0wagent folder: <code>./l0w update</code> (it waits for the current run)</span>
-        : <button className="btn" onClick={() => setHow(true)}>Update after the current run</button>}
-      <button className="x" aria-label="Dismiss" onClick={() => { try { localStorage.setItem(key, '1') } catch { /* private mode */ } setHidden(true) }}>✕</button>
     </div>
   )
 }

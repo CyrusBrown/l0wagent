@@ -38,6 +38,7 @@ class Capabilities(Model):
     passkeys: bool = False
     chat: bool = False
     extensions: list[str] = []
+    ops: bool = Field(False, description="The ops container is set up: extensions can be installed from a git URL and hub services can install theirs.")
 
 
 class Meta(Model):
@@ -338,7 +339,7 @@ class QuestionAnswer(Model):
 
 
 class PermissionAction(Model):
-    kind: Literal["egress_rule", "secret", "setting", "routine", "mcp_call", "wake"]
+    kind: Literal["egress_rule", "secret", "setting", "routine", "mcp_call", "wake", "extension_update"]
     summary: str
     payload: dict[str, Any]
 
@@ -576,12 +577,21 @@ class ExtensionUi(Model):
     settings_panel: ExtensionUiItem | None = None
 
 
+class ExtensionOps(Model):
+    source: Literal["owner", "toml", "hub"] = Field(description="owner: installed from a git URL in the web app; toml: from extensions.toml; hub: a hub service's extension.")
+    git: str
+    commit: str
+    path: str | None = None
+    installed_at: datetime | None = None
+
+
 class ExtensionInfo(Model):
     name: str
     title: str
     version: str
     sdk: str
-    source: str = Field(description="'local', or the git URL and commit from extensions.toml.")
+    source: str = Field(description="'local', or the git URL and commit from extensions.toml, `.ops.toml` or a hub service.")
+    ops: ExtensionOps | None = Field(None, description="Set when the ops container installed it (it can be removed from the web app).")
     description: str
     enabled: bool
     loaded: bool
@@ -594,6 +604,28 @@ class ExtensionInfo(Model):
     prompt_slots: list[str]
     ui: ExtensionUi | None = Field(description="Set while the extension is loaded.")
     routines: list[int]
+
+
+class ExtensionResolveRequest(Model):
+    git: str = Field(min_length=1, max_length=500, description="An https git URL.")
+    ref: str = Field("", max_length=200, description="A branch, tag or commit; empty is the default branch.")
+
+
+class ExtensionResolved(Model):
+    commit: str = Field(description="The full commit the ref points to now. Installing pins this commit, never the branch.")
+
+
+class ExtensionRemoved(Model):
+    name: str
+    still_in_extensions_toml: bool = Field(False, description="Its folder is gone, but your own extensions.toml still lists it, so ./l0w extensions sync would fetch it again.")
+
+
+class ExtensionInstallRequest(Model):
+    name: str = Field(min_length=2, max_length=31, description="The extension's name: it must match `name` in its extension.toml.")
+    git: str = Field(min_length=1, max_length=500)
+    commit: str = Field(min_length=40, max_length=64, description="A full commit from /extensions/resolve.")
+    path: str | None = Field(None, max_length=300, description="The extension's folder inside the repository; empty is the top.")
+    idempotency_key: IdempotencyKey
 
 
 class ExtensionEnable(Model):
@@ -1394,6 +1426,20 @@ class PauseRequest(Model):
     minutes: int | None = Field(None, ge=1, le=60 * 24 * 14, description="How long to pause; none = until you resume. On a pause already on, sets a new end.")
 
 
+class UpdateApplying(Model):
+    version: str
+    state: Literal["waiting", "updating", "restarting"] = Field(description="waiting: for the assistant to be idle; updating: pulling the new images; restarting: replacing the stack.")
+    step: str = Field(description="One sentence for the owner.")
+    started_at: datetime
+
+
+class UpdateResult(Model):
+    version: str
+    ok: bool
+    error: str | None = None
+    at: datetime
+
+
 class UpdateInfo(Model):
     current: str
     channel: Literal["stable", "edge"]
@@ -1405,6 +1451,15 @@ class UpdateInfo(Model):
     error: str | None
     draining_until: datetime | None = Field(description="An update is waiting for the assistant to be idle: no new runs start until then.")
     waiting_for: list[str] = Field(description="What a pending update waits for (a run in progress, don't-interrupt jobs).")
+    ops_available: bool = Field(False, description="The ops container is set up.")
+    ops_docker: bool = Field(False, description="Updating from the web app is on (the owner opted in at install): the Update now button works.")
+    applying: UpdateApplying | None = Field(None, description="An update started from the web app and not finished yet.")
+    last_result: UpdateResult | None = Field(None, description="How the last update started from the web app ended; shown for a day.")
+
+
+class UpdateApplyRequest(Model):
+    version: str = Field(min_length=1, max_length=64, description="The version the update check offers (info.latest).")
+    idempotency_key: IdempotencyKey
 
 
 class ClaudeLoginStart(Model):
@@ -1576,7 +1631,7 @@ class LiveEvent(Model):
     type: Literal[
         "hello", "heartbeat", "status", "message", "thread", "project", "card", "claim",
         "timeline", "run", "inbox_counts", "unread", "job", "shelf", "upload", "question", "permission",
-        "task", "suggestion", "promote", "security", "budget", "calendar", "chat", "chat_delta", "extension", "membership", "friend", "friend_request",
+        "task", "suggestion", "promote", "security", "budget", "calendar", "chat", "chat_delta", "extension", "membership", "friend", "friend_request", "update",
     ]
     cursor: str | None = Field(None, description="Sync cursor after this event, when it changed cached data.")
     data: dict[str, Any] = {}
@@ -1642,6 +1697,11 @@ class Membership(Model):
     check: MembershipCheck | None = None
     sign_key: MemberKey | None = None
     hub_key_alarm: str | None = None
+    ask_before_extension_updates: bool = Field(False, description="Ask me before a newer commit of an extension this hub's services installed is applied; off applies it and logs it.")
+
+
+class MembershipPatch(Model):
+    ask_before_extension_updates: bool | None = None
 
 
 class HubServiceExtension(Model):
@@ -1660,7 +1720,12 @@ class HubService(Model):
     docs: str | None = Field(None, description="An https URL the hub gave for the service's documentation.")
     roles: list[str] = Field([], description="The roles the service may grant a member's instance.")
     roles_held: list[str] = Field([], description="The roles it has granted this instance (names only; the grants stay in control).")
-    extension: HubServiceExtension | None = Field(None, description="The instance-side extension the hub names for this service (installing it is separate).")
+    extension: HubServiceExtension | None = Field(None, description="The instance-side extension the hub names for this service.")
+    extension_name: str | None = Field(None, description="The name it installs under (the service's name on the hub).")
+    extension_enabled: bool = Field(True, description="The owner's switch for the extension: on installs it (and applies the hub's updates), off removes it.")
+    extension_state: Literal["off", "installing", "installed", "waiting", "error"] | None = Field(None, description="waiting: a newer commit waits for the owner's OK.")
+    extension_commit: str | None = Field(None, description="The commit installed now.")
+    extension_error: str | None = None
     default_on: bool = Field(description="Whether the service asks to be on unless the owner says otherwise.")
     enabled: bool = Field(description="The owner's switch.")
     state: Literal["off", "connecting", "connected", "error"]
@@ -1670,7 +1735,8 @@ class HubService(Model):
 
 
 class HubServicePatch(Model):
-    enabled: bool
+    enabled: bool | None = Field(None, description="The service's switch.")
+    extension_enabled: bool | None = Field(None, description="The extension's own switch.")
 
 
 class InvitePreviewRequest(Model):

@@ -13,6 +13,7 @@
 #                        │  └──── agent API ◀──────┘
 #                        └─(ctl net)─▶ egress ◀── HTTP(S)_PROXY ─┘ ──▶ internet
 #   tunnel ──(hubnet)──▶ control-hub, gateway;  tunnel ──(outside)──▶ the hub (the agent is never on hubnet)
+#   control ──(opsnet)──▶ ops ──(ops-out)──▶ git hosts; ops ──(opsnet)──▶ ops-docker (profile ops-docker) ──▶ the Docker socket
 #
 # The agent's only network is `sandbox`: internal (no route out) and with no host IP on the
 # bridge, so it can't reach the host, the LAN or the internet except through egress.
@@ -46,6 +47,8 @@ services:
       L0W_GATEWAY_URL: http://gateway:8780
       L0W_TUNNEL_SUBNET: ${TUNNEL_SUBNET:-172.31.220.0/24}
       L0W_FILES_PORT: "8001"  # the files origin: agent-made files, never on the UI's origin
+      L0W_OPS_URL: http://ops:8795
+      L0W_OPS_TOKEN: ${L0W_OPS_TOKEN:-dev-ops-token}
     ports: ["127.0.0.1:8000:8000", "127.0.0.1:8001:8001"]
     volumes:
       - control-data:/data
@@ -68,6 +71,7 @@ services:
       # from the tunnel subnet (plain `control` could resolve to another network's address).
       hubnet:
         aliases: [control-hub]
+      opsnet: {}
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     depends_on: [agent, gateway]  # the agent's image seeds the work volume (with _inbox/) first
@@ -220,6 +224,53 @@ services:
     security_opt: ["no-new-privileges:true"]
     depends_on: [gateway]
 
+  # The ops container (H6), see compose.yaml. ./extensions.toml must exist (touch it) or Docker makes a folder of that name.
+  ops:
+    build:
+      context: .
+      dockerfile: ops/Dockerfile
+    user: "${L0W_UID:-1000}:${L0W_GID:-1000}"
+    environment:
+      L0W_OPS_TOKEN: ${L0W_OPS_TOKEN:-dev-ops-token}
+      L0W_OPS_DOCKER_TOKEN: ${L0W_OPS_DOCKER_TOKEN:-dev-ops-docker-token}
+      L0W_VERSION: ${L0W_VERSION:-edge}
+      L0W_COMPOSE_PROFILES: ${COMPOSE_PROFILES:-}
+      OPS_DOCKER_URL: http://ops-docker:8796
+      HOME: /tmp
+    volumes:
+      - ./extensions:/extensions
+      - ./extensions.toml:/project/extensions.toml:ro
+    networks: [opsnet, ops-out]
+    read_only: true
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+
+  # Opt-in: COMPOSE_PROFILES=ops-docker. The only container with the Docker socket; see compose.yaml.
+  ops-docker:
+    build:
+      context: .
+      dockerfile: ops/Dockerfile
+    profiles: ["ops-docker"]
+    command: ["python", "-m", "l0w_ops.docker"]
+    user: "0:0"
+    environment:
+      L0W_OPS_DOCKER_TOKEN: ${L0W_OPS_DOCKER_TOKEN:-dev-ops-docker-token}
+      HOME: /tmp
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [opsnet]
+    read_only: true
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8796/healthz')"]
+      interval: 10s
+      retries: 10
+
   web:
     image: node:24-slim
     working_dir: /web
@@ -237,6 +288,9 @@ services:
 networks:
   outside: {}
   gateway-out: {}
+  ops-out: {}
+  opsnet:
+    internal: true
   sandbox:
     internal: true
     driver: bridge

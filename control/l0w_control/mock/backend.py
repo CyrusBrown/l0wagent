@@ -39,6 +39,7 @@ class MockBackend(Backend):
         self.seq = 0
         self.changes: list[tuple[int, s.SyncChange]] = []
         self.listeners: set[asyncio.Queue[s.LiveEvent]] = set()
+        self._installed: dict[str, s.ExtensionInfo] = {}
         self.owner = s.Owner(username="l0w", display_name="l0w", timezone="America/Los_Angeles", totp_enabled=False, passkeys=0)
 
     # ── plumbing ───────────────────────────────────────────────────────────
@@ -65,7 +66,7 @@ class MockBackend(Backend):
 
     # ── meta, status, sync, events ─────────────────────────────────────────
     def meta(self) -> s.Meta:
-        return s.Meta(server_version=__version__, api_version="0", ui_bundle_version="dev", capabilities=s.Capabilities(hub=self._member.state == "joined", hub_join=True),
+        return s.Meta(server_version=__version__, api_version="0", ui_bundle_version="dev", capabilities=s.Capabilities(hub=self._member.state == "joined", hub_join=True, ops=True),
                       setup_complete=True, instance_name="l0wagent (mock)")
 
     def status(self) -> s.Status:
@@ -515,10 +516,38 @@ class MockBackend(Backend):
     def jobs(self, include_done: bool) -> list[s.Job]:
         return [j for j in self.w.jobs.values() if include_done or j.status == "running"]
 
+    # The mock update takes about 12 seconds: waiting for the assistant, updating, restarting, then done (worked out from the clock, so it needs no timers).
+    _STEPS = ((4, "waiting", "Waiting for the assistant: run #123 (wakeup) is in progress"), (8, "updating", "Downloading the new version"), (12, "restarting", "Restarting the app"))
+    _apply_started: datetime | None = None
+
     def update_info(self) -> s.UpdateInfo:
-        return s.UpdateInfo(current="0.4.0", channel="stable", latest="0.5.0", available=True, url="https://github.com/CyrusBrown/l0wagent/releases/tag/v0.5.0",
+        done = False
+        applying = None
+        if self._apply_started:
+            elapsed = (_now() - self._apply_started).total_seconds()
+            step = next(((st, text) for limit, st, text in self._STEPS if elapsed < limit), None)
+            if step:
+                applying = s.UpdateApplying(version="0.5.0", state=step[0], step=step[1], started_at=self._apply_started)  # type: ignore[arg-type]
+            else:
+                done = True
+        return s.UpdateInfo(current="0.5.0" if done else "0.4.0", channel="stable", latest="0.5.0", available=not done, url="https://github.com/CyrusBrown/l0wagent/releases/tag/v0.5.0",
                             notes="First friends release: install with ./l0w, an installable web app with push notifications, and the l0w CLI.",
-                            checked_at=_now() - timedelta(hours=1), error=None, draining_until=None, waiting_for=[])
+                            checked_at=_now() - timedelta(hours=1), error=None, draining_until=_now() + timedelta(minutes=5) if applying and applying.state == "waiting" else None,
+                            waiting_for=["run #123 (wakeup) is in progress"] if applying and applying.state == "waiting" else [],
+                            ops_available=True, ops_docker=True, applying=applying,
+                            last_result=s.UpdateResult(version="0.5.0", ok=True, at=_now()) if done else None)
+
+    def apply_update(self, req: s.UpdateApplyRequest) -> s.UpdateInfo:
+        def make() -> s.UpdateInfo:
+            info = self.update_info()
+            if info.applying:
+                raise Conflict("update_running", "An update is already in progress.")
+            if not info.available or req.version != info.latest:
+                raise Conflict("not_offered", f"{req.version} isn't the version the update check offers.")
+            self._apply_started = _now()
+            return self.update_info()
+
+        return self._once(req.idempotency_key, make)
 
     # ── hub membership: a fake hub, so the Hub settings screen works on fake data ──
     _member = s.Membership(state="standalone", available=True)
@@ -555,9 +584,19 @@ class MockBackend(Backend):
             s.HubService(address="board@hub.example", kind="board", title="Board", description="Topics, posts and discussions for members of this hub.",
                          docs="https://hub.example/services/board", roles=["moderator", "poster"],
                          extension=s.HubServiceExtension(git="https://git.example/hub-services.git", commit="0" * 40, path="extensions/board"),
+                         extension_name="board", extension_enabled=True, extension_state="installed", extension_commit="0" * 40,
                          default_on=False, enabled=False, state="off", updated_at=_now()),
         ]
+        self._installed["board"] = self._hub_ext("board", "0" * 40, "extensions/board")
         return s.JoinResult(membership=self._member, recovery_key="l0w-recovery:" + secrets.token_urlsafe(32))
+
+    @staticmethod
+    def _hub_ext(name: str, commit: str, path: str) -> s.ExtensionInfo:
+        git = "https://git.example/hub-services.git"
+        return s.ExtensionInfo(
+            name=name, title=name.title(), version="0.1.0", sdk="1.0", source=f"hub: {git}@{commit[:12]}", description="The extension of a hub service (mock).", enabled=True, loaded=True,
+            present=True, compatible=True, last_error=None, settings=[], commands=[], folders=[], prompt_slots=[], ui=None, routines=[],
+            ops=s.ExtensionOps(source="hub", git=git, commit=commit, path=path, installed_at=_now()))
 
     def _joined(self) -> s.Membership:
         if self._member.state != "joined":
@@ -593,7 +632,14 @@ class MockBackend(Backend):
             raise BadRequest("confirm", f"Type your address ({m.address}) to confirm.")
         self._member = s.Membership(state="left", available=True, address=m.address, left_at=_now())
         self._services = []
+        self._installed = {n: e for n, e in self._installed.items() if not (e.ops and e.ops.source == "hub")}
         return self._member
+
+    def membership_patch(self, req: s.MembershipPatch) -> s.Membership:
+        m = self._joined()
+        if req.ask_before_extension_updates is not None:
+            m.ask_before_extension_updates = req.ask_before_extension_updates
+        return m
 
     def membership_services(self) -> list[s.HubService]:
         return list(getattr(self, "_services", [])) if self._member.state == "joined" else []
@@ -603,10 +649,23 @@ class MockBackend(Backend):
         svc = next((x for x in getattr(self, "_services", []) if x.address == address.lower()), None)
         if svc is None:
             raise NotFound(f"hub service {address}")
-        svc.enabled = req.enabled
-        svc.state = "connected" if req.enabled else "off"
-        svc.connected_at = _now() if req.enabled else None
-        svc.roles_held = ["tester"] if req.enabled and "tester" in svc.roles else []
+        if req.enabled is None and req.extension_enabled is None:
+            raise BadRequest("nothing_to_change", "Say what to switch: enabled or extension_enabled.")
+        if req.extension_enabled is not None:
+            if not svc.extension:
+                raise Conflict("no_extension", "This service has no extension.")
+            svc.extension_enabled = req.extension_enabled
+            svc.extension_state = "installed" if req.extension_enabled else "off"
+            svc.extension_commit = svc.extension.commit if req.extension_enabled else None
+            if req.extension_enabled:
+                self._installed[svc.extension_name or "board"] = self._hub_ext(svc.extension_name or "board", svc.extension.commit, svc.extension.path)
+            else:
+                self._installed.pop(svc.extension_name or "board", None)
+        if req.enabled is not None:
+            svc.enabled = req.enabled
+            svc.state = "connected" if req.enabled else "off"
+            svc.connected_at = _now() if req.enabled else None
+            svc.roles_held = ["tester"] if req.enabled and "tester" in svc.roles else []
         svc.updated_at = _now()
         return svc
 
@@ -1161,15 +1220,41 @@ class MockBackend(Backend):
     def list_integrations(self) -> list[s.Integration]:
         return sorted(self.w.integrations.values(), key=lambda i: i.title)
 
-    # extensions: none in the mock (the real ones need control's process)
+    # extensions: the real ones need control's process; the mock only fakes installing from a git URL (nothing is ever loaded)
+
     def extensions(self) -> list[s.ExtensionInfo]:
-        return []
+        return sorted(self._installed.values(), key=lambda e: e.name)
 
     def rescan_extensions(self) -> list[s.ExtensionInfo]:
-        return []
+        return self.extensions()
+
+    def extension_resolve(self, req: s.ExtensionResolveRequest) -> s.ExtensionResolved:
+        if not req.git.startswith("https://"):
+            raise BadRequest("bad_git_url", "Use an https git URL.")
+        return s.ExtensionResolved(commit=("ab12" * 10)[:40])
+
+    def extension_install(self, req: s.ExtensionInstallRequest) -> s.ExtensionInfo:
+        def make() -> s.ExtensionInfo:
+            info = s.ExtensionInfo(
+                name=req.name, title=req.name.replace("-", " ").title(), version="0.1.0", sdk="1.0", source=f"{req.git}@{req.commit[:12]}", description="Installed from a git URL (mock).",
+                enabled=False, loaded=False, present=True, compatible=True, last_error=None, settings=[], commands=[], folders=[], prompt_slots=[], ui=None, routines=[],
+                ops=s.ExtensionOps(source="owner", git=req.git, commit=req.commit, path=req.path or None, installed_at=_now()))
+            self._installed[req.name] = info
+            return info
+
+        return self._once(req.idempotency_key, make)
+
+    def extension_remove(self, name: str) -> s.ExtensionRemoved:
+        if self._installed.pop(name, None) is None:
+            raise NotFound(f"extension {name}")
+        return s.ExtensionRemoved(name=name)
 
     def set_extension_enabled(self, name: str, enabled: bool) -> s.ExtensionInfo:
-        raise NotFound(f"extension {name}")
+        info = self._installed.get(name)
+        if info is None:
+            raise NotFound(f"extension {name}")
+        info.enabled = info.loaded = enabled
+        return info
 
     def set_extension_settings(self, name: str, values: dict) -> s.ExtensionInfo:
         raise NotFound(f"extension {name}")

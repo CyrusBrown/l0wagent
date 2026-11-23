@@ -3,6 +3,7 @@
 control/.venv
 gateway/.venv
 tunnel/.venv
+ops/.venv
 protocol/py/.venv
 dev/hub/.venv
 control/data

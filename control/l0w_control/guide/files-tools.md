@@ -27,7 +27,10 @@
   Tailscale HTTPS) or an ntfy topic; approvals and new sign-ins notify by default; quiet hours.
   ntfy sends titles only unless you turn previews on, and takes an optional access token: on the
   public ntfy server anyone who knows a topic's name can read it.
-- **Updates**: a banner shows a new release; apply it on the server with `./l0w update`, which waits
+- **Updates**: a banner shows a new release. If you turned on updating from the web app when you installed
+  (`./l0w ops enable-updates`), the banner has **Update now**: the assistant finishes what it's doing first (up to an hour,
+  Settings → Advanced → System), then the app updates and restarts by itself, and the banner says how it went. Otherwise, or
+  as a fallback, apply it on the server with `./l0w update`, which waits
   until the assistant is idle. While it waits, the banner says what it's waiting for and has
   **Cancel update**; a stuck update clears itself after ten minutes (or `./l0w drain off`). `./l0w`
   also has status, logs, inbox, secrets, `2fa-reset` (lost your phone and recovery codes) and more
@@ -44,6 +47,9 @@ They can add pages (under More), sidebar sections, project tabs, Inbox cards, fi
 settings, routines, integration presets, text in the assistant's prompt, and commands for it
 (`assistant ext …`). A broken one is switched off with its error shown; control keeps running.
 Updates don't touch the folder; an extension's data and settings are kept. Extensions from git are
-listed in `extensions.toml` and fetched with `./l0w extensions sync`. The assistant can't install or
+listed in `extensions.toml` and fetched with `./l0w extensions sync`, or installed from **Settings → Extensions → Install from git**
+(the ops container fetches the one commit your branch or tag points to right now, never a moving branch; it stays off until you turn
+it on; **Remove** deletes what the web app installed). Extensions a hub service installed show "from <hub>" and are managed under
+Settings → Hub. The assistant can't install or
 change extensions: if it wants one it files a task with a spec. How to write one: `docs/EXTENDING.md`
 in the repository (and the example, `extensions/examples/plantlog`).

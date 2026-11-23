@@ -72,6 +72,7 @@ class Hubservices:
         self.event_sink: Callable[[dict, str, dict], int] | None = None  # set by the backend: hands an event to the extensions
         self._lock = asyncio.Lock()
         self._waiters: dict[str, asyncio.Future] = {}
+        self.ext_changed: Callable[[], None] | None = None  # set by ops.py: the rows changed, so installed extensions may need to follow
         self._pushed: list[str] | None = None  # the service addresses last given to the gateway
         self._last_sync: datetime | None = None
         self._event_notes = Window(EVENT_NOTES_PER_HOUR, 3600)
@@ -148,6 +149,8 @@ class Hubservices:
         return s.HubService(
             address=r["address"], kind=r["kind"], title=r["title"], description=r["description"], docs=r["docs"], roles=json.loads(r["roles_json"] or "[]"),
             roles_held=self.roles_held(r), extension=s.HubServiceExtension(**ext) if ext else None, default_on=bool(r["default_on"]), enabled=bool(r["enabled"]),
+            extension_name=r["address"].split("@", 1)[0] if ext else None, extension_enabled=bool(r["extension_enabled"]),
+            extension_state=r["ext_state"] if ext else None, extension_commit=r["ext_commit"] if ext else None, extension_error=r["ext_error"] if ext else None,
             state=r["state"], error=r["error"], connected_at=parse(r["connected_at"]), updated_at=parse(r["updated_at"]))  # type: ignore[arg-type]
 
     def view(self) -> list[s.HubService]:
@@ -181,6 +184,11 @@ class Hubservices:
                 await self._sync(refresh)
             except Exception:  # noqa: BLE001  (the check or the join that called us must go on)
                 log.exception("hub services sync")
+        self._ext_changed()
+
+    def _ext_changed(self) -> None:
+        if self.ext_changed:
+            self.ext_changed()
 
     async def _sync(self, refresh: bool) -> None:
         r = self.m.joined()
@@ -191,6 +199,7 @@ class Hubservices:
         except (ValueError, KeyError, TypeError, ProtocolError):
             return
         listed, skipped = P.services_in(r["capabilities"] or {}, hub_key)
+        docs = self._raw_docs(r["capabilities"] or {}, hub_key)
         self._note_skipped(skipped)
         late = (parse(r["joined_at"]) or self.now()) + NEW_SERVICE_NOTICE_AFTER < self.now()
         changed = False
@@ -204,13 +213,16 @@ class Hubservices:
             cur = self.db.q1("SELECT * FROM hub_services WHERE address=?", (addr,))
             if cur is None:
                 now = self.db.now()
-                self.db.ex("INSERT INTO hub_services(address, kind, title, description, docs, roles_json, extension_json, default_on, enabled, created_at, updated_at)"
-                           " VALUES(?,?,?,?,?,?,?,?,?,?,?)", (addr, *fields.values(), fields["default_on"], now, now))
+                self.db.ex("INSERT INTO hub_services(address, kind, title, description, docs, roles_json, extension_json, default_on, enabled, extension_enabled, doc_json,"
+                           " created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                           (addr, *fields.values(), fields["default_on"], fields["default_on"], docs.get(addr), now, now))
                 changed = True
                 if late:
                     state = " and it's on." if fields["default_on"] else "; it's off until you turn it on."
                     self.notifier.notify("hub", f"New hub service: {fields['title']}", "Your hub added it" + state, "/settings/hub", "hub_service", addr)
             else:
+                if docs.get(addr) != cur["doc_json"]:  # the signed document as received: kept for ops, which checks it again
+                    self.db.ex("UPDATE hub_services SET doc_json=? WHERE address=?", (docs.get(addr), addr))
                 before = (cur["kind"], cur["title"], cur["description"], cur["docs"], cur["roles_json"], cur["extension_json"], cur["default_on"], cur["present"])
                 if before != (*fields.values(), 1):
                     self._set(addr, **fields, present=1)
@@ -235,6 +247,20 @@ class Hubservices:
         self._last_sync = self.now()
         if changed:
             self._changed()
+
+    @staticmethod
+    def _raw_docs(caps: dict, hub_key: Key) -> dict[str, str]:
+        """The signed service documents in the capabilities, as received (JSON text), by lowercase address."""
+        out: dict[str, str] = {}
+        for e in caps.get("extras") or []:
+            if not isinstance(e, dict) or e.get("kind") != "service" or not isinstance(e.get("doc"), dict):
+                continue
+            try:
+                p = P.verify_service(e["doc"], hub_key, hub_domain=caps.get("domain") if isinstance(caps.get("domain"), str) else None)
+            except (ProtocolError, ValueError, KeyError, TypeError):
+                continue
+            out.setdefault(p["address"].lower(), json.dumps(e["doc"], separators=(",", ":"), sort_keys=True))
+        return out
 
     def _note_skipped(self, skipped: list[str]) -> None:
         """Entries of the capabilities' service list that didn't verify: logged, and the owner told once for each new set."""
@@ -351,21 +377,42 @@ class Hubservices:
         return True
 
     async def set_enabled(self, address: str, enabled: bool) -> s.HubService:
-        """The owner's switch."""
+        """The owner's switch for the service."""
+        return await self.patch(address, enabled=enabled)
+
+    async def patch(self, address: str, *, enabled: bool | None = None, extension_enabled: bool | None = None) -> s.HubService:
+        """The owner's switches: the service's (connect or say goodbye), and its extension's (installed in the background by ops.py)."""
         async with self._lock:
             if not self.m.joined():
                 raise Conflict("not_joined", "This instance isn't a member of a hub.")
             r = self._row(address)
             if not r:
                 raise NotFound(f"hub service {address}")
-            self._set(r["address"], enabled=1 if enabled else 0)
-            if enabled:
-                if r["state"] in ("off", "error"):
-                    await self._connect(r["address"])
-            else:
-                await self._teardown(r["address"])
+            if extension_enabled is not None:
+                if not r["extension_json"]:
+                    raise Conflict("no_extension", "This service has no extension.")
+                if extension_enabled and not r["extension_enabled"]:
+                    self._set(r["address"], extension_enabled=1, ext_state="installing", ext_error=None)
+                    self._ext_changed()
+                elif extension_enabled and r["ext_state"] == "waiting":  # "Update now": the owner agrees to the newest commit
+                    self._ext_approve(r)
+                elif not extension_enabled and r["extension_enabled"]:
+                    self._set(r["address"], extension_enabled=0)
+                    self._ext_changed()
+            if enabled is not None:
+                self._set(r["address"], enabled=1 if enabled else 0)
+                if enabled:
+                    if r["state"] in ("off", "error"):
+                        await self._connect(r["address"])
+                else:
+                    await self._teardown(r["address"])
             self._changed()
             return self.model(self._row(address))  # type: ignore[arg-type]
+
+    def _ext_approve(self, r: dict) -> None:
+        ext = json.loads(r["extension_json"])
+        self.db.ex("UPDATE hub_services SET ext_approved=? WHERE address=?", (ext["commit"], r["address"]))
+        self._ext_changed()
 
     async def forget_all(self) -> None:
         """This instance left its hub: nothing of its services stays."""
@@ -374,6 +421,7 @@ class Hubservices:
             self._pushed = None
             self._fail_pending("This instance left its hub.")
             self._changed()
+        self._ext_changed()  # what the hub's services installed goes with them
 
     # ── incoming (called by friends.receive for service-* envelopes) ───────
     def on_envelope(self, sender: str, opened: dict, body: dict, after: list[Callable]) -> None:

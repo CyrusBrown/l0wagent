@@ -252,15 +252,39 @@ class Extensions:
         self.found, self.errors = found, errors
 
     def _sources(self) -> dict[str, str]:
-        """extensions.toml (next to the extensions folder) names git sources; `./l0w extensions sync` fetches them."""
+        """Git sources by extension name. `extensions.toml` (next to the extensions folder, yours) and `extensions/.ops.toml`
+        (written by the ops container when you install from a git URL in the web UI) both list `[extension.NAME]` entries;
+        `./l0w extensions sync` fetches them. Yours wins when both name the same extension."""
         if not self.root:
             return {}
-        p = self.root.parent / "extensions.toml"
+        out: dict[str, str] = {}
+        for p in (self.root / ".ops.toml", self.root.parent / "extensions.toml"):
+            try:
+                raw = tomllib.loads(p.read_text())
+            except (OSError, tomllib.TOMLDecodeError):
+                continue
+            out.update({n: f"{v.get('git')}@{str(v.get('commit', ''))[:12]}" for n, v in (raw.get("extension") or {}).items() if isinstance(v, dict) and v.get("git")})
+        try:  # what ops installed and no toml names: a hub service's extension (each folder has its own .l0w-source.json)
+            for d in self.root.iterdir():
+                rec = self.ops_record(d.name)
+                if rec and d.name not in out and rec.get("git"):
+                    out[d.name] = f"{'hub: ' if rec.get('source') == 'hub' else ''}{rec['git']}@{str(rec.get('commit', ''))[:12]}"
+        except OSError:
+            pass
+        return out
+
+    def ops_record(self, name: str) -> dict | None:
+        """The record the ops container left in an extension it installed (`.l0w-source.json`); None for anything else."""
+        if not self.root or name.startswith((".", "_")) or not NAME_RE.match(name):
+            return None
+        d, f = self.root / name, self.root / name / ".l0w-source.json"
         try:
-            raw = tomllib.loads(p.read_text())
-        except (OSError, tomllib.TOMLDecodeError):
-            return {}
-        return {n: f"{v.get('git')}@{v.get('commit', '')[:12]}" for n, v in raw.get("extension", {}).items() if isinstance(v, dict) and v.get("git")}
+            if d.is_symlink() or not d.is_dir() or f.is_symlink() or not f.is_file():
+                return None
+            v = json.loads(f.read_text())
+        except (OSError, ValueError):
+            return None
+        return v if isinstance(v, dict) and v.get("source") in ("owner", "toml", "hub") else None
 
     # ── lifecycle ──────────────────────────────────────────────────────────
     def startup(self, loop: asyncio.AbstractEventLoop) -> None:
@@ -696,6 +720,7 @@ class Extensions:
             out.append({
                 "name": row["name"], "title": m.title if m else row["name"], "version": row["version"], "sdk": row["sdk"], "source": row["source"],
                 "description": m.description if m else "", "enabled": bool(row["enabled"]), "loaded": row["name"] in self.loaded,
+                "ops": self._ops_view(row["name"]),
                 "present": m is not None, "compatible": sdk_compatible(row["sdk"]), "last_error": row["last_error"] or self.errors.get(row["name"]),
                 "settings": [{"key": k, **{f: v for f, v in s.items() if f in ("kind", "label", "help", "default", "min", "max", "choices")},
                               "value": self.kv_get(row["name"], "setting:" + k, s["default"])} for k, s in (m.settings.items() if m else [])],
@@ -704,6 +729,13 @@ class Extensions:
                 "routines": [r["id"] for r in self.db.q("SELECT id FROM routines WHERE extension=? AND status!='declined'", (row["name"],))],
             })
         return out
+
+    def _ops_view(self, name: str) -> dict | None:
+        rec = self.ops_record(name)
+        if not rec:
+            return None
+        return {"source": rec["source"], "git": str(rec.get("git") or ""), "commit": str(rec.get("commit") or ""), "path": rec.get("path") or None,
+                "installed_at": rec.get("installed_at")}
 
     def ui_file(self, name: str, rel: str) -> Path:
         lo = self.loaded.get(name)

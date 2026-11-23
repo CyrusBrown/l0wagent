@@ -86,3 +86,10 @@ service, your instance stops using it and tells you.
   service can't authorize spending, permissions, secrets, settings or anything else that is yours to decide.
 - **Events** a service sends on its own (a new post, held mail) arrive as notifications and go to the extensions that asked for them.
 - Peer activity paused (Settings → Friends) also pauses calls to services.
+- **A service's extension**: a service may name an extension that goes with it (pinned to one commit and signed in the hub's service
+  document). Each such service has a second switch in Settings → Hub, on by default for services that are on by default. Turning it on
+  has the ops container install exactly that commit and switch the extension on (it runs inside the app, so only switch on a hub you
+  trust); off removes it. When the hub lists a newer commit it is applied on its own and logged (Hub log, and a notification). If you
+  turn on **Ask before a hub updates its extensions**, you get a card in your Inbox with the old and new commit instead, and the old
+  version stays until you allow it (or press **Update now** on the service). Your assistant never sees these cards and can't file them.
+  Installing needs the ops container (it comes with the install; without it the switch does nothing).

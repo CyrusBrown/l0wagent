@@ -42,6 +42,7 @@ from ..jobs import Jobs
 from ..live import Live
 from ..membership import Gateway, Membership
 from ..notify import Notifier
+from ..ops import Ops, OpsClient
 from ..presence import Presence
 from ..retention import run_retention
 from ..reviewer import Reviewer
@@ -118,6 +119,8 @@ class SqliteBackend(Backend):
         self.friends_ = Friends(self.db, self.live, self.conv, self.vault, self.settings, self.membership_, self.notifier, lambda sub, name, data: self._write_inbox(sub, name, data))
         self.hubservices_ = Hubservices(self.db, self.live, self.vault, self.settings, self.membership_, self.notifier)
         self.friends_.hubservices = self.hubservices_
+        self.ops = Ops(self.db, self.live, self.settings, self.notifier, self.updates, self.membership_, self.hubservices_,
+                       OpsClient(self.env.ops_url, self.env.ops_token) if self.env.ops_url and self.env.ops_token else None)
         self.conv.storage = self.storage
         self.friends_.storage = self.storage
         self.conv.on_owner_message = self._peer_post
@@ -127,6 +130,8 @@ class SqliteBackend(Backend):
         self.conv.on_nonpeer_post = self.friends_.breaker.on_nonpeer_post
         self.runs_mgr.on_finish.append(lambda run: self.friends_.breaker.on_run_end(run["id"]))
         self.conv.apply_wake = self.friends_.apply_wake
+        self.conv.apply_extension_update = self.ops.apply_update_approval
+        self.ops.conv = self.conv
         self.friends_.scheduler, self.friends_.budgets = self.scheduler, self.budgets
         self.presence_ = Presence(self.db, self.settings, self.budgets, self.runs_mgr, self.friends_)
         self.signer = Signer(self.vault.key)
@@ -135,6 +140,8 @@ class SqliteBackend(Backend):
         ext_dir = os.environ.get("L0W_EXTENSIONS_DIR", "/app/extensions")
         self.ext = Extensions(self, Path(ext_dir) if ext_dir else None)
         self.hubservices_.event_sink = self.ext.fire_hub_event
+        self.ops.extensions = self.ext
+        self.ops.result_file = Path(ext_dir) / ".l0w-update.json" if ext_dir else None
         self.integrations.extra_presets = self.ext.presets
         self.integrations.timeout = lambda: self.settings.get("INTEGRATION_TIMEOUT_S")
         fire = self.ext.fire
@@ -168,6 +175,7 @@ class SqliteBackend(Backend):
         self.ext.startup(self.loop)
         await self.runs_mgr.startup()
         self.hubservices_.startup()
+        await self.ops.startup(self.loop)
         try:
             await self.membership_.startup()
         except Exception:  # noqa: BLE001  (the gateway may still be starting; the daily check repairs it)
@@ -184,6 +192,7 @@ class SqliteBackend(Backend):
             self._files_task = asyncio.create_task(self._files_server.serve())
 
     async def shutdown(self) -> None:
+        await self.ops.shutdown()
         self.ext.shutdown()
         self._watcher.cancel()
         if self._scheduler:
@@ -203,7 +212,7 @@ class SqliteBackend(Backend):
 
     # ── meta, status, sync, events ─────────────────────────────────────────
     def meta(self) -> s.Meta:
-        caps = s.Capabilities(extensions=sorted(self.ext.loaded), hub=self.membership_.joined() is not None, hub_join=self.membership_.gw is not None)
+        caps = s.Capabilities(extensions=sorted(self.ext.loaded), hub=self.membership_.joined() is not None, hub_join=self.membership_.gw is not None, ops=self.ops.available)
         return s.Meta(server_version=__version__, api_version=API_VERSION, ui_bundle_version=__version__, capabilities=caps,
                       setup_complete=self.auth.owner() is not None, instance_name=self.env.instance_name)
 
@@ -323,11 +332,16 @@ class SqliteBackend(Backend):
     def membership_leave(self, req: s.LeaveRequest) -> s.Membership:
         return self._await(self.membership_.leave(req))
 
+    def membership_patch(self, req: s.MembershipPatch) -> s.Membership:
+        return self._await(self.membership_.set_policy(req.ask_before_extension_updates))
+
     def membership_services(self) -> list[s.HubService]:
         return self.hubservices_.view()
 
     def membership_service_patch(self, address: str, req: s.HubServicePatch) -> s.HubService:
-        return self._await(self.hubservices_.set_enabled(address, req.enabled), timeout=60)
+        if req.enabled is None and req.extension_enabled is None:
+            raise BadRequest("nothing_to_change", "Say what to switch: enabled or extension_enabled.")
+        return self._await(self.hubservices_.patch(address, enabled=req.enabled, extension_enabled=req.extension_enabled), timeout=60)
 
     def self_description(self) -> dict | None:
         return self.membership_.self_doc()
@@ -602,6 +616,17 @@ class SqliteBackend(Backend):
         for name in list(self.ext.loaded):  # pick up new code and manifests
             self.ext._load(name)
         return self.extensions()
+
+    def extension_resolve(self, req: s.ExtensionResolveRequest) -> s.ExtensionResolved:
+        return self._await(self.ops.resolve(req), timeout=90)
+
+    def extension_install(self, req: s.ExtensionInstallRequest) -> s.ExtensionInfo:
+        name = self.conv.once(req.idempotency_key, "extension_install", s.ExtensionInfo,
+                              lambda: self._ext_info(self._await(self.ops.install(req), timeout=330)))
+        return name
+
+    def extension_remove(self, name: str) -> s.ExtensionRemoved:
+        return self._await(self.ops.remove(name), timeout=90)
 
     def _ext_info(self, name: str) -> s.ExtensionInfo:
         for i in self.extensions():
@@ -974,6 +999,7 @@ class SqliteBackend(Backend):
         await self.friends_.housekeeping(now)
         try:
             await self.hubservices_.housekeeping(now)
+            await self.ops.housekeeping(now)
         except Exception:  # noqa: BLE001  (the rest of housekeeping must still run)
             log.exception("hub services")
         try:
@@ -1055,14 +1081,24 @@ class SqliteBackend(Backend):
 
     # ── updates ────────────────────────────────────────────────────────────
     def update_info(self) -> s.UpdateInfo:
-        return self.updates.info()
+        return self.ops.decorate(self.updates.info())
 
     def check_update(self) -> s.UpdateInfo:
         self._await(self.updates.check(force=True))
-        return self.updates.info()
+        self._await(self.ops.refresh_status())
+        return self.update_info()
 
     def cancel_update(self) -> s.UpdateInfo:
-        return self.updates.cancel()
+        self.ops.cancel_waiting()
+        self.updates.cancel()
+        return self.update_info()
+
+    def apply_update(self, req: s.UpdateApplyRequest) -> s.UpdateInfo:
+        def make() -> s.UpdateInfo:
+            self._await(self.ops.apply_update(req.version))
+            return self.update_info()
+
+        return self.conv.once(req.idempotency_key, "update_apply", s.UpdateInfo, make)
 
     # ── the emergency pause ────────────────────────────────────────────────
     def pause_state(self) -> s.PauseState:

@@ -56,6 +56,17 @@ jobs:
       - run: uv run pytest -q
       - run: uv run ruff check .
 
+  # The ops container: extension installs (local git repositories), the update request, ops-docker against a fake Docker socket.
+  ops:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: ops } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - run: uv run pytest -q
+      - run: uv run ruff check .
+
   # The generic hub on Cloudflare: unit tests (spec vectors), then the whole conformance suite against
   # `wrangler dev` running locally (scripts/conformance.sh starts and stops it).
   hub:
@@ -115,7 +126,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker compose -f compose.dev.yaml up -d --build --wait control egress agent gateway tunnel
+      - run: docker compose -f compose.dev.yaml up -d --build --wait control egress agent gateway tunnel ops
       - run: dev/isolation-test.sh
       - if: failure()
         run: docker compose -f compose.dev.yaml logs --tail 200

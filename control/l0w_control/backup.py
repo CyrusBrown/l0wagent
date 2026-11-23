@@ -189,6 +189,11 @@ def _read_exact(f, n: int) -> bytes:
 
 
 # ── create ─────────────────────────────────────────────────────────────────
+def _skip_ops_cache(ti: tarfile.TarInfo) -> tarfile.TarInfo | None:
+    parts = ti.name.split("/")
+    return None if len(parts) >= 3 and parts[1] == "extensions" and parts[2] == ".cache" else ti
+
+
 def _add_bytes(tar: tarfile.TarFile, name: str, data: bytes) -> None:
     ti = tarfile.TarInfo(name)
     ti.size = len(data)
@@ -245,7 +250,8 @@ def create(out, passphrase: str, base: Path | None = None) -> list[str]:
                 else:
                     for i in items:
                         if (d / i).exists() or (d / i).is_symlink():
-                            tar.add(d / i, arcname=f"{name}/{i}")
+                            # ops' git cache (extensions/.cache) is refetched on demand: not worth backing up
+                            tar.add(d / i, arcname=f"{name}/{i}", filter=_skip_ops_cache if i == "extensions" else None)
     enc.close()
     return parts
 

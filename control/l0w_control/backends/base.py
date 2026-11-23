@@ -174,6 +174,9 @@ class Backend:
     # extensions (M8; online only: enabling one and its settings are the owner's, never queued offline)
     def extensions(self) -> list[s.ExtensionInfo]: raise NotImplementedError
     def rescan_extensions(self) -> list[s.ExtensionInfo]: raise NotImplementedError
+    def extension_resolve(self, req: s.ExtensionResolveRequest) -> s.ExtensionResolved: raise NotImplementedError
+    def extension_install(self, req: s.ExtensionInstallRequest) -> s.ExtensionInfo: raise NotImplementedError
+    def extension_remove(self, name: str) -> s.ExtensionRemoved: raise NotImplementedError
     def set_extension_enabled(self, name: str, enabled: bool) -> s.ExtensionInfo: raise NotImplementedError
     def set_extension_settings(self, name: str, values: dict) -> s.ExtensionInfo: raise NotImplementedError
     def extension_ui_file(self, name: str, path: str) -> str: raise NotImplementedError
@@ -209,6 +212,7 @@ class Backend:
     def push_test(self) -> s.PushTestResult: raise NotImplementedError
     def check_update(self) -> s.UpdateInfo: raise NotImplementedError
     def cancel_update(self) -> s.UpdateInfo: raise NotImplementedError
+    def apply_update(self, req: s.UpdateApplyRequest) -> s.UpdateInfo: raise NotImplementedError
     def pause_state(self) -> s.PauseState: raise NotImplementedError
     def pause(self, req: s.PauseRequest) -> s.PauseState: raise NotImplementedError
     def resume(self) -> s.PauseState: raise NotImplementedError
@@ -222,6 +226,7 @@ class Backend:
     def membership_rotate(self) -> s.Membership: raise NotImplementedError
     def membership_recover(self, req: s.RecoverRequest) -> s.Membership: raise NotImplementedError
     def membership_leave(self, req: s.LeaveRequest) -> s.Membership: raise NotImplementedError
+    def membership_patch(self, req: s.MembershipPatch) -> s.Membership: raise NotImplementedError
     def membership_services(self) -> list[s.HubService]: raise NotImplementedError
     def membership_service_patch(self, address: str, req: s.HubServicePatch) -> s.HubService: raise NotImplementedError
     # friends and messages between instances (H5)

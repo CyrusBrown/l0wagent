@@ -12,6 +12,8 @@
 #   agent ── HTTP(S)_PROXY ──▶ egress ──▶ internet (logged; model access only under a lease)
 #   hub:   tunnel ──(hubnet)──▶ control-hub (control's alias on hubnet) and gateway (the keys)
 #          tunnel ──(outside)──▶ the hub, dialing out; the agent is never on hubnet
+#   ops:   control ──(opsnet)──▶ ops ──(ops-out)──▶ git hosts and the release list (never the sandbox, hubnet or the tunnel's network)
+#          ops ──(opsnet)──▶ ops-docker ──▶ the Docker socket; ops-docker exists only if you opted in (./l0w ops enable-updates)
 #
 # The agent's only network is `sandbox`: internal (no route out) and with no host IP on the
 # bridge, so it can't reach the host, the LAN or the internet except through egress.
@@ -39,6 +41,9 @@ services:
       L0W_GATEWAY_URL: http://gateway:8780
       L0W_TUNNEL_SUBNET: ${TUNNEL_SUBNET:?run ./l0w install}
       L0W_FILES_PORT: "8001"
+      # The ops container: installs extensions (and, if you opted in, updates the install) when control asks.
+      L0W_OPS_URL: http://ops:8795
+      L0W_OPS_TOKEN: ${L0W_OPS_TOKEN:?run ./l0w install}
       # The ports the browser uses (published), for links to the files origin.
       L0W_FILES_PUBLIC_PORT: ${L0W_FILES_PUBLISHED_PORT:-8001}
       L0W_INSTANCE_NAME: ${L0W_INSTANCE_NAME:-l0wagent}
@@ -75,6 +80,7 @@ services:
       # (L0W_TUNNEL_SUBNET) and be treated as an ordinary LAN or local caller.
       hubnet:
         aliases: [control-hub]
+      opsnet: {}
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     depends_on: [agent, gateway]
@@ -214,9 +220,66 @@ services:
     security_opt: ["no-new-privileges:true"]
     depends_on: [gateway]
 
+  # The ops container (H6): git, installing extensions at pinned commits, and asking ops-docker to update. It has no Docker
+  # access. It runs as the host user (L0W_UID/L0W_GID, written by ./l0w install) so what it writes into ./extensions belongs to
+  # whoever owns that folder. ./extensions.toml (the owner's own file) is mounted read-only as a single file: ./l0w makes sure it
+  # exists (an empty one), because Docker would otherwise create a folder of that name. An editor that replaces the file by
+  # renaming a new one over it leaves this container seeing the old file until `./l0w up -d --force-recreate ops`.
+  ops:
+    image: ghcr.io/cyrusbrown/l0wagent-ops:${L0W_VERSION:-stable}
+    restart: unless-stopped
+    user: "${L0W_UID:-1000}:${L0W_GID:-1000}"
+    environment:
+      L0W_OPS_TOKEN: ${L0W_OPS_TOKEN:?run ./l0w install}
+      L0W_OPS_DOCKER_TOKEN: ${L0W_OPS_DOCKER_TOKEN:?run ./l0w install}
+      L0W_VERSION: ${L0W_VERSION:-stable}
+      L0W_COMPOSE_PROFILES: ${COMPOSE_PROFILES:-}
+      OPS_DOCKER_URL: http://ops-docker:8796
+      HOME: /tmp
+    volumes:
+      - ./extensions:/extensions
+      - ./extensions.toml:/project/extensions.toml:ro
+    networks: [opsnet, ops-out]
+    read_only: true
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+
+  # Opt-in (./l0w install asks; ./l0w ops enable-updates|disable-updates): the only container with the Docker socket, which is
+  # root-equivalent on this machine. It is not a proxy: three fixed commands (status, pull this project's images, start the
+  # updater), every Docker request built inside it. No network but opsnet, only ops calls it. Runs as root in its container
+  # because the socket is root's; every capability is dropped and the filesystem is read-only.
+  ops-docker:
+    image: ghcr.io/cyrusbrown/l0wagent-ops:${L0W_VERSION:-stable}
+    profiles: ["ops-docker"]
+    restart: unless-stopped
+    command: ["python", "-m", "l0w_ops.docker"]
+    user: "0:0"
+    environment:
+      L0W_OPS_DOCKER_TOKEN: ${L0W_OPS_DOCKER_TOKEN:?run ./l0w install}
+      HOME: /tmp
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [opsnet]
+    read_only: true
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8796/healthz')"]
+      interval: 10s
+      retries: 10
+
 networks:
   outside: {}
   gateway-out: {}
+  # ops reaches git hosts and the release list here; no other container joins it.
+  ops-out: {}
+  # control, ops and ops-docker only: no route out, no host IP on the bridge.
+  opsnet:
+    internal: true
   sandbox:
     internal: true
     driver: bridge

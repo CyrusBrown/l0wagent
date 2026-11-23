@@ -49,6 +49,13 @@ h2 { margin: 0; font: 500 18px/1.3 var(--serif) }
 .banner .x { margin-left: auto; border: none; background: none; color: var(--muted); font: 400 14px var(--sans); padding: 2px 6px }
 .banner .btn { border: none; background: var(--fg); color: var(--bg); border-radius: 7px; padding: 5px 11px; font: 500 12.5px var(--sans) }
 .banner .muted-text { color: var(--muted) }
+.banner.fail { background: var(--badSoft); color: var(--badInk); border-bottom-color: var(--line) }
+.banner .upd-error { color: var(--badInk); font-size: 12.5px }
+.upd-confirm { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; animation: rise .22s cubic-bezier(.2,.7,.3,1) both }
+.upd-steps { display: flex; align-items: center; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 12px; color: var(--muted) }
+.upd-steps li { padding: 2px 9px; border-radius: 999px; background: var(--soft); transition: background .25s ease, color .25s ease }
+.upd-steps li.done { color: var(--okInk); background: var(--okSoft) }
+.upd-steps li.now { color: var(--accentInk); background: var(--bg); font-weight: 500; animation: pulse 1.6s ease-in-out infinite }
 .outbox-failed { padding: 6px 16px; background: var(--badSoft, var(--warnSoft)); color: var(--badInk); font-size: 12.5px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px }
 .offline-bar { padding: 6px 16px; background: var(--warnSoft); color: var(--warnInk); font-size: 12.5px; border-bottom: 1px solid var(--line) }
 .body { flex: 1; display: flex; min-height: 0 }
@@ -171,6 +178,7 @@ h2 { margin: 0; font: 500 18px/1.3 var(--serif) }
 .attach-row { display: flex; gap: 6px; flex-wrap: wrap }
 .file-chip.bad { border-color: var(--badInk); color: var(--badInk) }
 .btn.ghost { color: var(--fg2); font-weight: 400 }
+.btn.quiet, .banner .btn.quiet { background: transparent; color: var(--fg2); border: 1px solid var(--line2); font-weight: 400 }
 .delivery { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 6px; font-size: 12.5px; color: var(--muted); flex-wrap: wrap }
 .row-start { display: flex; align-items: center; gap: 7px }
 .link-btn.accent { color: var(--accentInk); font-weight: 500 }
@@ -885,6 +893,13 @@ input, textarea { transition: border-color .16s ease }
 .ext-side .ext-slot { padding: 0 10px }
 .ext-problem { font-size: 12.5px; padding: 8px 10px }
 .thread-ext { max-width: 928px; margin: 0 auto; padding: 12px 24px 0 }
+.svc-list { display: flex; flex-direction: column; gap: 8px }
+.svc { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; background: var(--card); overflow: hidden }
+.svc .set-row { border: none; border-radius: 0 }
+.svc .svc-ext { border-top: 1px solid var(--line); background: var(--soft) }
+.ext-install { max-width: 560px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); animation: rise .24s cubic-bezier(.2,.7,.3,1) both }
+.ext-install-step { animation: rise .24s cubic-bezier(.2,.7,.3,1) both }
+.ext-remove { display: flex; flex-direction: column; gap: 8px; animation: rise .22s cubic-bezier(.2,.7,.3,1) both }
 .ext-error { margin: 0; white-space: pre-wrap; font: 12.5px var(--mono); overflow-x: auto }
 .ext-row .set-row { align-items: flex-start }
 @media (max-width: 760px) { .thread-ext { padding: 10px 16px 0 } }

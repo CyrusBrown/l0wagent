@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, ok, type S } from '../api/client'
+import { api, newKey, ok, type S } from '../api/client'
 
 export type ExtInfo = S['ExtensionInfo']
 
@@ -40,5 +40,22 @@ export function useResolveExtCard() {
     mutationFn: (a: { id: number; action: string; data?: Record<string, unknown> }) =>
       ok(api.POST('/api/extension-cards/{card_id}/resolve', { params: { path: { card_id: a.id } }, body: { action: a.action, data: a.data ?? {} } })),
     onSuccess: () => { for (const k of ['inbox', 'thread', 'threads', 'projects', 'status']) qc.invalidateQueries({ queryKey: [k] }) },
+  })
+}
+
+// Install from a git URL (needs the ops container): resolve the ref to a commit, show it, then install exactly that commit.
+export const useResolveExt = () => useMutation({ mutationFn: (b: S['ExtensionResolveRequest']) => ok(api.POST('/api/extensions/resolve', { body: b })) })
+export function useInstallExt() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (b: Omit<S['ExtensionInstallRequest'], 'idempotency_key'>) => ok(api.POST('/api/extensions/install', { body: { ...b, idempotency_key: newKey() } })),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['extensions'] }); qc.invalidateQueries({ queryKey: ['meta'] }) },
+  })
+}
+export function useRemoveExt() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) => ok(api.DELETE('/api/extensions/{name}', { params: { path: { name } } })),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['extensions'] }); qc.invalidateQueries({ queryKey: ['meta'] }) },
   })
 }

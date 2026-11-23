@@ -103,6 +103,7 @@ class Membership:
         self._lock = asyncio.Lock()
         self.on_caps: Callable[[], Awaitable[None]] | None = None  # hub services follow the capabilities (hubservices.py)
         self.on_left: Callable[[], Awaitable[None]] | None = None
+        self.on_policy: Callable[[], None] | None = None  # the owner changed how this hub's extension updates are handled (ops.py)
 
     # ── state ──────────────────────────────────────────────────────────────
     def row(self) -> dict | None:
@@ -240,7 +241,7 @@ class Membership:
             joined_at=parse(r["joined_at"]), tunnel=await self.tunnel_status(),
             accelerator=s.AcceleratorSetting(offered=self.accelerator_api(r) is not None, enabled=bool(r["use_accelerator"])),
             check=s.MembershipCheck(ok=chk["ok"], at=parse(chk["at"]), problems=chk["problems"]) if chk else None,  # type: ignore[arg-type]
-            sign_key=sign_key, hub_key_alarm=r["hub_key_alarm"],
+            sign_key=sign_key, hub_key_alarm=r["hub_key_alarm"], ask_before_extension_updates=bool(r["ask_before_extension_updates"]),
         )
 
     # ── joining ────────────────────────────────────────────────────────────
@@ -349,6 +350,18 @@ class Membership:
             self.db.ex("UPDATE hub_membership SET use_accelerator=? WHERE id=1", (1 if enabled else 0,))
             self._log("accelerator", "on" if enabled else "off")
             await self._set_tunnel()
+        self._changed()
+        return await self.view()
+
+    async def set_policy(self, ask_before_extension_updates: bool | None) -> s.Membership:
+        """Per-hub choices of the owner. `ask_before_extension_updates`: a newer commit of an extension the hub's services installed waits for an OK."""
+        async with self._lock:
+            self._need_joined()
+            if ask_before_extension_updates is not None:
+                self.db.ex("UPDATE hub_membership SET ask_before_extension_updates=? WHERE id=1", (1 if ask_before_extension_updates else 0,))
+                self._log("extension_updates", "ask first" if ask_before_extension_updates else "apply automatically")
+        if self.on_policy:
+            self.on_policy()
         self._changed()
         return await self.view()
 

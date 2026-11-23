@@ -5,6 +5,17 @@ Each release's section becomes its GitHub release notes, which the app shows in 
 
 ## Unreleased
 
+- New `ops` container: installs extensions at a pinned commit from a git URL (the web UI will call it; `extensions/.ops.toml`
+  records what it installed, and `./l0w extensions sync` reads that file too). `./l0w install` now asks whether the web UI
+  may also update this install (default no): that starts `ops-docker`, the one container with the Docker socket, which can only
+  pull this project's images and start the updater. Change it later with `./l0w ops enable-updates` or `disable-updates`.
+  `./l0w update` adds the new tokens to an older `.env` by itself and gains `--no-drain`.
+- Update from the app: with updating from the web turned on (`./l0w ops enable-updates`), the update banner has **Update now**.
+  The assistant finishes what it's doing first (up to an hour; Settings → Advanced → System), then the app updates and restarts
+  by itself, and the banner and a notification say how it went. Settings → Extensions can **Install from git** (pick a branch or
+  tag; the one commit it points to is installed, off until you turn it on) and remove what it installed. Settings → Hub lists the
+  hub's services with their switches; a service's extension has its own switch and is installed for you, and a newer commit from the
+  hub is applied and logged, or waits for your OK in the Inbox if you turn on "Ask before a hub updates its extensions".
 - Hubs: when your hub offers the faster `cloudflared` connection, the tunnel container uses it (Settings → Hub,
   on by default) and falls back to the normal tunnel by itself if it stops working.
 - Hubs: the join screen previews your hostnames as you type a name, and a name-bound invite fills in the name and locks it.
