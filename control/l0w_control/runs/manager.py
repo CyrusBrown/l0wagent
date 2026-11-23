@@ -41,6 +41,7 @@ from ..config import Env, Settings
 from ..db import Database
 from ..live import Live
 from .clients import EgressClient, RunnerClient, RunnerError, RunnerIdle, RunnerSettingUp
+from .endings import ending, explain_error, stopped_sentence
 from .runtime import ADAPTERS, Item, RuntimeAdapter
 from .usage import Usage
 
@@ -75,6 +76,7 @@ def run_model(db: Database, row: dict) -> s.Run:
         status=row["status"], started_at=parse(row["started_at"]), ended_at=parse(row["ended_at"]), projects=projects,  # type: ignore[arg-type]
         bucket=row.get("bucket") or "allowance", level=row.get("level"), reviewer_mode=row.get("reviewer_mode") or "off",  # type: ignore[arg-type]
         wakeup_id=row.get("wakeup_id"), routine_id=row.get("routine_id"), end_reason=row.get("end_reason"),
+        ending=ending(row["status"], row.get("end_reason"), row.get("stop_reason"), row.get("result")),
     )
 
 
@@ -169,6 +171,7 @@ class RunManager:
         """Store one log line and what it means, and advance the offset, atomically.
         Returns (run row changed, result if this was the session's result)."""
         parsed = self.adapter(sess.runtime).parse(event)
+        self._neutralize_if_stopped(run_id, parsed)
         raw = self.vault.redact(json.dumps(event)) or ""
         if len(raw) > MAX_EVENT_BYTES:
             raw = json.dumps({"type": event.get("type"), "truncated": True, "preview": raw[:MAX_EVENT_BYTES]})
@@ -210,6 +213,24 @@ class RunManager:
         for tid in item_ids:
             self.live.emit("timeline", {"run_id": run_id, "id": tid})
         return changed, parsed.result
+
+    def _neutralize_if_stopped(self, run_id: int, parsed) -> None:
+        """Stopping a session interrupts it, and the runtime reports that as an error (Claude Code's
+        final result is `error_during_execution`, the process exits non-zero). When control asked the
+        run to stop, that is the stop working: show it as a neutral item that says why, keep the raw
+        text in the item's data, and don't let it become the run's result."""
+        if not any(i.kind == "error" and i.data.get("session_end") for i in parsed.items):
+            return
+        run = self.db.q1("SELECT stop_requested_at, stop_reason FROM runs WHERE id=?", (run_id,))
+        if not run or not run["stop_requested_at"]:
+            return
+        sentence = stopped_sentence(run["stop_reason"])
+        for i, item in enumerate(parsed.items):
+            if item.kind == "error" and item.data.get("session_end"):
+                kept = {k: v for k, v in item.data.items() if k != "session_end"} | {"was": item.text, "stopped": True}
+                parsed.items[i] = Item("control", sentence if item.data["session_end"] != "exit" else f"The session ended after the stop ({item.data.get('returncode')})", True, kept)
+        if parsed.result and not parsed.result.get("ok"):
+            parsed.result["text"] = sentence
 
     def _count(self, run_id: int, sess: Session, parsed) -> bool:
         """Put a session's usage in the ledger and refresh the run's `used`."""
@@ -409,9 +430,10 @@ class RunManager:
         when = self.budgets.local(parse(prev["ended_at"] or prev["started_at"]))
         used = f"used {prev['used'] or 0:.1f} of {prev['budget'] or 0:g} {UNIT}"
         if prev["status"] == "stopped":
-            how = f"was stopped ({prev['stop_reason'] or prev['end_reason'] or 'stopped'}), {used}"
+            why = (ending("stopped", prev["end_reason"], prev["stop_reason"]) or "").rstrip(".").removeprefix("Stopped: ").removeprefix("Stopped ")
+            how = f"was stopped ({why}), {used}"
         elif prev["status"] == "failed":
-            how = f"failed ({prev['end_reason'] or 'error'}), {used}"
+            how = f"failed ({(ending('failed', prev['end_reason'], prev['stop_reason'], prev['result']) or '').rstrip('.')}), {used}"
         elif prev["idle"]:
             how = f"ended on its own with IDLE, {used}"
         else:
@@ -499,7 +521,8 @@ class RunManager:
         try:
             await self.egress.acquire(f"run-{run_id}", LEASE_TTL, f"run #{run_id}")
         except RunnerError as e:
-            self.timeline(run_id, Item("error", f"Couldn't open the model-provider lease: {e}", True))
+            self.timeline(run_id, Item("error", f"Couldn't open the agent's access to the model provider ({e}). "
+                                              "The session will likely fail; check that the egress container is running.", True))
         last_result: dict | None = None
         end_state = "exited"
         try:
@@ -516,7 +539,7 @@ class RunManager:
                         end_state = "failed_to_start"
                         break
                     except RunnerError as e:
-                        self.timeline(run_id, Item("error", f"The agent computer refused the session: {e}", True))
+                        self.timeline(run_id, Item("error", f"The agent computer refused to start the session: {e}. Check that the agent container is running.", True))
                         end_state = "failed_to_start"
                         break
                 elif row["state"] == "running":
@@ -550,7 +573,7 @@ class RunManager:
             raise  # shutdown: the run carries on in the runner; the next start re-attaches
         except Exception as e:  # noqa: BLE001
             log.exception("run %s failed", run_id)
-            self.timeline(run_id, Item("error", f"Control error: {e}", True))
+            self.timeline(run_id, Item("error", f"Something went wrong inside control: {explain_error(str(e))} The run was ended; control's log has the details.", True, {"raw": str(e)}))
             await self._finish(run_id, "error", last_result)
         finally:
             monitor.cancel()
@@ -579,7 +602,8 @@ class RunManager:
                 continue  # a quiet stream, reconnected right away: not lost contact (issue #1)
             except RunnerError as e:
                 if e.status == 404:
-                    self.timeline(run_id, Item("error", "The agent computer no longer has this session's log", True))
+                    self.timeline(run_id, Item("error", "The agent computer no longer has this session's log (it was probably reset). "
+                                              "The run ends here; what the agent saved to memory is kept.", True))
                     return "lost", result
                 now = utcnow()
                 give_up_min = self.settings.get("LOST_CONTACT_GIVE_UP_MINUTES")
@@ -587,7 +611,8 @@ class RunManager:
                     out_of_touch_since = now
                     self.timeline(run_id, Item("control", "Lost touch with the agent computer; retrying", True, {"error": str(e)}))
                 elif (now - out_of_touch_since).total_seconds() > give_up_min * 60:
-                    self.timeline(run_id, Item("error", f"Gave up after {give_up_min:g} minutes without the agent computer", True))
+                    self.timeline(run_id, Item("error", f"Gave up after {give_up_min:g} minutes without the agent computer. "
+                                              "Check that the agent container is running; the next run starts fresh.", True))
                     return "unreachable", result
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 15)
@@ -613,7 +638,7 @@ class RunManager:
                 pass
             await asyncio.sleep(5)
         else:
-            self.timeline(run_id, Item("error", "Not resumed: the agent computer didn't come back", True))
+            self.timeline(run_id, Item("error", "Not resumed: the agent computer didn't come back. Check that the agent container is running.", True))
             return False
         try:
             await self.egress.acquire(f"run-{run_id}", LEASE_TTL, f"run #{run_id}")
@@ -803,13 +828,14 @@ class RunManager:
             commit = await self.runner.commit(f"run #{run_id} ({status})", run["workspace_head"])
             files = [f for f in commit.get("files", []) if f.get("path")]
             if commit.get("status") == "error":
-                self.timeline(run_id, Item("error", f"Safety-net commit failed: {commit.get('error')}", True))
+                self.timeline(run_id, Item("error", f"Couldn't save the agent's memory folder to git ({commit.get('error')}). "
+                                                    "The next run tries again.", True, {"raw": str(commit.get("error"))}))
             elif files:
                 self.timeline(run_id, Item("diff", f"Memory: {len(files)} file(s) changed", True, {"volume": "workspace", "files": files, "commit": commit.get("commit")}))
         except RunnerSettingUp:
             self.timeline(run_id, Item("control", "Memory commit skipped: the agent computer is setting up. The next run's commit includes any changes.", False))
         except RunnerError as e:
-            self.timeline(run_id, Item("error", f"Safety-net commit failed: {e}", False))
+            self.timeline(run_id, Item("error", f"Couldn't save the agent's memory folder to git ({e}). The next run tries again.", False, {"raw": str(e)}))
         used = self.budgets.run_pts(run_id)
         if (run["provider"] or SUBSCRIPTION) == SUBSCRIPTION and run["usage_start_pct"] is not None:
             try:
@@ -823,7 +849,8 @@ class RunManager:
         for undone in self.conv.revert_once():
             self.timeline(run_id, Item("control", f"Undid a one-time approval: {undone}", True))
         self.db.ex("UPDATE runs SET status=?, end_reason=?, ended_at=?, used=?, idle=?, waiting_until=NULL WHERE id=?", (status, reason, self.db.now(), used, int(idle), run_id))
-        label = {"done": "Run finished", "stopped": f"Run stopped ({run['stop_reason'] or reason})", "failed": "Run failed"}[status] + f" · used {used:.1f} of {run['budget'] or 0:g} pts"
+        said = (ending("stopped", reason, run["stop_reason"]) or "Stopped.").rstrip(".")
+        label = {"done": "Run finished", "stopped": "Run " + said[:1].lower() + said[1:], "failed": "Run failed"}[status] + f" · used {used:.1f} of {run['budget'] or 0:g} pts"
         if end_state in ("unreachable", "failed_to_start"):
             label += " · the agent computer was unavailable"
         self.timeline(run_id, Item("control", label, True))

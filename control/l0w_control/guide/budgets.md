@@ -22,3 +22,12 @@ on an Anthropic API key or opencode Go, 1 pt is $0.10.
 - **Usage**: Settings and Home show your own use, your 1:1 chats, and the assistant's. 1:1 chats
   are your own use and don't spend the assistant's allowance (an optional weekly cap per provider
   stops them).
+
+## How a run ends
+A run's page says in one sentence how it ended. **Finished** means the assistant stopped on its
+own (with "nothing more to do" when it said IDLE). **Stopped** means control stopped it, and the
+sentence says why: your reserve was reached (with the percentage), its budget was used up, it hit
+its deadline, you pressed Stop or paused everything, or the server is updating. A stop is not an
+error, even though the session is interrupted. Real errors say what happened and what to do, for
+example "Claude's login expired: run ./l0w claude-login on the server". The runtime's own words are
+kept in the run's detailed timeline under the sentence.

@@ -10,9 +10,9 @@ import time
 from collections.abc import Callable
 from urllib.parse import urlsplit
 
-from l0wproto import b64, docs, hopsig, keys, payloads
+from l0wproto import b64, docs, hopsig, keys, payloads, spaces
 from l0wproto.consts import MAX_ENVELOPE
-from l0wproto.errors import ProtocolError
+from l0wproto.errors import ProtocolError, SealError
 from l0wproto.times import format_time
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -370,6 +370,73 @@ def create_app(data_dir, control_token: str, tunnel_token: str, *, net: Net | No
     async def peer_open(_r, raw):
         return await peers.open(raw)
 
+    # --- shared spaces (spaces.md; control token) ---
+
+    def space_open_key(_r, b):
+        """Open a space-key document sealed to one of our seal keys. The `info` is built from the document's own fields,
+        so this opens nothing else. The granter's signature is not checked here: control does that."""
+        doc = b.get("doc")
+        if not isinstance(doc, dict):
+            raise bad("doc must be a space-key document")
+        try:
+            p = spaces.space_key_payload(doc, peers.now())
+        except ProtocolError as e:
+            raise bad(f"not a space-key document: {e.detail}") from None
+        own = peers.own_address()
+        if payloads.split_address(p["member"]) != payloads.split_address(own):
+            raise ApiError(403, "not_for_us", "the key is sealed to another member")
+        seed = peers.seal_seeds().get(p["member_kid"])
+        if seed is None:
+            raise ApiError(403, "not_for_us", "the key is sealed to a key this instance does not hold")
+        try:
+            k = spaces.open_space_key_payload(seed, p)
+        except SealError:
+            raise ApiError(422, "cannot_open", "the key does not open") from None
+        return {"key": b64.encode(k)}
+
+    SPACE_VERSION_FIELDS = {"v", "type", "iat", "space", "seq", "parent", "epoch", "author", "blobs", "meta"}
+
+    def sign_space_version(_r, b):
+        """Sign a space-version document as this instance. Only the spec's fields, and only with this instance as author."""
+        p = b.get("payload")
+        if not isinstance(p, dict):
+            raise bad("payload must be a space-version payload object")
+        p = {"v": p.get("v", "l0w/0.1"), "type": p.get("type", "space-version"), "iat": p.get("iat", format_time(peers.now())),
+             **{k: x for k, x in p.items() if k not in ("v", "type", "iat")}}
+        if set(p) - SPACE_VERSION_FIELDS:
+            raise bad("a space-version payload has only the spec's fields")
+        try:
+            spaces.validate_space_version(p)
+        except ProtocolError as e:
+            raise bad(f"not a space-version payload: {e.detail}") from None
+        if len(docs.serialize_payload(p)) > payloads.MAX_SERVICE_BODY:
+            raise ApiError(413, "too_large", "the version is over 1 MiB")
+        own = peers.own_address()
+        if payloads.split_address(p["author"]) != payloads.split_address(own):
+            raise ApiError(403, "not_the_author", "this instance signs only its own versions")
+        return {"doc": docs.sign_document("space-version", p, [peers.sign_pair()])}
+
+    SPACE_KEY_FIELDS = {"v", "type", "iat", "space", "epoch", "member", "member_kid", "granter", "granter_kid", "sealed"}
+
+    def sign_space_key(_r, b):
+        """Sign a space-key document as this instance (the space's creator grants a member a key it sealed itself). Only the spec's
+        fields, only with this instance as granter and its current signing key as granter_kid. The gateway never sees the key."""
+        p = b.get("payload")
+        if not isinstance(p, dict):
+            raise bad("payload must be a space-key payload object")
+        p = {"v": p.get("v", "l0w/0.1"), "type": p.get("type", "space-key"), "iat": p.get("iat", format_time(peers.now())),
+             **{k: x for k, x in p.items() if k not in ("v", "type", "iat")}}
+        if set(p) - SPACE_KEY_FIELDS:
+            raise bad("a space-key payload has only the spec's fields")
+        try:
+            spaces.validate_space_key(p)
+        except ProtocolError as e:
+            raise bad(f"not a space-key payload: {e.detail}") from None
+        pair = peers.sign_pair()
+        if payloads.split_address(p["granter"]) != payloads.split_address(peers.own_address()) or p["granter_kid"] != pair.key.kid:
+            raise ApiError(403, "not_the_granter", "this instance signs only keys it grants, with its current signing key")
+        return {"doc": docs.sign_document("space-key", p, [pair])}
+
     async def healthz(_request: Request) -> JSONResponse:
         return JSONResponse({"ok": True})
 
@@ -411,6 +478,9 @@ def create_app(data_dir, control_token: str, tunnel_token: str, *, net: Net | No
             r("/v0/peer/forget", "POST", "control", peer_forget),
             r("/v0/peer/send", "POST", "control", peer_send),
             r("/v0/peer/services", "PUT", "control", peer_services),
+            r("/v0/space/open-key", "POST", "control", space_open_key),
+            r("/v0/sign/space-version", "POST", "control", sign_space_version),
+            r("/v0/sign/space-key", "POST", "control", sign_space_key),
             r("/v0/peer/outbox", "GET", "control", peer_outbox, False),
             Route("/v0/peer/open", endpoint("control", peer_open, raw_body=True), methods=["POST"]),
         ],

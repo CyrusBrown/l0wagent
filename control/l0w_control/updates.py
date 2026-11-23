@@ -95,9 +95,9 @@ class Updates:
                 data = r.json()
                 result.update(latest=(data.get("tag_name") or "").lstrip("v") or None, notes=(data.get("body") or "")[:8000], url=data.get("html_url"))
             elif r.status_code != 404:  # 404: no releases yet
-                result["error"] = f"HTTP {r.status_code}"
+                result["error"] = f"The release check got HTTP {r.status_code} from GitHub; it will try again later."
         except httpx.HTTPError as e:
-            result["error"] = str(e)[:200]
+            result["error"] = f"Couldn't reach GitHub to check for updates ({e.__class__.__name__}); it will try again later."
         self.db.ex("INSERT INTO kv(key, value, updated_at) VALUES('update_check', ?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
                    (json.dumps(result), self.db.now()))
         return result

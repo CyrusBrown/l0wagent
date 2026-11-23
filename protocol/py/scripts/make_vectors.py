@@ -12,7 +12,7 @@ import json
 import sys
 from pathlib import Path
 
-from l0wproto import b64, docs, hopsig, keys, messages, payloads, seal, tunnel
+from l0wproto import b64, docs, hopsig, keys, messages, payloads, seal, spaces, tunnel
 from l0wproto.times import parse_time
 
 OUT = Path(__file__).resolve().parents[2] / "vectors"
@@ -140,9 +140,63 @@ def build() -> dict[str, str]:
         payloads.build_accelerator_request(ADDR, HUB, "enable", "http://127.0.0.1:8790", iat=IAT), [MEMBER], [MEMBER]))
 
     files.update(message_vectors())
+    files["spaces.json"] = dump(space_vectors())
     files["hop-auth.json"] = dump(hop_vectors())
     files["tunnel-frames.json"] = dump(frame_vectors())
     return files
+
+
+def space_vectors() -> dict:
+    """spaces.md: subkeys, a blob, a sealed manifest, a lock, a space-key document and a space-version document."""
+    space = "sp-7hk2"
+    k = seed("space-key-epoch-2")
+    creator = f"bob@{HUB}"
+    creator_kp = keys.from_seed(seed("space-creator-sign"), "sign", IAT)
+    contents = b"M3 bolts, 4 off\n" + bytes(range(16))
+    epoch = 2
+    bid, stored = spaces.blob_encrypt(k, space, epoch, contents)
+    other = b"hello\n"
+    other_id = spaces.blob_id(k, epoch, other)
+    manifest = {"message": "Added motor mounts",
+                "files": {"cad/frame.FCStd": {"blob": bid, "size": len(contents), "exec": False},
+                          "notes.md": {"blob": other_id, "size": len(other), "exec": False}},
+                "conflicts": ["notes.md"]}
+    meta_nonce = hashlib.sha256(b"l0wagent-vector-meta-nonce").digest()[:12]
+    seq = 7
+    parent = spaces.version_id(b"the version before")
+    meta = spaces.meta_seal(k, space, seq, ADDR, manifest, nonce=meta_nonce)
+    path = "cad/frame.FCStd"
+    tag = spaces.lock_tag(k, path)
+    lock_nonce = hashlib.sha256(b"l0wagent-vector-lock-nonce").digest()[:12]
+    lock_sealed = spaces.lock_seal(k, space, tag, path, "rebuilding the mounts", nonce=lock_nonce)
+    eph = seed("hpke-ephemeral-space-key")
+    sealed = spaces.seal_space_key(k, SEAL.key, space=space, epoch=epoch, member=ADDR, member_kid=SEAL.kid,
+                                   granter=creator, granter_kid=creator_kp.kid, eph_priv=eph)
+    key_p = spaces.build_space_key(space, epoch, ADDR, SEAL.kid, creator, creator_kp.kid, sealed, iat=IAT)
+    key_doc = doc_vector("A space key (epoch 2) for Mara, sealed to her seal key, signed by the creator", "space-key", key_p,
+                         [creator_kp], [creator_kp])
+    ver_p = spaces.build_space_version(space, seq, parent, epoch, ADDR, [bid, other_id], meta, iat=IAT)
+    ver = doc_vector("Version 7 of the space by Mara, signed by her instance", "space-version", ver_p, [MEMBER], [MEMBER])
+    return {
+        "note": "K is the epoch-2 space key. Subkeys are HKDF-SHA256 (empty salt) of K. Blob and meta ciphertexts use fixed "
+                "nonces here only (meta_nonce_hex, lock_nonce_hex); real ones are random. A lock's plaintext is "
+                "{\"path\", \"reason\"} as compact JSON; a version document's id hashes docs.serialize_payload(document).",
+        "space": space, "epoch": epoch, "creator": creator, "creator_key": {"seed": creator_kp.private.hex(), "key": creator_kp.key.to_dict()},
+        "key_hex": k.hex(),
+        "subkeys": {"k_id": spaces.k_id(k).hex(), "k_blob": spaces.k_blob(k).hex(), "k_meta": spaces.k_meta(k).hex(), "k_tag": spaces.k_tag(k).hex()},
+        "blob": {"contents_hex": contents.hex(), "id": bid, "aad": f"{space}\n{bid}", "stored_hex": stored.hex()},
+        "blob_other": {"contents_hex": other.hex(), "id": other_id},
+        "meta": {"author": ADDR, "seq": seq, "manifest_json": docs.serialize_payload(manifest).decode("utf-8"),
+                 "aad": f"{space}\n{seq}\n{ADDR}", "nonce_hex": meta_nonce.hex(), "sealed": meta},
+        "lock": {"path": path, "reason": "rebuilding the mounts", "tag": tag, "aad": f"{space}\n{tag}",
+                 "nonce_hex": lock_nonce.hex(), "sealed": lock_sealed},
+        "space_key": {**key_doc, "member_seal_key": {"seed": SEAL.private.hex(), "key": SEAL.key.to_dict()},
+                      "info": spaces.space_key_info_of(key_p).decode("ascii"), "ephemeral_seed": eph.hex()},
+        "space_version": {**ver, "version_id": spaces.version_id_of(ver["document"]), "parent": parent,
+                          "document_bytes": spaces.version_doc_bytes(ver["document"]).decode("utf-8")},
+        "paths": {"valid": ["a", "dir/file.txt", "cad/frame.FCStd", "sp ace/\u00e9.md", ".hidden", "a..b", "x" * 1024],
+                  "invalid": ["", "/abs", "a//b", "a/", "./a", "a/./b", "../a", "a/../b", "a/..", "x" * 1025, "a\u0000b", "\u00e9" * 513]},
+    }
 
 
 PEER = "bob@other.example"

@@ -48,6 +48,7 @@ from ..retention import run_retention
 from ..reviewer import Reviewer
 from ..routines import Routines
 from ..runs.clients import EgressClient, RunnerClient, RunnerError, RunnerSettingUp
+from ..runs.endings import ending
 from ..runs.manager import RunManager, run_model
 from ..runs.usage import Usage
 from ..scheduler import Scheduler, wakeup_model
@@ -97,7 +98,7 @@ class SqliteBackend(Backend):
         self.runs_mgr.reviewer = self.reviewer
         self.runs_mgr.brief_extra = self._brief_extra
         self.runs_mgr.on_finish.append(lambda r: r["status"] == "failed" and self.notifier.notify(
-            "run_failed", f"Run #{r['id']} failed", r.get("result") or "", f"/runs/{r['id']}", "run", str(r["id"])))
+            "run_failed", f"Run #{r['id']} failed", ending("failed", r.get("end_reason"), None, r.get("result")) or "", f"/runs/{r['id']}", "run", str(r["id"])))
         self._last_jobs_check = 0.0
         self.inbox_dir = os.environ.get("L0W_INBOX_DIR", "/work/_inbox")
         self.storage = Storage({"workspace": Path(os.environ.get("L0W_WORKSPACE_DIR", "/workspace")), "work": Path(os.environ.get("L0W_WORK_DIR", "/work"))})

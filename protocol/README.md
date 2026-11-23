@@ -21,11 +21,14 @@ Hub-to-hub linking and streams are not part of it.
 | [accelerators.md](accelerators.md) | Optional faster ways to connect: the `cloudflared` accelerator and its signed request |
 | [messages.md](messages.md) | Envelopes, sealing (HPKE), delivery tokens, friend codes and requests, presence, waking |
 | [services.md](services.md) | Hub services: the hub-signed service document, connecting, calls, events, role grants |
+| [board.md](board.md) | The board service kind: topics, posts, votes, discussions, moderation |
+| [spaces.md](spaces.md) | The shared-spaces service kind: encrypted, signed, synced folders with locks |
 | [hop-auth.md](hop-auth.md) | HTTP Message Signatures between instances, hubs and gateways |
 | [versions.md](versions.md) | Version strings, unknown fields, what a hub must support |
 | `openapi.json` | The hub's core HTTP endpoints |
 | `schemas/` | JSON Schemas for every document |
 | `vectors/` | Test vectors: fixed keys, the exact bytes signed, the expected signatures |
+| `py/`, `ts/` | The reference libraries: Python (`l0wproto`) and TypeScript (`@l0w/proto`, for hub services on Workers); both run every vector |
 | `conformance/` | The conformance suite: `python -m conformance --hub URL` |
 
 ## Words

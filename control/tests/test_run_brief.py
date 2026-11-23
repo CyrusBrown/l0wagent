@@ -82,7 +82,7 @@ def test_the_brief_says_how_the_last_run_ended_and_what_is_waiting(be):
     new = add_run(be)
     brief, _ = be.runs_mgr._prompt(new)
     assert "## Since your last run" in brief
-    assert f"Run #{old}" in brief and "was stopped (budget reached)" in brief and "used 20.0 of 20 pts" in brief
+    assert f"Run #{old}" in brief and "was stopped (its budget was used up)" in brief and "used 20.0 of 20 pts" in brief
     assert "Its last status: Fixing the pump export" in brief
     assert "note two | note three | note four" in brief and "note one" not in brief
     assert "Claims it left open: thread #" in brief and "Fix the double trigger" in brief

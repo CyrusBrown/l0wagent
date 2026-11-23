@@ -10,7 +10,7 @@ import type { Doc, Obj } from "./proto/docs";
 import { UnsupportedVersion, NameRuleError } from "./proto/errors";
 import { formatInvite } from "./proto/invite";
 import { Key } from "./proto/keys";
-import { checkName, validateName } from "./proto/names";
+import { checkName, lookalikeKey, validateName } from "./proto/names";
 import * as P from "./proto/payloads";
 import { checkFresh, formatTime, now } from "./proto/times";
 import { errorResponse, jsonResponse } from "./respond";
@@ -104,6 +104,20 @@ async function dropTunnel(env: Env, name: string, code: number, permanent: boole
 
 async function capabilities(env: Env, cfg: Config): Promise<Response> {
   const key = await hubKey(env);
+  const extras: Obj[] = acceleratorExtra(cfg) ? [acceleratorExtra(cfg) as Obj] : [];
+  for (const svc of await db.listServices(env.DB)) {
+    const p = P.buildService({
+      address: address(cfg, svc.name),
+      kind: svc.kind,
+      title: svc.title,
+      description: svc.description ?? undefined,
+      docs: svc.docs ?? undefined,
+      roles: svc.roles,
+      extension: svc.extension ?? undefined,
+      default: svc.defaultOn ? "on" : "off",
+    });
+    extras.push({ kind: "service", doc: await docs.signDocument("service", p, [key]) });
+  }
   const payload = P.buildHub({
     name: cfg.name,
     domain: cfg.domain,
@@ -117,7 +131,7 @@ async function capabilities(env: Env, cfg: Config): Promise<Response> {
     hostnames: { layout: hostnameLayout(cfg), example: { name: EXAMPLE_NAME, ...hostnamesFor(cfg, EXAMPLE_NAME) } },
     policies: cfg.policies,
     limits: cfg.limits,
-    extras: acceleratorExtra(cfg) ? [acceleratorExtra(cfg) as Obj] : [],
+    extras,
   });
   const doc = await docs.signDocument("hub", payload, [key]);
   return jsonResponse(doc, 200, { "cache-control": "max-age=300" });
@@ -157,7 +171,7 @@ async function admissionChecks(env: Env, cfg: Config, p: Obj): Promise<void> {
     await checkName(name, {
       bound: inv.bind !== null,
       reservedExtra: cfg.reservedExtra,
-      isTaken: (n) => db.nameExists(env.DB, n),
+      isTaken: async (n) => (await db.nameExists(env.DB, n)) || (await db.serviceExists(env.DB, n)),
       lookalikeTaken: (k) => db.lookalikeExists(env.DB, k),
     });
   } catch (e) {
@@ -271,6 +285,10 @@ async function putSelf(request: Request, env: Env, cfg: Config, name: string): P
 
 async function getEntry(env: Env, name: string): Promise<Response> {
   const m = await db.getMember(env.DB, name);
+  if (!m) {
+    const svc = await db.getService(env.DB, name);
+    if (svc) return jsonResponse(await docs.countersignDirectory(svc.selfDoc, await hubKey(env)), 200, { "cache-control": "no-cache" });
+  }
   if (!m || (m.status === "active" && m.selfDoc === null)) {
     throw new HubError(404, "no_such_member", "no such member (or it has not published yet)");
   }
@@ -318,11 +336,15 @@ async function sameSecret(a: string, b: string): Promise<boolean> {
   return d === 0;
 }
 
-async function adminInvite(request: Request, env: Env, cfg: Config): Promise<Response> {
+async function adminAuth(request: Request, env: Env): Promise<void> {
   const token = env.ADMIN_TOKEN?.trim();
   if (!token) throw new HubError(404, "not_found", "no such endpoint");
   const given = /^Bearer (.+)$/.exec(request.headers.get("authorization") ?? "")?.[1] ?? "";
   if (!(await sameSecret(given, token))) throw new HubError(401, "unauthorized", "a valid admin token is required", {}, { "www-authenticate": "Bearer" });
+}
+
+async function adminInvite(request: Request, env: Env, cfg: Config): Promise<Response> {
+  await adminAuth(request, env);
   let o: Obj = {};
   const text = await readText(request);
   if (text.trim()) {
@@ -363,7 +385,7 @@ async function adminInvite(request: Request, env: Env, cfg: Config): Promise<Res
       await checkName(bind, {
         bound: true,
         reservedExtra: cfg.reservedExtra,
-        isTaken: (n) => db.nameExists(env.DB, n),
+        isTaken: async (n) => (await db.nameExists(env.DB, n)) || (await db.serviceExists(env.DB, n)),
         lookalikeTaken: (k) => db.lookalikeExists(env.DB, k),
       });
     } catch (e) {
@@ -376,6 +398,103 @@ async function adminInvite(request: Request, env: Env, cfg: Config): Promise<Res
   const t = now();
   await db.createInvite(env.DB, code, t + days * 86400, t, { nameHint, reregister: rereg, bind });
   return jsonResponse({ invite: formatInvite(cfg.baseUrl, code), expires: formatTime(t + days * 86400) }, 201);
+}
+
+// --- the operator's service endpoints (not part of the spec; protocol/services.md) -------------
+
+const SERVICE_PATH = /^\/v0\/admin\/services\/([^/]+)$/;
+
+function serviceJson(cfg: Config, s: db.Service): Obj {
+  return {
+    name: s.name,
+    address: address(cfg, s.name),
+    kind: s.kind,
+    title: s.title,
+    description: s.description,
+    docs: s.docs,
+    roles: s.roles,
+    extension: s.extension,
+    default: s.defaultOn ? "on" : "off",
+    hostnames: hostnamesFor(cfg, s.name),
+    created: formatTime(s.createdAt),
+    updated: formatTime(s.updatedAt),
+  };
+}
+
+async function adminListServices(request: Request, env: Env, cfg: Config): Promise<Response> {
+  await adminAuth(request, env);
+  return jsonResponse({ services: (await db.listServices(env.DB)).map((s) => serviceJson(cfg, s)) });
+}
+
+async function adminPutService(request: Request, env: Env, cfg: Config, rawName: string): Promise<Response> {
+  await adminAuth(request, env);
+  let name: string;
+  try {
+    name = validateName(rawName);
+  } catch {
+    throw new HubError(400, "bad_request", "not a valid service name");
+  }
+  const o = await readBody(request, "bad_request");
+  const addr = address(cfg, name);
+  const bad = (e: unknown): never => {
+    throw new HubError(400, "bad_request", (e as Error).message || "invalid service");
+  };
+  const roles = o.roles;
+  if (typeof o.title !== "string" || !o.title) bad(new Error("title is required"));
+  if (!Array.isArray(roles)) bad(new Error("roles must be a list"));
+  if (o.default !== "on" && o.default !== "off") bad(new Error("default must be 'on' or 'off'"));
+  let payload: Obj;
+  try {
+    payload = P.validateService(
+      P.buildService({
+        address: addr,
+        kind: o.kind,
+        title: o.title,
+        description: o.description ?? undefined,
+        docs: o.docs ?? undefined,
+        roles: roles as string[],
+        extension: o.extension ?? undefined,
+        default: o.default,
+      }),
+      cfg.domain,
+    );
+  } catch (e) {
+    return bad(e);
+  }
+  // `self`: validated the way a member's putSelf is (api.ts putSelf), minus rotation history, which the hub has no record of
+  if (!docs.isObject(o.self)) throw new HubError(400, "bad_self", "self must be a signed self document");
+  const self = o.self as Doc;
+  const sp = await parseSigned(() => P.verifySelf(self), "bad_self");
+  if (sp.address !== addr) throw new HubError(400, "bad_self", "address does not match the service");
+  if (!sameJson(sp.hostnames, hostnamesFor(cfg, name))) throw new HubError(400, "bad_self", "hostnames do not match what the hub assigns");
+  // a service name may be reserved (board, spaces, ...) but never a member's
+  if (await db.nameExists(env.DB, name)) throw new HubError(409, "name_taken", "a member has that name");
+  if (await db.lookalikeExists(env.DB, lookalikeKey(name)) && !(await db.serviceExists(env.DB, name))) {
+    throw new HubError(409, "name_taken", "a member has a name that looks like that");
+  }
+  const prev = await db.getService(env.DB, name);
+  if (prev && sp.seq < prev.seq) throw new HubError(409, "stale_seq", `seq must be at least ${prev.seq}`);
+  const row = {
+    name,
+    kind: payload.kind,
+    title: payload.title,
+    description: payload.description ?? null,
+    docs: payload.docs ?? null,
+    roles: payload.roles,
+    extension: payload.extension ?? null,
+    defaultOn: payload.default === "on",
+    selfDoc: self,
+    seq: sp.seq,
+  };
+  await db.putService(env.DB, row, now());
+  const saved = (await db.getService(env.DB, name)) as db.Service;
+  return jsonResponse(serviceJson(cfg, saved), prev ? 200 : 201);
+}
+
+async function adminDeleteService(request: Request, env: Env, cfg: Config, rawName: string): Promise<Response> {
+  await adminAuth(request, env);
+  if (!(await db.deleteService(env.DB, rawName))) throw new HubError(404, "no_such_service", "no such service");
+  return jsonResponse({ v: VERSION, deleted: rawName });
 }
 
 // --- routing -----------------------------------------------------------------------------------
@@ -437,6 +556,17 @@ export async function handleApi(request: Request, env: Env, cfg: Config): Promis
     if (path === "/v0/admin/invites") {
       allow(request, "POST");
       return await adminInvite(request, env, cfg);
+    }
+    if (path === "/v0/admin/services") {
+      allow(request, "GET");
+      return await adminListServices(request, env, cfg);
+    }
+    m = SERVICE_PATH.exec(path);
+    if (m) {
+      allow(request, "PUT", "DELETE");
+      return request.method === "PUT"
+        ? await adminPutService(request, env, cfg, decodeSeg(m[1]))
+        : await adminDeleteService(request, env, cfg, decodeSeg(m[1]));
     }
     throw new HubError(404, "not_found", "no such endpoint");
   } catch (e) {

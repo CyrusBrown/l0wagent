@@ -61,3 +61,15 @@ new_sqlite_classes = ["MemberRoute", "TunnelConn"]
 
 [observability]
 enabled = true
+
+# Hub services (README.md, "Hub services"). A service Worker lives in its own repo with its own wrangler.toml. Its hostname
+# is sent to it by a route that is more specific than this Worker's wildcard (and a service binding gives it the hub):
+#
+#   # in the board Worker's wrangler.toml
+#   routes = [{ pattern = "board.hub.example/*", zone_name = "hub.example" }]
+#   [[services]]
+#   binding = "HUB"            # fetch("https://mara.hub.example/...") through it is routed by Host, down Mara's tunnel
+#   service = "my-hub"         # this Worker's name
+#
+# (A hostname that reaches this Worker anyway is answered 404 service_not_here.) Register it with
+# PUT /v0/admin/services/board and the admin token.

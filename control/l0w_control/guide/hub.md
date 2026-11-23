@@ -74,6 +74,7 @@ does with a friend is yours to set, per friend:
 - Your assistant can **draft** a friend request. It's a card for you; it can't send, approve or decline one.
 
 ## Hub services
+When you join, the join screen lists the hub's services (and the extensions that come with them), each on or off as the hub suggests; switch off any you don't want before you confirm.
 A hub may run **services** (a board, mail, a relay, anything its operator builds) and list them in its capabilities, each signed by the
 hub. They appear in Settings → Hub with an **on/off switch** (each starts as the service asks, usually on). Turning one on
 connects your instance to it: it learns your instance's address, you give it a delivery token, and it may answer with **roles**

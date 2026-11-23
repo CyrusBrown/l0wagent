@@ -62,7 +62,7 @@ class OpsClient:
             async with httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=5), transport=self.transport) as c:
                 r = await c.request(method, self.url + path, headers={"Authorization": f"Bearer {self.token}"}, **({"json": body} if body is not None else {}))
         except httpx.HTTPError as e:
-            raise OpsError(0, "ops_unreachable", f"The ops container isn't answering ({e.__class__.__name__}).") from e
+            raise OpsError(0, "ops_unreachable", f"The ops container isn't answering ({e.__class__.__name__}). Check that the ops container is running.") from e
         try:
             data = r.json()
         except ValueError:
@@ -207,7 +207,7 @@ class Ops:
             raise
         except Exception as e:  # noqa: BLE001  (never leave the drain on)
             log.exception("update")
-            self._finish(version, False, f"Unexpected error: {e.__class__.__name__}")
+            self._finish(version, False, f"The update failed unexpectedly ({e.__class__.__name__}). Control's log has the details; you can try again.")
 
     async def _wait_idle(self, version: str, started: datetime) -> None:
         wait = timedelta(minutes=self.settings.get("UPDATE_IDLE_WAIT_MINUTES"))

@@ -24,8 +24,12 @@ import json
 import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta
+from urllib.parse import urlsplit
 
+import httpx
+from l0wproto import b64 as B64
 from l0wproto import payloads as P
+from l0wproto import spaces as SP
 from l0wproto.errors import ProtocolError
 from l0wproto.keys import Key
 from l0wproto.times import parse_time
@@ -36,6 +40,7 @@ from .auth import iso, parse, utcnow
 from .backends.base import Conflict, NotFound
 from .friends import Window
 from .membership import GatewayError
+from .safefetch import PinnedAsyncTransport
 
 log = logging.getLogger("l0w.hubservices")
 
@@ -49,16 +54,22 @@ EVENT_NOTES_PER_HOUR = 10
 AGENT_CALLS_PER_MINUTE = 60
 BY_RE = ("agent", "owner")
 TEXT_MAX = 2000
+ERROR_DATA_MAX = 64 * 1024  # bytes of a service's error `data` we keep
+TRANSFER_PUT_MAX = 128 * 1024 * 1024  # the most a transfer_put sends (spaces.md: max_file is 95 MiB by default)
+TRANSFER_TIMEOUT = httpx.Timeout(30.0, read=300.0, write=300.0)
+HOSTNAMES_TTL = 300.0  # seconds a service's directory hostnames are remembered for transfers
 
 
 class ServiceError(Exception):
     """A call that didn't give a result. `code` is the service's own error code (`not_allowed`, `unknown_method`, ...) when it
     answered, else one of control's: `unknown_service`, `not_connected`, `no_role`, `bad_args`, `too_large`, `paused`,
-    `unavailable`, `refused`, `timeout`. `from_service` says which."""
+    `unavailable`, `refused`, `timeout`; and for the spaces helpers `bad_signature`, `not_for_us`, `key_changed`, `unknown_member`,
+    `bad_url`, `transfer_failed`. `from_service` says which. `data` is the rest of the service's error object (untrusted, redacted)."""
 
-    def __init__(self, code: str, detail: str = "", *, from_service: bool = False):
+    def __init__(self, code: str, detail: str = "", *, from_service: bool = False, data: dict | None = None):
         super().__init__(f"{code}: {detail}" if detail else code)
         self.code, self.detail, self.from_service = code, detail, from_service
+        self.data: dict = data if isinstance(data, dict) else {}
 
 
 def _clean(text: object, limit: int = TEXT_MAX) -> str:
@@ -75,6 +86,7 @@ class Hubservices:
         self.ext_changed: Callable[[], None] | None = None  # set by ops.py: the rows changed, so installed extensions may need to follow
         self._pushed: list[str] | None = None  # the service addresses last given to the gateway
         self._last_sync: datetime | None = None
+        self._hostnames: dict[str, tuple[float, str]] = {}  # service address -> (when, its instance hostname), for transfers
         self._event_notes = Window(EVENT_NOTES_PER_HOUR, 3600)
         self.agent_calls = Window(AGENT_CALLS_PER_MINUTE, 60)  # per service: the agent's runaway loop is the service's `rate_limited` last, ours first
         membership.on_caps = self.sync
@@ -213,12 +225,14 @@ class Hubservices:
             cur = self.db.q1("SELECT * FROM hub_services WHERE address=?", (addr,))
             if cur is None:
                 now = self.db.now()
+                off = addr in self.m.join_services_off  # the owner switched it off in the join form
+                on = 0 if off else fields["default_on"]
                 self.db.ex("INSERT INTO hub_services(address, kind, title, description, docs, roles_json, extension_json, default_on, enabled, extension_enabled, doc_json,"
                            " created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                           (addr, *fields.values(), fields["default_on"], fields["default_on"], docs.get(addr), now, now))
+                           (addr, *fields.values(), on, on, docs.get(addr), now, now))
                 changed = True
                 if late:
-                    state = " and it's on." if fields["default_on"] else "; it's off until you turn it on."
+                    state = " and it's on." if on else "; it's off until you turn it on."
                     self.notifier.notify("hub", f"New hub service: {fields['title']}", "Your hub added it" + state, "/settings/hub", "hub_service", addr)
             else:
                 if docs.get(addr) != cur["doc_json"]:  # the signed document as received: kept for ops, which checks it again
@@ -515,6 +529,11 @@ class Hubservices:
         else:
             err = body.get("error") if isinstance(body.get("error"), dict) else {}
             state, value = "error", {"code": _clean(err.get("code"), 64) or "error", "detail": _clean(self.vault.redact(str(err.get("detail") or "")), 500)}
+            extra = {k: v for k, v in err.items() if k not in ("code", "detail")}  # `head` of a conflict, `lock` of a locked...: untrusted data
+            if extra:
+                extra = self._redact(extra)
+                if len(json.dumps(extra, ensure_ascii=False).encode("utf-8")) <= ERROR_DATA_MAX:
+                    value["data"] = extra
         self.db.ex("UPDATE service_calls SET state=?, result_json=?, done_at=? WHERE id=?", (state, json.dumps(value, ensure_ascii=False), self.db.now(), call_id))
         after.append(lambda: self._resolve(call_id, state, value))
 
@@ -585,7 +604,206 @@ class Hubservices:
             self._waiters.pop(call_id, None)
         if state == "ok":
             return value
-        raise ServiceError(value["code"], value.get("detail", ""), from_service=True)
+        raise ServiceError(value["code"], value.get("detail", ""), from_service=True, data=value.get("data"))
+
+    # ── shared spaces: what an extension needs from the instance (protocol/spaces.md) ────────────────────
+    def _need_hub(self) -> dict:
+        r = self.m.joined()
+        if not r or self.m.gw is None:
+            raise ServiceError("not_joined", "This instance hasn't joined a hub.")
+        return r
+
+    @staticmethod
+    def _gw_service_error(e: GatewayError) -> ServiceError:
+        code = {"bad_request": "bad_args", "no_keys": "not_joined", "no_tunnel": "not_joined", "no_such_member": "unknown_member", "key_changed": "key_changed",
+                "not_for_us": "not_for_us", "not_the_author": "refused", "not_the_granter": "refused", "cannot_open": "bad_key", "too_large": "too_large",
+                "unreachable": "unavailable", "gateway_unreachable": "unavailable", "bad_directory": "unavailable", "hub_capabilities": "unavailable",
+                "hub_key_changed": "key_changed"}.get(e.error, "refused")
+        return ServiceError(code, _clean(e.detail or e.error, 300))
+
+    async def sign_space_version(self, payload: dict) -> str:
+        """Have the gateway sign a `space-version` payload as this instance. -> the signed document as compact JSON text (the bytes a version's id hashes)."""
+        self._need_hub()
+        if not isinstance(payload, dict):
+            raise ServiceError("bad_args", "The payload is an object.")
+        try:
+            out = await self._g("POST", "/v0/sign/space-version", {"payload": payload})
+        except GatewayError as e:
+            raise self._gw_service_error(e) from e
+        doc = out.get("doc")
+        if not isinstance(doc, dict):
+            raise ServiceError("unavailable", "The gateway gave no document.")
+        return SP.version_doc_bytes(doc).decode("utf-8")
+
+    async def sign_space_key(self, payload: dict) -> str:
+        """Have the gateway sign a `space-key` payload this instance grants (granter = us, granter_kid = our current signing key).
+        -> the signed document as compact JSON text. The payload carries the key already sealed to the member; nothing secret passes here."""
+        self._need_hub()
+        if not isinstance(payload, dict):
+            raise ServiceError("bad_args", "The payload is an object.")
+        try:
+            out = await self._g("POST", "/v0/sign/space-key", {"payload": payload})
+        except GatewayError as e:
+            raise self._gw_service_error(e) from e
+        doc = out.get("doc")
+        if not isinstance(doc, dict):
+            raise ServiceError("unavailable", "The gateway gave no document.")
+        return json.dumps(doc, separators=(",", ":"))
+
+    async def member_keys(self, address: str) -> dict:
+        """A hub member's public keys, pinned at the gateway (the first time; later only through signed rotations):
+        {address, sign, seal} as key dicts. For sealing to a member and verifying what it signed (spaces.md)."""
+        self._need_hub()
+        if not isinstance(address, str) or "@" not in address:
+            raise ServiceError("bad_args", "Name a member by address.")
+        try:
+            pin = await self._g("POST", "/v0/peer/pin", {"address": address.strip().lower()})
+            out = {"address": str(pin["address"]).lower(), "sign": Key.from_dict(pin["sign_key"]).to_dict(), "seal": Key.from_dict(pin["seal_key"]).to_dict()}
+        except GatewayError as e:
+            raise self._gw_service_error(e) from e
+        except (KeyError, TypeError, ValueError, ProtocolError):
+            raise ServiceError("unavailable", "The directory gave no usable keys for that member.") from None
+        return out
+
+    def my_keys(self) -> dict:
+        """This instance's address and current public keys {address, sign, seal}, from its own self-description."""
+        r = self._need_hub()
+        doc = self.m.self_doc()
+        try:
+            p = json.loads(B64.decode(doc["payload"])) if doc else None
+            ks = {k["use"]: Key.from_dict(k) for k in p["keys"]} if p else {}
+            return {"address": r["address"], "sign": ks["sign"].to_dict(), "seal": ks["seal"].to_dict()}
+        except (KeyError, TypeError, ValueError, ProtocolError):
+            raise ServiceError("not_joined", "This instance's self-description isn't published yet.") from None
+
+    async def open_space_key(self, doc: str | dict, creator: str) -> bytes:
+        """Open a `space-key` document addressed to this instance -> the space key. The document's signature is checked here against the
+        granter's directory entry (pinned at the gateway, which also follows its rotations); the gateway then opens it with the seal key."""
+        me = self._need_hub()
+        if isinstance(doc, str):
+            try:
+                doc = json.loads(doc)
+            except ValueError:
+                raise ServiceError("bad_args", "The document isn't JSON.") from None
+        if not isinstance(creator, str) or not creator.strip():
+            raise ServiceError("bad_args", "Name the space's creator (an address).")
+        creator = creator.strip().lower()
+        try:
+            p = SP.space_key_payload(doc)
+            if p["granter"].lower() != creator:
+                raise ServiceError("bad_signature", "The key wasn't granted by the space's creator.")
+            if p["member"].lower() != me["address"].lower():
+                raise ServiceError("not_for_us", "The key is for another member.")
+        except ProtocolError as e:
+            raise ServiceError("bad_args", _clean(f"Not a space-key document: {e.detail}", 300)) from None
+        try:
+            pin = await self._g("POST", "/v0/peer/pin", {"address": creator})
+            key = Key.from_dict(pin["sign_key"])
+        except GatewayError as e:
+            raise self._gw_service_error(e) from e
+        except (KeyError, TypeError, ValueError, ProtocolError):
+            raise ServiceError("unavailable", "The directory gave no usable signing key for the creator.") from None
+        try:
+            SP.verify_space_key(doc, key, member=me["address"], granter=creator)
+        except ProtocolError as e:
+            raise ServiceError("bad_signature", _clean(f"The key document doesn't verify: {e.detail}", 300)) from None
+        try:
+            out = await self._g("POST", "/v0/space/open-key", {"doc": doc})
+            k = B64.decode(out.get("key"))
+        except GatewayError as e:
+            raise self._gw_service_error(e) from e
+        except ProtocolError:
+            raise ServiceError("unavailable", "The gateway gave no key.") from None
+        if len(k) != 32:
+            raise ServiceError("unavailable", "The gateway gave a key of the wrong size.")
+        return k
+
+    async def _instance_host(self, address: str) -> str:
+        """The service's own instance hostname, from its directory entry (remembered for a few minutes)."""
+        now = self.now().timestamp()
+        got = self._hostnames.get(address)
+        if got and now - got[0] < HOSTNAMES_TTL:
+            return got[1]
+        try:
+            pin = await self._pin(address)
+        except GatewayError as e:
+            raise self._gw_service_error(e) from e
+        host = str((pin.get("hostnames") or {}).get("instance") or "").strip().lower()
+        if not host:
+            raise ServiceError("unavailable", "The directory gave no hostname for the service.")
+        self._hostnames[address] = (now, host)
+        return host
+
+    @staticmethod
+    def _bare(netloc: str, scheme: str) -> str:
+        return netloc.lower().removesuffix(":443" if scheme == "https" else ":80")
+
+    async def _transfer_url(self, service: str, url: str) -> tuple[str, dict]:
+        """-> (the URL to request, extra headers), refusing anything but a URL on the connected service's own instance hostname."""
+        address = self.resolve(service)
+        r = self._row(address)
+        if not self.m.joined() or not r or not r["enabled"] or r["state"] != "connected":
+            raise ServiceError("not_connected", "That service isn't connected right now.")
+        if self.paused():
+            raise ServiceError("paused", "Peer activity is paused (Settings → Friends), and that includes hub services.")
+        try:
+            u = urlsplit(str(url))
+            _ = u.port
+        except ValueError:
+            raise ServiceError("bad_url", "That isn't a URL.") from None
+        if u.scheme != "https" and not (self.m.allow_http and u.scheme == "http"):
+            raise ServiceError("bad_url", "A transfer URL is https.")
+        if not u.netloc or "@" in u.netloc:
+            raise ServiceError("bad_url", "A transfer URL has no user name or password.")
+        host = await self._instance_host(address)
+        if self._bare(u.netloc, u.scheme) != self._bare(host, u.scheme):
+            raise ServiceError("bad_url", "That URL isn't on the service's own hostname.")
+        if self.m.connect_to:  # development: the fake hub answers on one address (membership does the same), with the real Host header
+            return u._replace(netloc=self.m.connect_to).geturl(), {"Host": u.netloc}
+        return str(url), {}
+
+    def _transfer_client(self) -> httpx.AsyncClient:
+        transport = self.m.transport
+        if transport is None and not (self.m.allow_http or self.m.connect_to):
+            transport = PinnedAsyncTransport()  # vetted like control's other outgoing calls: public addresses only
+        return httpx.AsyncClient(timeout=TRANSFER_TIMEOUT, transport=transport, follow_redirects=False, trust_env=False)
+
+    async def transfer_put(self, service: str, url: str, data: bytes) -> None:
+        """PUT `data` to a transfer URL on the service's own hostname. No redirects, no credentials."""
+        if not isinstance(data, (bytes, bytearray)):
+            raise ServiceError("bad_args", "The data is bytes.")
+        if len(data) > TRANSFER_PUT_MAX:
+            raise ServiceError("too_large", "That is over 128 MiB.")
+        target, extra = await self._transfer_url(service, url)
+        try:
+            async with self._transfer_client() as c:
+                r = await c.put(target, content=bytes(data), headers={"Content-Type": "application/octet-stream", **extra})
+        except httpx.HTTPError as e:
+            raise ServiceError("transfer_failed", f"Couldn't reach the service ({e.__class__.__name__}).") from e
+        if not 200 <= r.status_code < 300:
+            raise ServiceError("transfer_failed", f"The service answered {r.status_code}.")
+
+    async def transfer_get(self, service: str, url: str, max_bytes: int) -> bytes:
+        """GET a transfer URL on the service's own hostname, at most `max_bytes`. No redirects, no credentials."""
+        if not isinstance(max_bytes, int) or isinstance(max_bytes, bool) or max_bytes < 0:
+            raise ServiceError("bad_args", "max_bytes is a whole number of bytes.")
+        target, extra = await self._transfer_url(service, url)
+        buf = bytearray()
+        try:
+            async with self._transfer_client() as c, c.stream("GET", target, headers=extra) as r:
+                if not 200 <= r.status_code < 300:
+                    raise ServiceError("transfer_failed", f"The service answered {r.status_code}.")
+                if int(r.headers.get("content-length") or 0) > max_bytes:
+                    raise ServiceError("too_large", f"The download is over {max_bytes} bytes.")
+                async for chunk in r.aiter_bytes():
+                    buf += chunk
+                    if len(buf) > max_bytes:
+                        raise ServiceError("too_large", f"The download is over {max_bytes} bytes.")
+        except httpx.HTTPError as e:
+            raise ServiceError("transfer_failed", f"Couldn't reach the service ({e.__class__.__name__}).") from e
+        except ValueError:
+            raise ServiceError("transfer_failed", "The service sent a bad Content-Length.") from None
+        return bytes(buf)
 
     def _finish(self, call_id: str, state: str, value: dict | None) -> None:
         self.db.ex("UPDATE service_calls SET state=?, result_json=?, done_at=? WHERE id=? AND state='pending'",

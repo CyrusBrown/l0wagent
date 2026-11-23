@@ -5,7 +5,7 @@ version = "0.1.0"
 sdk = "1.0"
 description = "Keeps a watering log for house plants: a page, a project tab, an Inbox card when one is due, and `assistant ext plantlog …`."
 entry = "extension.py"
-folders = ["log"]              # /work/_inbox/_ext/plantlog/log/: control writes plants.md there for the agent
+folders = ["log"]              # /external/plantlog/log/ for the agent: control writes plants.md there for the agent
 
 [prompts]
 system = "prompts/system.md"
@@ -35,7 +35,7 @@ help = "add a note about a plant (creates it if new); watered=true also records 
 [[routines]]
 key = "weekly"
 name = "Plant check"
-prompt = "Look over the plant log (`assistant ext plantlog plants`) and the notes in /work/_inbox/_ext/plantlog/log/plants.md. Mention anything that looks wrong in the General thread. End with IDLE if all is well."
+prompt = "Look over the plant log (`assistant ext plantlog plants`) and the notes in /external/plantlog/log/plants.md. Mention anything that looks wrong in the General thread. End with IDLE if all is well."
 schedule = { kind = "weekly", day = 6, time = "10:00" }   # day: Monday = 0
 budget = 5
 enabled = false

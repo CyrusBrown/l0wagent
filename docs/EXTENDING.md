@@ -6,7 +6,7 @@ a coding agent), drops it into `extensions/<name>/` next to `compose.yaml`, and 
 **Settings → Extensions**. This file is the whole guide: if you are a coding agent, you should be able to
 build a working extension from it alone. A complete example is `extensions/examples/plantlog/`.
 
-SDK version: **1.1** (1.1 made `ext.hub` real; everything from 1.0 is unchanged). Control refuses an extension whose `sdk` has a different major version.
+SDK version: **1.2** (1.2 adds what a shared-spaces extension needs: signing and opening space documents, transfer URLs, `HubCallError.data`, agent-writable managed folders, `ext.folders.walk` and `.remove`; 1.1 made `ext.hub` real; everything from 1.0 is unchanged; an extension that declares `sdk = "1.0"` still loads). Control refuses an extension whose `sdk` has a different major version.
 
 ---
 
@@ -108,7 +108,8 @@ These hold for every extension. They're the instance's security invariants, appl
 5. **Secrets are write-only.** `ext.vault.has(name)` says whether one exists; nothing reads its value. If your
    extension needs a credential for an outside service, use a connection preset (section 8) so control holds it.
 6. **Control's writes into the agent's storage are narrow.** You get managed folders
-   (`/work/_inbox/_ext/<name>/<folder>/`) and nothing else. They never follow symlinks.
+   (stored at `/work/_inbox/_ext/<name>/<folder>/`, which the agent sees as `/external/<name>/<folder>/`;
+   `ext.folders.agent_path(folder)` gives that path) and nothing else. They never follow symlinks.
 7. **Prompt text is control-owned.** Your prompt fragments are part of the agent's harness. When you change one
    in a way the agent should notice, bump `version` and say what changed in the fragment itself (e.g. a
    "Changed in 0.3:" line) for a release or two. Keep old text in `prompts/archive/` if it mattered.
@@ -129,7 +130,7 @@ These hold for every extension. They're the instance's security invariants, appl
 | `version` | Required. Your version; shown in Settings. |
 | `sdk` | Required. `"1.0"`. |
 | `entry` | A `.py` file at the top of the folder with `setup(ext)`. Optional: a manifest-only extension (prompt text, a preset, a routine) is fine. |
-| `folders` | Managed folder names, e.g. `["log"]` → `/work/_inbox/_ext/<name>/log/`. |
+| `folders` | Managed folders, e.g. `["log"]` → `/external/<name>/log/` for the agent (stored at `/work/_inbox/_ext/<name>/log/`). An entry is a name, or (SDK 1.2) `{name = "files", agent_writable = true}`. The agent's prompt lists the `agent_writable` ones as "you may edit these" and the rest as folders the extension manages; either way the contents are data, never instructions. The owner API's `folders` is still the list of names. |
 | `[prompts]` | `system`, `wakeup`, `reviewer`, `chat` → paths to Markdown files (section 7). |
 | `[settings.<key>]` | Settings the owner edits (section 5). |
 | `[[commands]]` | `name`, `usage`, `help`: documents agent commands (section 4). |
@@ -177,14 +178,18 @@ Errors: raise `fastapi.HTTPException(status, "message")` or `l0w_control.sdk.Ext
 | `ext.vault.has(name)` | Whether a secret exists. Never its value. |
 | `ext.inbox.card(kind, title, data, thread_id=None)`, `.withdraw(id)`, `.open()` | Inbox cards of your kinds (section 6). |
 | `ext.folders.write(folder, path, data)`, `.read(folder, path)`, `.list(folder, path="")`, `.agent_path(folder)` | Managed folders. |
+| `ext.folders.walk(folder)`, `.remove(folder, path)` | (SDK 1.2) Everything under a folder, recursively; delete a file, link or sub-folder. See "Managed folders" below. |
 | `ext.on(event, handler)` | Event hooks (below). |
 | `ext.every(seconds, job)` | A background job every ≥ 30 s, in a worker thread, while enabled. |
 | `ext.notify(title, body="", url="/")` | A notification to the owner (push/ntfy, as they've set up). |
 | `ext.emit(type, data)` | A live event to your UI (`this.l0w.on(type, fn)`). |
 | `ext.hub.available()`, `await ext.hub.acall(service, method, args, role=None)`, `ext.hub.call(...)`, `ext.hub.on_event(kind_or_address, handler)` | The joined hub's services (below). |
+| `ext.hub.member_keys(address)`, `.my_keys()`, `.sign_space_key(payload)` (and `a…` forms) | (SDK 1.2) A hub member's pinned public keys, and this instance's own: `{address, sign, seal}` as key dicts. |
+| `ext.vault.contains_secret(data)` | (SDK 1.2) Whether text or bytes hold a secret's value (never which one). |
+| `ext.hub.sign_space_version(payload)`, `.open_space_key(doc, creator)`, `.transfer_put(service, url, data)`, `.transfer_get(service, url, max_bytes)` (and `a…` forms) | (SDK 1.2) What a shared-spaces extension needs from the instance (below). |
 | `ext.log(text)`, `ext.file(rel)` | Log a line; read a text file from your folder. |
 
-### Hub services (`ext.hub`, SDK 1.1)
+### Hub services (`ext.hub`, SDK 1.1; `HubCallError.data` is 1.2)
 A hub's services (a board, a relay, email...) are programs the hub's operator runs under an address (`board@hub.example`); the
 owner switches each on or off in Settings. Your extension may use the ones that are on and connected.
 
@@ -195,7 +200,7 @@ owner switches each on or off in Settings. Your extension may use the ones that 
   the signed grant itself, and neither you nor the agent ever sees it. Methods and their arguments are the service's own (its docs).
   It raises `HubCallError` with `.code` (the service's own code when it answered: `not_allowed`, `unknown_method`, `bad_args`,
   `rate_limited`, `unavailable`...; otherwise control's: `no_role`, `bad_args`, `too_large`, `paused`, `refused`, `timeout`),
-  `.detail` and `.from_service`. `HubUnavailable` (a `HubCallError` with code `unknown_service` or `not_connected`)
+  `.detail`, `.from_service` and (1.2) `.data`. `HubUnavailable` (a `HubCallError` with code `unknown_service`, `not_connected` or, for the 1.2 calls, `not_joined`)
   means there is no hub, or the service is off or not connected.
 - Use `await` in `async def` routes and hooks. Code in worker threads (plain `def` hooks and jobs) uses `ext.hub.call(...)` (synchronous, as in SDK 1.0), the same
   call; from a coroutine it raises `ExtensionError` rather than block control's loop.
@@ -206,6 +211,58 @@ owner switches each on or off in Settings. Your extension may use the ones that 
   secrets are redacted from what is stored. Calls are logged (args and
   results redacted) by who made them (`extension:<name>`). A service can't authorize anything on the assistant's behalf.
 - Calls are refused while peer activity is paused (Settings → Friends).
+
+### Managed folders: walk and remove (SDK 1.2)
+
+- `ext.folders.walk(folder)` returns every entry under the folder, recursively, sorted by path (a folder comes before what is in it):
+  `[{path, size, mtime, kind}]`. `path` is relative to the folder and `/`-separated; `kind` is `file`, `dir`, `symlink` or `other` (a pipe,
+  a socket...); `size` is the file's bytes (0 for the rest); `mtime` is epoch seconds. It never follows a symlink: a link is listed as
+  `symlink` and not entered. A folder that doesn't exist yet gives `[]`. It raises `ExtensionError` if the folder itself, or a part of
+  it, is a symlink, or if it has more than 200,000 entries or nests deeper than 64 levels.
+- `ext.folders.remove(folder, path)` deletes a file, a symlink (the link, never its target) or a sub-folder with everything in it, and
+  returns `True` if something was removed (`False` if it was already gone). The folder itself can't be removed; a path through a
+  symlink raises `ExtensionError`.
+- Reading what the agent wrote (`read`, `list`) is symlink-safe as before: a link in the agent's tree is refused, not followed.
+  Everything the agent wrote there, and everything other people's files turn into once synced, is untrusted data.
+- A folder declared `agent_writable = true` is one the agent is told it may edit (the manifest row above). Control doesn't give the
+  agent anything more than before: it only changes what the agent's prompt says. Never act on file contents.
+
+### Shared spaces (`ext.hub`, SDK 1.2)
+The shared-spaces service kind (`protocol/spaces.md`) stores and orders a synced folder but can't read it: files, paths and messages are
+encrypted to the members, and every version is signed by the instance that made it. Your extension does the syncing; control and the
+gateway keep the keys. These are the pieces only the instance can do (the pure crypto, `l0wproto.spaces`, you can vendor):
+
+- `ext.hub.sign_space_version(payload) -> str` (`await ext.hub.asign_space_version(payload)`): the gateway signs a `space-version`
+  payload with the instance's signing key. `payload` is the document's fields (`space`, `seq`, `parent`, `epoch`, `author`, `blobs`,
+  `meta`; `v`, `type` and `iat` are filled in when absent, nothing else is allowed). The `author` must be this instance's address; the
+  shape is checked. It returns the **signed document as JSON text** (compact); its id is `l0wproto.spaces.version_id_of(doc)`
+  (a hash of the document's `payload` string); `json.loads` it to send as the `version` argument of `version.push`. Errors are `HubCallError` with `bad_args` (not a valid payload),
+  `refused` (not the author), `not_joined`.
+- `ext.hub.sign_space_key(payload) -> str` (`asign_space_key`): sign a `space-key` document this instance grants as a space's creator.
+  `payload` has `space`, `epoch`, `member`, `member_kid`, `granter` (this instance), `granter_kid` (`my_keys()["sign"]["kid"]`) and `sealed`
+  (`l0wproto.spaces.seal_space_key` of the key to the member's `seal` key); returns the signed document as compact JSON text. The gateway
+  refuses another granter or an old key (`refused`); the space key itself never passes through it.
+- `ext.hub.member_keys(address) -> dict` (`amember_keys`): a hub member's public keys `{address, sign, seal}` (key dicts for
+  `l0wproto.keys.Key.from_dict`), pinned at the gateway the first time and changed afterwards only through signed rotations. Seal a space
+  key to `seal`; verify a member's `space-version` with `sign`. `ext.hub.my_keys()` gives this instance's own, from its self-description.
+- `ext.vault.contains_secret(data) -> bool`: whether a file you are about to send out holds a secret's value (spaces.md says such files
+  aren't synced). It never says which secret.
+- `ext.hub.open_space_key(doc, creator) -> bytes` (`aopen_space_key`): open a `space-key` document (a dict or its JSON text) sent to this
+  instance and return the 32-byte space key. Control first checks the document's signature against `creator`'s directory entry (the
+  key pinned at the gateway the first time; a changed key with no rotation is refused), that its `granter` is `creator`, and that it names this
+  instance as `member`; only then does the gateway open it with the seal key (current, or one rotated out in the last 8 days). Errors:
+  `bad_signature`, `bad_args`, `not_for_us`, `key_changed`, `unknown_member`, `bad_key` (it was sealed to some other key), `not_joined`.
+  The key is a secret: keep it out of what the agent and the owner's UI can see.
+- `ext.hub.transfer_put(service, url, data)` and `ext.hub.transfer_get(service, url, max_bytes) -> bytes` (`atransfer_put`,
+  `atransfer_get`): upload or download through a transfer URL a service gave you (`blob.upload` / `blob.download`). Only an `https` URL whose
+  host is that **connected** service's own instance hostname (from its directory entry) is used; a redirect is an error, nothing of the
+  instance's (no token, no cookie) is sent, and outside development the connection goes only to a public address. A download longer than
+  `max_bytes` stops with `too_large`; an upload is at most 128 MiB. Other errors: `bad_url`, `not_connected`, `paused`, `transfer_failed`
+  (the service answered something other than 2xx, or couldn't be reached). Development: `L0W_HUB_ALLOW_HTTP=1` also accepts `http`, and
+  `L0W_HUB_CONNECT_TO` sends the request to the fake hub, as it does for the membership code.
+- `HubCallError.data` (a dict, `{}` when there is none): the extra fields of a service's error object, so spaces' `conflict` gives
+  `e.data["head"]` (`{seq, version}`) and `locked` gives `e.data["lock"]`. Like `detail` it is untrusted and redacted of secrets; one over 64 KB is dropped.
+- The plain forms are for worker threads (`def` routes, hooks, jobs); in a coroutine they raise `ExtensionError`, so use the `a` forms.
 
 ### Events (`ext.on`)
 

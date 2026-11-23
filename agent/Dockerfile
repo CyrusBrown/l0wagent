@@ -34,6 +34,7 @@ RUN useradd -m -u 1000 -s /bin/bash agent \
  && echo 'Defaults env_keep += "HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy"' > /etc/sudoers.d/proxy \
  && chmod 0440 /etc/sudoers.d/* \
  && mkdir -p /workspace /work/_inbox /cache /home/agent/.local/bin /home/agent/.claude \
+ && ln -s /work/_inbox/_ext /external \
  && chown -R agent:agent /workspace /work /cache /home/agent
 
 # The reviewer's account (S24): no sudo, its own home. The agent's home is 0700 (the entrypoint
@@ -47,6 +48,8 @@ RUN useradd -m -u 1001 -s /bin/bash reviewer \
 COPY runner/ /opt/runner/
 COPY bin/ /usr/local/bin/
 COPY seed/ /opt/seed/
+# Extensions' managed folders: control writes /work/_inbox/_ext/<name>/<folder>/, the agent reads them as
+# /external/<name>/<folder>/ (read-only like the rest of /work).
 COPY entrypoint.sh /usr/local/sbin/entrypoint.sh
 RUN chmod 0755 /usr/local/bin/assistant /usr/local/bin/assistant-hook /usr/local/sbin/entrypoint.sh /opt/runner/fake_claude.py /opt/runner/fake_opencode.py
 

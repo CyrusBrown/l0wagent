@@ -294,7 +294,7 @@ class Peers:
                 self._set_held(cur, held_token)
             self.store.save_peers(peers)
             return {"address": address, "fingerprint": messages.fingerprint(Key.from_dict(cur["sign_key"]).pub), "hostnames": cur["hostnames"],
-                    "rotated": rotated, "sign_key": cur["sign_key"]}
+                    "rotated": rotated, "sign_key": cur["sign_key"], "seal_key": cur["seal_key"]}
 
     def _set_held(self, peer: dict, token: dict) -> None:
         try:

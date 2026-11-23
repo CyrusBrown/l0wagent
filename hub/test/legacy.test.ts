@@ -4,9 +4,11 @@ import { loadConfig } from "../src/config";
 import type { Env } from "../src/env";
 import * as b64 from "../src/proto/b64";
 import * as P from "../src/proto/payloads";
+import { fakeD1 } from "./d1";
 import { parseNow, vec } from "./util";
 
 const env = {
+  DB: fakeD1(), // the capabilities list the registered hub services
   HUB_NAME: "Example hub",
   HUB_BASE_URL: "https://hub.example",
   TUNNEL_URL: "wss://tunnel.hub.example/v0/tunnel",

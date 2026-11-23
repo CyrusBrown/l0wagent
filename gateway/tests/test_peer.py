@@ -156,7 +156,7 @@ def test_pin_returns_fingerprint_and_hostnames(mara, bob):
     r = mara.pin(bob)
     assert r.status_code == 200, r.text
     assert r.json() == {"address": bob.address, "fingerprint": bob.fp, "hostnames": bob.hosts, "rotated": False,
-                        "sign_key": bob.keypair("sign").key.to_dict()}
+                        "sign_key": bob.keypair("sign").key.to_dict(), "seal_key": bob.keypair("seal").key.to_dict()}
     assert mara.peers()[bob.address]["sign_key"]["kid"] == bob.keypair("sign").kid
     assert (mara.dir / "peers.json").stat().st_mode & 0o777 == 0o600
 

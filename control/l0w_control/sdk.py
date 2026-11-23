@@ -35,7 +35,7 @@ from fastapi import APIRouter
 if TYPE_CHECKING:
     from .extensions import Extensions
 
-SDK_VERSION = "1.1"
+SDK_VERSION = "1.2"
 
 # Events an extension can listen to with ext.on(...). Each handler gets one dict.
 EVENTS = {
@@ -59,11 +59,14 @@ class ExtensionError(Exception):
 class HubCallError(ExtensionError):
     """A hub service call that gave no result. `code` is the service's own error code when it answered (`not_allowed`,
     `unknown_method`, `bad_args`, `rate_limited`, `unavailable`, or its own), else control's: `unknown_service`, `not_connected`,
-    `no_role`, `bad_args`, `too_large`, `paused`, `refused`, `timeout`. `detail` is text; from a service it is untrusted."""
+    `no_role`, `bad_args`, `too_large`, `paused`, `refused`, `timeout`. `detail` is text; from a service it is untrusted.
+    `data` (SDK 1.2) is the rest of the service's error object, a dict: a spaces service's `conflict` carries `head`, `locked` carries `lock`.
+    It is `{}` when there is none, and untrusted like `detail`."""
 
-    def __init__(self, detail: str = "", code: str = "error", *, from_service: bool = False):
+    def __init__(self, detail: str = "", code: str = "error", *, from_service: bool = False, data: dict | None = None):
         super().__init__(f"{code}: {detail}" if detail else code)
         self.code, self.detail, self.from_service = code, detail, from_service
+        self.data: dict = data if isinstance(data, dict) else {}
 
 
 class HubUnavailable(HubCallError):
@@ -71,6 +74,17 @@ class HubUnavailable(HubCallError):
 
     def __init__(self, detail: str = "", code: str = "unavailable"):
         super().__init__(detail, code)
+
+
+def _hub_error(e: Exception) -> HubCallError:
+    """The SDK's error for a hubservices.ServiceError."""
+    code, detail = getattr(e, "code", "error"), getattr(e, "detail", "")
+    data, from_service = getattr(e, "data", None), getattr(e, "from_service", False)
+    if code in ("unknown_service", "not_connected", "not_joined"):
+        err: HubCallError = HubUnavailable(detail, code)
+        err.data = data if isinstance(data, dict) else {}
+        return err
+    return HubCallError(detail, code, from_service=from_service, data=data)
 
 
 @dataclass
@@ -168,6 +182,20 @@ class VaultView:
     def has(self, name: str) -> bool:
         return self._x.be.vault.exists(name)
 
+    def contains_secret(self, data: str | bytes) -> bool:
+        """Whether the text holds a secret's value (SDK 1.2): for refusing to send a file out (spaces.md). Bytes that aren't UTF-8
+        are checked as Latin-1. Never says which secret."""
+        text = data if isinstance(data, str) else data.decode("utf-8", errors="replace") if _utf8(data) else data.decode("latin-1")
+        return self._x.be.vault.redact(text) != text
+
+
+def _utf8(b: bytes) -> bool:
+    try:
+        b.decode("utf-8")
+        return True
+    except UnicodeDecodeError:
+        return False
+
 
 @dataclass
 class Inbox:
@@ -189,8 +217,9 @@ class Inbox:
 
 @dataclass
 class Folders:
-    """Managed folders: /work/_inbox/_ext/<name>/<folder>/, declared in the manifest. The only place in the agent's
-    storage control writes for an extension. Paths are relative to the folder; symlinks are never followed."""
+    """Managed folders: /work/_inbox/_ext/<name>/<folder>/, declared in the manifest (a folder the agent may edit is declared
+    `{name = "x", agent_writable = true}`). The only place in the agent's storage control writes for an extension. Paths are relative
+    to the folder; symlinks are never followed."""
 
     _x: Extensions
     _name: str
@@ -204,9 +233,20 @@ class Folders:
     def list(self, folder: str, path: str = "") -> list[str]:
         return self._x.folder_list(self._name, folder, path)
 
+    def walk(self, folder: str) -> list[dict]:
+        """(SDK 1.2) Everything in the folder, recursively: `[{path, size, mtime, kind}]` sorted by path, a folder before what is in it.
+        `path` is relative to the folder (`/`-separated); `kind` is `file`, `dir`, `symlink` or `other`; `size` is bytes (0 unless a file);
+        `mtime` is epoch seconds. A symlink is listed, never followed. A folder that doesn't exist yet gives `[]`."""
+        return self._x.folder_walk(self._name, folder)
+
+    def remove(self, folder: str, path: str) -> bool:
+        """(SDK 1.2) Delete a file, a symlink (the link, not its target) or a sub-folder with all it holds. Returns whether anything was
+        removed (a missing path isn't an error). The folder itself can't be removed."""
+        return self._x.folder_remove(self._name, folder, path)
+
     def agent_path(self, folder: str) -> str:
         """Where the agent sees the folder (for messages and prompt fragments)."""
-        return f"/work/_inbox/_ext/{self._name}/{folder}"
+        return f"/external/{self._name}/{folder}"  # a link to /work/_inbox/_ext/<name>/<folder> in the agent image
 
 
 @dataclass
@@ -234,29 +274,135 @@ class Hub:
         try:
             return await self._x.be.hubservices_.call(service, method, args, by=f"extension:{self._name}", role=role, timeout=timeout)
         except ServiceError as e:
-            if e.code in ("unknown_service", "not_connected"):
-                raise HubUnavailable(e.detail, e.code) from e
-            raise HubCallError(e.detail, e.code, from_service=e.from_service) from e
+            raise _hub_error(e) from e
 
     def call(self, service: str, method: str, args: dict | None = None, role: str | None = None, *, timeout: float = 300.0) -> dict:
         """`acall` for code that isn't async (hooks and jobs run in worker threads); synchronous, as in SDK 1.0. Without a hub (or
         that service) it raises HubUnavailable, as 1.0 did. It waits on control's event loop, so calling it from a coroutine would
         block that loop: there it raises ExtensionError (use `await ext.hub.acall(...)`)."""
-        import asyncio
-
         if not self.available():
             raise HubUnavailable("This instance hasn't joined a hub, or no hub service is connected.")
+        return self._wait(self.acall(service, method, args, role, timeout=timeout), "acall", timeout + 30)
+
+    call_sync = call  # an alias some 1.1 code may use
+
+    def _wait(self, coro, async_name: str, timeout: float):
+        """Run a coroutine on control's loop and wait for it from a worker thread. From a coroutine on that loop it refuses (it would block it)."""
+        import asyncio
+
         loop = self._x.loop
         if loop is None:
+            coro.close()
             raise HubUnavailable("Control isn't running yet.")
         try:
             if asyncio.get_running_loop() is loop:
-                raise ExtensionError("Use `await ext.hub.acall(...)` in async code; ext.hub.call is for worker threads.")
+                coro.close()
+                raise ExtensionError(f"Use `await ext.hub.{async_name}(...)` in async code; the plain form is for worker threads.")
         except RuntimeError:
             pass
-        return asyncio.run_coroutine_threadsafe(self.acall(service, method, args, role, timeout=timeout), loop).result(timeout + 30)
+        return asyncio.run_coroutine_threadsafe(coro, loop).result(timeout)
 
-    call_sync = call  # an alias some 1.1 code may use
+    # ── SDK 1.2: what a shared-spaces extension needs (protocol/spaces.md) ──────────────────────────────
+    async def asign_space_version(self, payload: dict) -> str:
+        """Sign a `space-version` payload (spaces.md) as this instance, through the gateway, and return the signed document as the JSON text to
+        send (compact; its bytes are what the version's id hashes). `payload` is the document's fields (`space`, `seq`, `parent`, `epoch`,
+        `author`, `blobs`, `meta`; `v`, `type` and `iat` are filled in when absent). The gateway refuses a payload whose `author` isn't this
+        instance or whose shape is wrong (HubCallError `bad_args` / `refused`). The signing key never leaves the gateway."""
+        from .hubservices import ServiceError
+
+        try:
+            return await self._x.be.hubservices_.sign_space_version(payload)
+        except ServiceError as e:
+            raise _hub_error(e) from e
+
+    async def asign_space_key(self, payload: dict) -> str:
+        """Sign a `space-key` payload this instance grants as a space's creator (SDK 1.2): `space`, `epoch`, `member`, `member_kid`,
+        `granter` (this instance), `granter_kid` (its current signing key: `my_keys()["sign"]["kid"]`) and `sealed` (the space key sealed
+        to the member with `l0wproto.spaces.seal_space_key`). Returns the signed document as compact JSON text. Raises HubCallError
+        (`bad_args`, `refused` when the granter isn't us or the kid isn't current, `not_joined`)."""
+        from .hubservices import ServiceError
+
+        try:
+            return await self._x.be.hubservices_.sign_space_key(payload)
+        except ServiceError as e:
+            raise _hub_error(e) from e
+
+    def sign_space_key(self, payload: dict) -> str:
+        """`asign_space_key` for worker threads (SDK 1.2)."""
+        return self._wait(self.asign_space_key(payload), "asign_space_key", 60)
+
+    def sign_space_version(self, payload: dict) -> str:
+        """`asign_space_version` for worker threads (SDK 1.2)."""
+        return self._wait(self.asign_space_version(payload), "asign_space_version", 60)
+
+    async def aopen_space_key(self, doc: str | dict, creator: str) -> bytes:
+        """Open a `space-key` document (spaces.md) addressed to this instance and return the space key (32 bytes). Control checks the
+        document's signature against `creator`'s directory entry (the key pinned the first time), that the granter is `creator` (an
+        address) and that the key is for this instance; the gateway, which holds the seal key, opens it. Raises HubCallError
+        (`bad_signature`, `bad_args`, `not_for_us`, `key_changed`, `unknown_member`...) otherwise. Treat the returned key as a secret."""
+        from .hubservices import ServiceError
+
+        try:
+            return await self._x.be.hubservices_.open_space_key(doc, creator)
+        except ServiceError as e:
+            raise _hub_error(e) from e
+
+    async def amember_keys(self, address: str) -> dict:
+        """A hub member's public keys {address, sign, seal} (key dicts, as l0wproto's `Key.from_dict` reads them), pinned at the gateway
+        the first time and changed afterwards only through signed rotations (SDK 1.2). Raises HubCallError (`unknown_member`,
+        `key_changed`, `not_joined`...)."""
+        from .hubservices import ServiceError
+
+        try:
+            return await self._x.be.hubservices_.member_keys(address)
+        except ServiceError as e:
+            raise _hub_error(e) from e
+
+    def member_keys(self, address: str) -> dict:
+        """`amember_keys` for worker threads (SDK 1.2)."""
+        return self._wait(self.amember_keys(address), "amember_keys", 60)
+
+    def my_keys(self) -> dict:
+        """This instance's address and current public keys {address, sign, seal} (SDK 1.2). Raises HubCallError (`not_joined`)."""
+        from .hubservices import ServiceError
+
+        try:
+            return self._x.be.hubservices_.my_keys()
+        except ServiceError as e:
+            raise _hub_error(e) from e
+
+    def open_space_key(self, doc: str | dict, creator: str) -> bytes:
+        """`aopen_space_key` for worker threads (SDK 1.2)."""
+        return self._wait(self.aopen_space_key(doc, creator), "aopen_space_key", 60)
+
+    async def atransfer_put(self, service: str, url: str, data: bytes) -> None:
+        """Upload `data` with an HTTP PUT to a transfer URL a connected service gave you (spaces.md `blob.upload`). Only an https URL on that
+        service's own instance hostname is used; no redirect is followed, no credentials are sent, and the body is at most 128 MiB. Raises
+        HubCallError (`bad_url`, `too_large`, `not_connected`, `transfer_failed`...)."""
+        from .hubservices import ServiceError
+
+        try:
+            await self._x.be.hubservices_.transfer_put(service, url, data)
+        except ServiceError as e:
+            raise _hub_error(e) from e
+
+    def transfer_put(self, service: str, url: str, data: bytes) -> None:
+        """`atransfer_put` for worker threads (SDK 1.2)."""
+        return self._wait(self.atransfer_put(service, url, data), "atransfer_put", 900)
+
+    async def atransfer_get(self, service: str, url: str, max_bytes: int) -> bytes:
+        """Download from a transfer URL (spaces.md `blob.download`) with an HTTP GET, under the same rules as `atransfer_put`. `max_bytes` is
+        required: a longer body stops the download and raises HubCallError `too_large`."""
+        from .hubservices import ServiceError
+
+        try:
+            return await self._x.be.hubservices_.transfer_get(service, url, max_bytes)
+        except ServiceError as e:
+            raise _hub_error(e) from e
+
+    def transfer_get(self, service: str, url: str, max_bytes: int) -> bytes:
+        """`atransfer_get` for worker threads (SDK 1.2)."""
+        return self._wait(self.atransfer_get(service, url, max_bytes), "atransfer_get", 900)
 
     def on_event(self, service: str, handler: Callable[[dict], Any]) -> None:
         """Hear a service's own events (`service-event`: a new post, held mail). `service` is a kind (`board`, `email`, `custom`...)

@@ -3,7 +3,7 @@
 import { sweepAccelerators } from "./accelerator";
 import { handleApi } from "./api";
 import { ConfigError, type Config, loadConfig, matchHost } from "./config";
-import { type Member, getMember } from "./db";
+import { type Member, getMember, serviceExists } from "./db";
 import type { Env } from "./env";
 import { VERSION } from "./proto/consts";
 import { errorResponse, jsonResponse, offlineResponse } from "./respond";
@@ -116,6 +116,11 @@ export default {
         const member = await lookupMember(env, hit.name);
         if (member && member.hostnames[hit.kind].toLowerCase() === host) {
           return front(request, env, cfg, member, hit.kind);
+        }
+        // A hub service's hostname is answered by the service's own Worker (a more specific Cloudflare route);
+        // if a request gets here instead, say so rather than treating it as a member or the hub's API.
+        if (!member && (await serviceExists(env.DB, hit.name))) {
+          return early(request, errorResponse(404, "service_not_here", "this is a hub service's hostname; it is served by the service itself"));
         }
       }
     }

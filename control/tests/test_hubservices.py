@@ -13,7 +13,7 @@ from l0wproto import keys
 
 from l0w_control.hubservices import ServiceError
 
-from .hubworld import AGENT, BOARD, ECHO, ME, TOKEN, World, ok  # noqa: F401
+from .hubworld import AGENT, BOARD, ECHO, HUB, ME, TOKEN, World, ok  # noqa: F401
 from .hubworld import wait_sent as _wait_sent
 
 
@@ -398,3 +398,22 @@ async def _agent_call(hw: World, body: dict) -> httpx.Response:
 def test_the_membership_hooks_are_wired(hw):
     assert hw.be.membership_.on_caps == hw.hs.sync and hw.be.membership_.on_left == hw.hs.forget_all
     assert hw.be.friends_.hubservices is hw.hs
+
+
+# ── services at join ────────────────────────────────────────────────────────
+def test_preview_lists_the_hubs_services_and_join_applies_the_owners_switches(hw):
+    m = hw.be.membership_
+    caps = {"domain": HUB, "keys": [hw.hub.key.to_dict()], "extras": [hw.service_doc(ECHO), hw.service_doc(BOARD, kind="board", roles=("poster",), default="off"),
+                                                                       hw.service_doc("bad@hub.example", sign_with=keys.generate("sign"))]}
+    got = m._preview_services(caps)
+    assert [(x.address, x.default_on, x.extension) for x in got] == [(ECHO, True, None), (BOARD, False, None)]  # the unverified one is skipped
+    # The join's choice applies to the rows the join inserts, and only those.
+    hw.be.db.ex("DELETE FROM hub_services")
+    m.join_services_off = {ECHO}
+    hw.sync()
+    assert hw.row()["enabled"] == 0 and hw.row()["extension_enabled"] == 0 and hw.row()["state"] == "off"
+    m.join_services_off = set()
+    hw.set_caps(hw.service_doc(ECHO), hw.service_doc(BOARD, kind="board", roles=("poster",), default="off"), hw.service_doc("late@hub.example"))
+    hw.sync()
+    assert hw.row()["enabled"] == 0  # still the owner's choice
+    assert hw.row("late@hub.example")["enabled"] == 1  # a later row follows its own default

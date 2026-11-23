@@ -13927,6 +13927,15 @@
             "title": "Problems",
             "description": "Reasons joining would be refused now (fix them first).",
             "default": []
+          },
+          "services": {
+            "items": {
+              "$ref": "#/components/schemas/InvitePreviewService"
+            },
+            "type": "array",
+            "title": "Services",
+            "description": "The hub's services, from its verified capabilities.",
+            "default": []
           }
         },
         "additionalProperties": false,
@@ -13952,6 +13961,52 @@
           "invite"
         ],
         "title": "InvitePreviewRequest"
+      },
+      "InvitePreviewService": {
+        "properties": {
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "extension": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HubServiceExtension"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "default_on": {
+            "type": "boolean",
+            "title": "Default On",
+            "description": "The hub's default: on unless the owner switches it off at join."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "address",
+          "kind",
+          "title",
+          "default_on"
+        ],
+        "title": "InvitePreviewService",
+        "description": "A service the hub lists (verified), shown at join so the owner can switch it off."
       },
       "Job": {
         "properties": {
@@ -14075,6 +14130,16 @@
             "maxLength": 100,
             "minLength": 1,
             "title": "Idempotency Key"
+          },
+          "services_off": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Services Off",
+            "description": "Addresses of services the owner switched off at join: the service and its extension stay off.",
+            "default": []
           }
         },
         "additionalProperties": false,
@@ -17061,6 +17126,18 @@
               }
             ],
             "title": "End Reason"
+          },
+          "ending": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ending",
+            "description": "How a finished run ended, as a plain sentence ('Stopped: 5-hour usage reached your reserve (70%).'). Null while it is active."
           }
         },
         "additionalProperties": false,

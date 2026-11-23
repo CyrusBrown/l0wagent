@@ -425,6 +425,74 @@ export async function verifyAcceleratorRequest(
   return p;
 }
 
+// --- hub services (services.md) ----------------------------------------------------------------
+
+export const SERVICE_WELL_KNOWN = ["relay", "rooms", "board", "email", "spaces", "directory", "admin"] as const;
+const ROLE = /^[a-z][a-z0-9_-]{0,31}$/;
+const HEX_COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+const HTTPS_URL = /^https:\/\/[^\s/?#]\S*$/;
+
+export const validRole = (r: unknown): boolean => typeof r === "string" && ROLE.test(r);
+
+function httpsUrl(v: unknown, field: string): void {
+  if (typeof v !== "string" || !HTTPS_URL.test(v)) throw new ValidationError(`field '${field}' must be an https URL`);
+}
+
+export interface ServiceBuild {
+  address: string;
+  kind: string;
+  roles: string[];
+  title?: string;
+  description?: string;
+  docs?: string;
+  extension?: Obj;
+  default?: "on" | "off";
+  iat?: string | number;
+}
+
+export function buildService(s: ServiceBuild): Obj {
+  return pl("service", s.iat, undefined, {
+    address: s.address,
+    kind: s.kind,
+    title: s.title ?? s.address.split("@")[0],
+    description: s.description,
+    docs: s.docs,
+    roles: [...s.roles],
+    extension: s.extension,
+    default: s.default ?? "on",
+  });
+}
+
+export function validateService(p: unknown, hubDomain?: string): Obj {
+  const o = base(p, "service");
+  const [, domain] = splitAddress(needStr(o, "address"));
+  if (hubDomain !== undefined && domain !== hubDomain.toLowerCase()) throw new ValidationError("service address is not on this hub");
+  const kind = needStr(o, "kind");
+  if (kind !== "custom" && !(SERVICE_WELL_KNOWN as readonly string[]).includes(kind)) {
+    throw new ValidationError(`kind '${kind}' is neither well-known nor 'custom'`);
+  }
+  needStr(o, "title");
+  if ("description" in o && typeof o.description !== "string") throw new ValidationError("field 'description' must be a string");
+  if ("docs" in o) httpsUrl(o.docs, "docs");
+  const roles = needList(o, "roles");
+  if (!roles.every(validRole) || new Set(roles).size !== roles.length) throw new ValidationError("roles must be a list of distinct short names");
+  if ("extension" in o) {
+    const ext = needObj(o, "extension");
+    httpsUrl(ext.git, "extension.git");
+    if (typeof ext.commit !== "string" || !HEX_COMMIT.test(ext.commit)) throw new ValidationError("extension.commit must be 40 or 64 lowercase hex digits");
+    const path = ext.path;
+    if (
+      typeof path !== "string" || !path || path.startsWith("/") || path.includes("\\") || path.includes("\0") ||
+      path.split("/").some((seg) => seg === "" || seg === "..")
+    ) {
+      throw new ValidationError("extension.path must be a relative path without '..' segments");
+    }
+  }
+  const d = needStr(o, "default");
+  if (d !== "on" && d !== "off") throw new ValidationError("default must be 'on' or 'off'");
+  return o;
+}
+
 // --- other bodies ------------------------------------------------------------------------------
 
 export function buildInviteResponse(expires: string, hubName: string, nameHint: string | null = null, nameBound = false): Obj {

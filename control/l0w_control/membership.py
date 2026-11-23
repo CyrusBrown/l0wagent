@@ -101,6 +101,7 @@ class Membership:
         self.connect_to = connect_to if connect_to is not None else os.environ.get("L0W_HUB_CONNECT_TO") or None
         self.allow_http = allow_http if allow_http is not None else os.environ.get("L0W_HUB_ALLOW_HTTP") == "1"
         self._lock = asyncio.Lock()
+        self.join_services_off: set[str] = set()  # services the owner switched off at join; hubservices reads it while the join runs
         self.on_caps: Callable[[], Awaitable[None]] | None = None  # hub services follow the capabilities (hubservices.py)
         self.on_left: Callable[[], Awaitable[None]] | None = None
         self.on_policy: Callable[[], None] | None = None  # the owner changed how this hub's extension updates are handled (ops.py)
@@ -277,12 +278,29 @@ class Membership:
             expires=parse(info.get("expires")),
             example=s.MemberHostnames(instance=ex["instance"], files=ex["files"]) if has_ex else None,
             example_name=_example_name(ex) if has_ex else None,
-            two_factor_ready=self.two_factor(), problems=problems,
+            two_factor_ready=self.two_factor(), problems=problems, services=self._preview_services(caps),
         )
+
+    def _preview_services(self, caps: dict) -> list[s.InvitePreviewService]:
+        """The hub's verified services (entries that don't verify are skipped, as hubservices does)."""
+        try:
+            listed, _ = payloads.services_in(caps, self._hub_sign_key(caps))
+        except (StopIteration, KeyError, TypeError, ValueError, ProtocolError):
+            return []
+
+        def clean(text: object, limit: int) -> str:
+            return "".join(c for c in str(text or "") if c.isprintable() or c in "\n\t")[:limit]
+        return [s.InvitePreviewService(address=p["address"].lower(), kind=p["kind"], title=clean(p["title"], 200), description=clean(p.get("description"), 2000),
+                                       extension=s.HubServiceExtension(**p["extension"]) if p.get("extension") else None, default_on=p["default"] == "on")
+                for p in listed]
 
     async def join(self, req: s.JoinRequest) -> s.JoinResult:
         async with self._lock:
-            return await self._join(req)
+            self.join_services_off = {a.strip().lower() for a in req.services_off}
+            try:
+                return await self._join(req)
+            finally:
+                self.join_services_off = set()
 
     async def _join(self, req: s.JoinRequest) -> s.JoinResult:
         if self.gw is None:

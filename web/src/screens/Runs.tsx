@@ -205,6 +205,7 @@ function Summary({ d, open }: { d: S['RunDetail']; open: () => void }) {
         <div className="row-start label">{live && <span className="dot working" />}{live ? 'Now' : STATUS[r.status][0]}</div>
         <div className="headline">{live ? (r.now ?? 'Starting…') : (r.about ?? whyLabel(r))}</div>
         {live && r.about && <div className="para">{r.about}</div>}
+        {!live && r.ending && <div className={`para run-ending ${r.status === 'failed' ? 'bad' : ''}`} role={r.status === 'failed' ? 'alert' : undefined}>{r.ending}</div>}
       </div>
       <div className="run-grid">
         <div className="tl-card" role="button" tabIndex={0} onClick={open} onKeyDown={(e) => { if (e.key === 'Enter') open() }}>
@@ -297,6 +298,10 @@ function Detailed({ id, back }: { id: number; back: () => void }) {
           // The step's text is cut at 300 characters; the full command is in the tool's input.
           const input = i.kind === 'tool' ? (i.data.input as Record<string, unknown> | undefined) : undefined
           const cmd = typeof input?.command === 'string' && input.command.length > i.text.length - 2 ? `$ ${input.command}` : null
+          // An ending or error says what happened in plain words; the runtime's own text stays one click away.
+          const raw = (i.kind === 'error' || i.kind === 'control') && !code
+            ? [i.data.was, i.data.raw, i.data.stderr].filter((x): x is string => typeof x === 'string' && x !== '' && x !== i.text).join('\n\n') || null
+            : null
           return (
             <div key={i.id} id={`t${i.id}`} className={`detail-row ${i.kind === 'reviewer' ? 'reviewer' : ''}`}>
               <span className="t">{clockSeconds(i.at)}</span>
@@ -309,6 +314,7 @@ function Detailed({ id, back }: { id: number; back: () => void }) {
                   <span key={fl.path} className="mono sub">{fl.path}  <span style={{ color: 'var(--okInk)' }}>+{fl.added ?? '?'}</span> <span style={{ color: 'var(--badInk)' }}>−{fl.removed ?? '?'}</span></span>
                 ))}
                 {code && <Output text={code} className={i.data.is_error ? 'err' : ''} lines={14} />}
+                {raw && <Output text={raw} lines={2} />}
               </div>
               <a href={`#t${i.id}`} className="go" title="Link to this step">↗</a>
             </div>

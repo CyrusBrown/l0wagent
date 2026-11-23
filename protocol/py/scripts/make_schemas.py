@@ -182,6 +182,29 @@ S["service"] = payload("service", {
 S["role-grant"] = payload("role-grant", {
     "service": ADDRESS, "holder": ADDRESS, "holder_kid": KID, "role": ROLE,
 }, ["service", "holder", "holder_kid", "role"], "Payload of a role-grant document, signed by the service (services.md)")
+SPACE_ID = {"type": "string", "minLength": 1, "maxLength": 128, "pattern": r"^[^\u0000-\u001f\u007f]+$"}
+EPOCH = {"type": "integer", "minimum": 1}
+BLOB_ID = {"type": "string", "pattern": r"^e[1-9][0-9]*\.[A-Za-z0-9_-]{43}$", "description": "e<epoch>.<base64url HMAC-SHA256>"}
+VERSION_ID = {"type": "string", "pattern": r"^v\.[A-Za-z0-9_-]{22}$"}
+S["space-key"] = payload("space-key", {
+    "space": SPACE_ID, "epoch": EPOCH, "member": ADDRESS, "member_kid": KID, "granter": ADDRESS, "granter_kid": KID,
+    "sealed": {"type": "object", "required": ["alg", "enc", "ct"], "properties": {
+        "alg": {"const": "HPKE-v1-X25519-SHA256-ChaCha20Poly1305"}, "enc": B64, "ct": B64}, "additionalProperties": True},
+}, ["space", "epoch", "member", "member_kid", "granter", "granter_kid", "sealed"],
+    "Payload of a space-key document, signed by the space's creator: the space key sealed to one member (spaces.md)")
+S["space-version"] = payload("space-version", {
+    "space": SPACE_ID, "seq": {"type": "integer", "minimum": 1}, "parent": {"oneOf": [VERSION_ID, {"type": "null"}],
+                                                                              "description": "null exactly when seq is 1"},
+    "epoch": EPOCH, "author": ADDRESS,
+    "blobs": {"type": "array", "items": BLOB_ID, "uniqueItems": True},
+    "meta": {"type": "object", "required": ["nonce", "ct"], "properties": {
+        "nonce": {"type": "string", "pattern": r"^[A-Za-z0-9_-]{16}$", "description": "base64url of 12 bytes"}, "ct": B64},
+        "additionalProperties": True},
+}, ["space", "seq", "parent", "epoch", "author", "blobs", "meta"],
+    "Payload of a space-version document, signed by the author's instance (spaces.md)")
+S["space-version"]["if"] = {"properties": {"seq": {"const": 1}}}
+S["space-version"]["then"] = {"properties": {"parent": {"type": "null"}}}
+S["space-version"]["else"] = {"properties": {"parent": VERSION_ID}}
 S["envelope"] = {
     **payload("envelope", {
         "id": {**B64, "description": "base64url of 16 random bytes, unique per sender"},
@@ -199,7 +222,7 @@ S["envelope"]["if"] = {"properties": {"kind": {"enum": ["friend-request", "servi
 S["envelope"]["then"] = {"not": {"required": ["token"]}}
 S["envelope"]["else"] = {"required": ["token"]}
 
-PAYLOAD_TYPES = ["self", "rotation", "revocation", "moved", "hub", "registration", "leave", "reregistration", "tunnel-hello", "accelerator-request", "delivery-token", "same-owner", "envelope", "service", "role-grant"]
+PAYLOAD_TYPES = ["self", "rotation", "revocation", "moved", "hub", "registration", "leave", "reregistration", "tunnel-hello", "accelerator-request", "delivery-token", "same-owner", "envelope", "service", "role-grant", "space-key", "space-version"]
 
 
 def schema_files() -> dict[str, str]:

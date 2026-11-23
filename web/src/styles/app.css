@@ -552,6 +552,7 @@ a.btn:hover { text-decoration: none; color: var(--fg) }
 .run-now .label { font: 500 11.5px var(--sans); color: var(--faint); gap: 8px }
 .run-now .headline { font: 400 21px/1.4 var(--serif) }
 .run-now .para { font: 400 14.5px/1.6 var(--serif); color: var(--muted); text-wrap: pretty }
+.run-now .para.bad { color: var(--badInk) }
 .run-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 24px; align-items: start }
 .tl-card { grid-column: span 2; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; cursor: pointer }
 .tl-card:hover { border-color: var(--dim) }

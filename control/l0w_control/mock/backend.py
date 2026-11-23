@@ -508,7 +508,7 @@ class MockBackend(Backend):
         r = self.run(run_id).run
         if r.status != "running":
             raise Conflict("not_running", f"run {run_id} is {r.status}")
-        r.status, r.ended_at, r.now = "stopped", _now(), None
+        r.status, r.ended_at, r.now, r.ending = "stopped", _now(), None, "Stopped by you."
         self._changed("run", run_id, r)
         self._emit(s.LiveEvent(type="status", data=self.status().model_dump(mode="json")))
         return r
@@ -564,7 +564,13 @@ class MockBackend(Backend):
     def membership_preview(self, req: s.InvitePreviewRequest) -> s.InvitePreview:
         self._mock_invite(req.invite)
         return s.InvitePreview(hub=self.MOCK_HUB, name_hint="mara", expires=_now() + timedelta(days=7),
-                               example=s.MemberHostnames(instance="mara.hub.example", files="files--mara.hubfiles.example"), two_factor_ready=True)
+                               example=s.MemberHostnames(instance="mara.hub.example", files="files--mara.hubfiles.example"), two_factor_ready=True,
+                               services=[s.InvitePreviewService(address="echo@hub.example", kind="custom", title="Echo", description="A test service: echo, whoami, secret.",
+                                                                default_on=True),
+                                         s.InvitePreviewService(address="board@hub.example", kind="board", title="Board",
+                                                                description="Topics, posts and discussions for members of this hub.",
+                                                                extension=s.HubServiceExtension(git="https://git.example/hub-services.git", commit="0" * 40, path="extensions/board"),
+                                                                default_on=False)])
 
     def membership_join(self, req: s.JoinRequest) -> s.JoinResult:
         self._mock_invite(req.invite)
@@ -587,7 +593,14 @@ class MockBackend(Backend):
                          extension_name="board", extension_enabled=True, extension_state="installed", extension_commit="0" * 40,
                          default_on=False, enabled=False, state="off", updated_at=_now()),
         ]
-        self._installed["board"] = self._hub_ext("board", "0" * 40, "extensions/board")
+        off = {a.strip().lower() for a in req.services_off}
+        for svc in self._services:
+            if svc.address in off:
+                svc.enabled, svc.state, svc.connected_at = False, "off", None
+                if svc.extension:
+                    svc.extension_enabled, svc.extension_state, svc.extension_commit = False, "off", None
+        if "board@hub.example" not in off:
+            self._installed["board"] = self._hub_ext("board", "0" * 40, "extensions/board")
         return s.JoinResult(membership=self._member, recovery_key="l0w-recovery:" + secrets.token_urlsafe(32))
 
     @staticmethod
@@ -854,7 +867,7 @@ class MockBackend(Backend):
         self._pause = s.PauseState(paused=True, since=since, until=_now() + timedelta(minutes=req.minutes) if req.minutes else None, skipped=self._pause.skipped)
         for r in self.w.runs.values():
             if r.status == "running":
-                r.status, r.ended_at, r.now = "stopped", _now(), None
+                r.status, r.ended_at, r.now, r.ending = "stopped", _now(), None, "Stopped: you paused everything."
                 self._changed("run", r.id, r)
         self._emit(s.LiveEvent(type="status", data=self.status().model_dump(mode="json")))
         return self._pause

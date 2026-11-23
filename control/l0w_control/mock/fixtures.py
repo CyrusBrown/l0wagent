@@ -140,11 +140,14 @@ def build(now: datetime | None = None) -> World:
     thread(10, None, "Things to look into", ago(days=1), "You: the sourdough starter keeps collapsing")
 
     # ── Runs ───────────────────────────────────────────────────────────────
+    ending_for = {"done": "Finished.", "partial": "Finished, but some work was left open.", "stopped": "Stopped: 5-hour usage reached your reserve (70%)."}
+
     def run(rid, kind, why, about, start, minutes, used, budget, status, projects, why_detail=None, now_s=None, tier="sonnet/medium"):
         w.runs[rid] = s.Run(
             id=rid, kind=kind, why=why, why_detail=why_detail, about=about, now=now_s, provider="claude-subscription", tier=tier,
             budget=budget, used=used, deadline=start + timedelta(minutes=45) if status == "running" else None, status=status,
             started_at=start, ended_at=None if status == "running" else start + timedelta(minutes=minutes), projects=projects,
+            ending=ending_for.get(status),
         )
 
     run(123, "wakeup", "planned", "Fix the Sunday double pump trigger, then file receipts", ago(minutes=18), 18, 3.8, 10, "running",

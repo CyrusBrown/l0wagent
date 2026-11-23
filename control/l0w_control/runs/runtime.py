@@ -13,6 +13,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from .endings import explain_error
+
 TOOL_TEXT_MAX = 300
 RESULT_MAX = 4000
 
@@ -126,9 +128,11 @@ class ClaudeCode(RuntimeAdapter):
             elif p.runner == "lost":
                 p.items.append(Item("error", "The agent computer restarted mid-session", True))
             elif p.runner == "exited" and ev.get("returncode") not in (0, None, 130):
-                p.items.append(Item("error", f"{self.label} exited with code {ev.get('returncode')}", True, {"stderr": _clip(ev.get("stderr_tail") or "", RESULT_MAX)}))
+                p.items.append(Item("error", explain_error(returncode=ev.get("returncode"), stderr=ev.get("stderr_tail")), True,
+                                    {"stderr": _clip(ev.get("stderr_tail") or "", RESULT_MAX), "returncode": ev.get("returncode"), "session_end": "exit",
+                                     "raw": f"{self.label} exited with code {ev.get('returncode')}"}))
             elif p.runner == "exited" and ev.get("error"):
-                p.items.append(Item("error", f"The runner failed: {_clip(ev['error'], 300)}", True))
+                p.items.append(Item("error", f"The runner failed: {explain_error(_clip(ev['error'], 300))}", True, {"raw": _clip(ev["error"], RESULT_MAX)}))
             return p
         if t == "system" and ev.get("subtype") == "init":
             p.session_id = ev.get("session_id")
@@ -170,8 +174,14 @@ class ClaudeCode(RuntimeAdapter):
             text = ev.get("result") or ev.get("subtype") or ""
             p.result = {"ok": ok, "text": _keep_lines(text, RESULT_MAX), "turns": ev.get("num_turns"), "cost_usd": ev.get("total_cost_usd"),
                         "subtype": ev.get("subtype"), "usage": ev.get("usage")}
-            label = "Session finished" if ok else "Session ended with an error"
-            p.items.append(Item("control" if ok else "error", f"{label}: {_clip(text, 200)}", True, {"turns": ev.get("num_turns"), "usage": ev.get("usage")}))
+            if ok:
+                p.items.append(Item("control", f"Session finished: {_clip(text, 200)}", True, {"turns": ev.get("num_turns"), "usage": ev.get("usage")}))
+            else:
+                # The raw text stays in `data.raw`; the manager makes this neutral when control stopped the run.
+                readable = explain_error(ev.get("result"), ev.get("subtype"))
+                p.result["text"] = readable
+                p.items.append(Item("error", f"Session ended with an error: {_clip(readable, 200)}", True,
+                                    {"turns": ev.get("num_turns"), "usage": ev.get("usage"), "raw": _clip(text, RESULT_MAX), "subtype": ev.get("subtype"), "session_end": "result"}))
             return p
         if t == "raw":
             p.items.append(Item("error", f"Unparsed output: {_clip(ev.get('text', ''), 300)}"))
@@ -214,7 +224,7 @@ class OpenCode(ClaudeCode):
         elif t == "error":
             err = ev.get("error") or {}
             msg = (err.get("data") or {}).get("message") or err.get("name") or "error"
-            p.items.append(Item("error", f"opencode: {_clip(msg, 300)}", True, {"error": err}))
+            p.items.append(Item("error", f"opencode: {explain_error(_clip(msg, 300))}", True, {"error": err, "raw": _clip(msg, RESULT_MAX), "session_end": "error"}))
         return p
 
 

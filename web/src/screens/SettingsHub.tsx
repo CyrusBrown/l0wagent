@@ -82,6 +82,7 @@ function Join({ m, onJoined }: { m: S['Membership']; onJoined: (key: string) => 
   const [name, setName] = useState('')
   const [locked, setLocked] = useState(false)
   const [backup, setBackup] = useState<'made' | 'skipped' | null>(null)
+  const [svcOn, setSvcOn] = useState<Record<string, boolean>>({})
   const p = preview.data
   const nameOk = name.length >= 3 && name.length <= 32 && NAME_RE.test(name)
   const yours = nameOk ? previewHostnames(p?.example, p?.example_name, name) : null
@@ -98,7 +99,7 @@ function Join({ m, onJoined }: { m: S['Membership']; onJoined: (key: string) => 
         </div>
         <form className="set-form" style={{ maxWidth: 520 }} onSubmit={(e) => {
           e.preventDefault()
-          preview.mutate(invite.trim(), { onSuccess: (r) => { if (r.name_hint) setName(r.name_hint); setLocked(!!r.name_bound && !!r.name_hint) } })
+          preview.mutate(invite.trim(), { onSuccess: (r) => { if (r.name_hint) setName(r.name_hint); setSvcOn(Object.fromEntries((r.services ?? []).map((x) => [x.address, x.default_on]))); setLocked(!!r.name_bound && !!r.name_hint) } })
         }}>
           <input className="input mono" autoComplete="off" spellCheck={false} placeholder="l0w-invite:…" aria-label="Invite" value={invite} onChange={(e) => setInvite(e.target.value)} />
           {preview.error && <div className="error" role="alert">{problem(preview.error)}</div>}
@@ -126,7 +127,8 @@ function Join({ m, onJoined }: { m: S['Membership']; onJoined: (key: string) => 
             // mutateAsync, not mutate's per-call onSuccess: the membership refetch swaps this form for the joined
             // view before the answer arrives, and React Query drops per-call callbacks of an unmounted caller,
             // which would lose the recovery key (shown once, never refetchable). The parent keeps it.
-            join.mutateAsync({ invite: invite.trim(), name, backup })
+            const services_off = (p?.services ?? []).filter((x) => !(svcOn[x.address] ?? x.default_on)).map((x) => x.address)
+            join.mutateAsync({ invite: invite.trim(), name, backup, services_off })
               .then((r) => { onJoined(r.recovery_key); setInvite(''); preview.reset() }, () => {})
           }}>
             <label className="stack" style={{ gap: 4 }}>
@@ -140,6 +142,26 @@ function Join({ m, onJoined }: { m: S['Membership']; onJoined: (key: string) => 
                 <span className="mono" style={{ fontSize: 13 }}>{yours.instance}</span>
                 <span className="mono" style={{ fontSize: 13 }}>{yours.files}</span>
                 <span className="sub" style={{ fontSize: 12.5 }}>A preview: the hub confirms them when you join.</span>
+              </div>
+            )}
+            {!!p.services?.length && (
+              <div className="stack" style={{ gap: 6 }} aria-label="Services">
+                <span style={{ fontWeight: 500, fontSize: 13.5 }}>Services</span>
+                <span className="sub" style={{ fontSize: 12.5 }}>What {p.hub.name} offers. You can change these any time in Settings → Hub.</span>
+                <div className="svc-list">
+                  {p.services.map((x) => (
+                    <div key={x.address} className="svc" data-testid={`join-svc-${x.address}`}>
+                      <div className="set-row">
+                        <div className="stack" style={{ gap: 3, minWidth: 0 }}>
+                          <span style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>{x.title}<span className="pill mute">{x.kind}</span></span>
+                          {x.description && <span className="sub">{x.description}</span>}
+                          {x.extension && <span className="sub">Installs an extension.</span>}
+                        </div>
+                        <Switch on={svcOn[x.address] ?? x.default_on} label={`${x.title} on`} onChange={(on) => setSvcOn((s) => ({ ...s, [x.address]: on }))} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
             <div className="stack" style={{ gap: 6 }}>

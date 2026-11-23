@@ -76,6 +76,21 @@ def die(msg: str, code: int = 1):
     sys.exit(code)
 
 
+def read_line(prompt: str, hint: str = "add --yes to confirm") -> str:
+    """input(), but without a terminal (ssh without a tty, a pipe) say so instead of a traceback."""
+    try:
+        return input(prompt)
+    except EOFError:
+        die(f"Not interactive: {hint}.")
+
+
+def read_secret(prompt: str, hint: str = "run this in a terminal (ssh -t), or set L0W_BACKUP_PASSPHRASE") -> str:
+    try:
+        return getpass.getpass(prompt)
+    except EOFError:
+        die(f"Not interactive: {hint}.")
+
+
 # ── the API ────────────────────────────────────────────────────────────────
 def config() -> dict:
     try:
@@ -389,7 +404,7 @@ def hostctl(*args: str) -> dict:
 def ask(prompt: str, default: str, yes: bool) -> str:
     if yes:
         return default
-    got = input(f"{prompt} [{default}]: ").strip()
+    got = read_line(f"{prompt} [{default}]: ", "add --yes to accept the defaults").strip()
     return got or default
 
 
@@ -613,10 +628,10 @@ def backup_passphrase(confirm: bool) -> str:
     pw = os.environ.get("L0W_BACKUP_PASSPHRASE")
     if pw:
         return pw
-    pw = getpass.getpass("Backup passphrase: ")
+    pw = read_secret("Backup passphrase: ")
     if not pw:
         die("The passphrase can't be empty.")
-    if confirm and getpass.getpass("Again: ") != pw:
+    if confirm and read_secret("Again: ") != pw:
         die("The passphrases differ.")
     return pw
 
@@ -647,7 +662,7 @@ def cmd_restore(a) -> None:
     src = Path(a.file)
     if not src.is_file():
         die(f"{src} isn't a file.")
-    if not a.yes and input(f"This replaces the data on this machine with {src.name} (the stack is stopped meanwhile). Continue? [y/N] ").strip().lower() not in ("y", "yes"):
+    if not a.yes and read_line(f"This replaces the data on this machine with {src.name} (the stack is stopped meanwhile). Continue? [y/N] ").strip().lower() not in ("y", "yes"):
         die("Cancelled.")
     pw = backup_passphrase(confirm=False)
     compose("stop", check=False)
@@ -752,12 +767,12 @@ Next:
 # ── commands: API ──────────────────────────────────────────────────────────
 def cmd_login(a) -> None:
     url = (a.url or server()[0]).rstrip("/")
-    user = input("Username: ").strip()
-    pw = getpass.getpass("Password: ")
+    user = read_line("Username: ", "run login in a terminal (ssh -t)").strip()
+    pw = read_secret("Password: ", "run login in a terminal (ssh -t)")
     label = f"l0w CLI on {platform.node()}"
     r = call("POST", "/auth/login", {"username": user, "password": pw, "want": "device_token", "device_label": label}, auth=False, url=url)
     if r["status"] == "totp_required":
-        code = input("2FA code: ").strip()
+        code = read_line("2FA code: ", "run login in a terminal (ssh -t)").strip()
         r = call("POST", "/auth/totp", {"challenge": r["challenge"], "code": code}, auth=False, url=url)
     if not r.get("device_token"):
         die("The server didn't issue a device token.")
@@ -994,7 +1009,7 @@ def cmd_ops(a) -> None:
         return
     if on:
         add_ops_settings(env)
-        if not a.yes and input(UPDATES_ASK + ". Turn it on? [y/N] ").strip().lower() not in ("y", "yes"):
+        if not a.yes and read_line(UPDATES_ASK + ". Turn it on? [y/N] ").strip().lower() not in ("y", "yes"):
             die("Cancelled.")
     set_updates(env, on)
     write_env(env)

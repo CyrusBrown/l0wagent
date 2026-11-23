@@ -2,6 +2,15 @@
 
 Tags are `hub-X.Y.Z`. Changes to the hub core only; the instance has its own changelog at the repo root.
 
+## 0.6.0
+
+- Hub services (protocol/services.md): the operator registers a service with `PUT /v0/admin/services/{name}` (and lists or
+  removes it with `GET /v0/admin/services` and `DELETE /v0/admin/services/{name}`; same `ADMIN_TOKEN`, 404 when unset).
+  The capabilities list each one as `{"kind": "service", "doc": <hub-signed service document>}` in `extras`, its directory
+  entry is served countersigned like a member's, and its hostnames answer `404 service_not_here` from the hub (a Cloudflare
+  route sends them to the service's own Worker). A service name can't be a member's and a member can't take it.
+- Migration `0005_services.sql` (apply it before deploying).
+
 ## 0.5.0
 
 - Own-URL mode is removed: members join only through the hub's tunnel (protocol/membership.md). A registration's `mode` and

@@ -1,0 +1,8 @@
+# The test extension the fake hub's `echo` service can advertise (`--echo-extension`). Installed from a hub's signed service list.
+name = "echo"
+title = "Echo"
+version = "0.1.0"
+sdk = "1.1"
+description = "Calls the hub's test service `echo` and keeps the events it sends."
+entry = "extension.py"
+folders = ["events"]           # /external/echo/events/ for the agent: one file per event echo sent

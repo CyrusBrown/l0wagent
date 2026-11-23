@@ -50,6 +50,11 @@ as a signed `service` document (kind `custom`, roles `["tester"]`, default `on`)
   `tester` role grant. Others get an empty `roles` list.
 - `--echo-extension GIT COMMIT PATH` (`FAKEHUB_ECHO_EXTENSION=git,commit,path`): the `extension` reference in its
   service document (an https URL, a 40 or 64 hex commit, a relative path).
+  The test extension it can advertise is in `dev/hub/echo-extension/` (SDK 1.1: a route that calls echo with `ext.hub.acall`, and
+  an `on_event` handler that writes echo's events to a managed folder). Push that folder to a git repository and pass its URL,
+  commit and `.`. Tests: `ops/tests/test_echo_extension.py` (install and update through ops from a signed service document) and
+  `control/tests/test_echo_extension.py` (loaded by control's loader). No test wires control, ops and the fake hub together:
+  the e2e stack (`control/tests/stack.py`) has no ops container.
 - Inbox `https://echo.<domain>/api/peer/v0/inbox`: `service-hello` is accepted only from members of this hub (403
   `not_member` otherwise); everything else needs the token echo issued. Methods: `echo` (returns `args`), `whoami`
   (`{address, roles}`: the roles echo honored from the call's grant), `secret` (needs the `tester` role, else the

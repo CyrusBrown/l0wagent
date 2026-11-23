@@ -8,7 +8,7 @@ import responses from './mock-responses.json'
 
 const table = responses as Record<string, unknown>
 let overrides: Record<string, unknown> = {}
-const calls: { url: string; method: string; init?: RequestInit }[] = []
+const calls: { url: string; method: string; init?: RequestInit; body?: string }[] = []
 
 function respond(url: URL): Response {
   if (url.pathname in overrides) {
@@ -27,7 +27,7 @@ beforeEach(() => {
   calls.length = 0
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const raw = input instanceof Request ? input.url : String(input)
-    calls.push({ url: raw, method: input instanceof Request ? input.method : init?.method ?? 'GET', init })
+    calls.push({ url: raw, method: input instanceof Request ? input.method : init?.method ?? 'GET', init, body: input instanceof Request ? await input.clone().text() : String(init?.body ?? '') })
     return respond(new URL(raw, 'http://localhost'))
   }))
   window.matchMedia ??= (() => ({ matches: false, addEventListener() {}, removeEventListener() {} })) as never
@@ -101,6 +101,33 @@ describe('Settings → Hub', () => {
     overrides['/api/membership/preview'] = { ...pv, name_bound: false }
     fireEvent.click(screen.getByText('Read invite'))
     await vi.waitFor(() => expect((screen.getByLabelText(/^Name/) as HTMLInputElement).readOnly).toBe(false))
+  })
+
+  it('lists the hub\'s services at join, each switchable, and sends the switched-off ones', async () => {
+    overrides['/api/membership'] = base
+    overrides['/api/membership/preview'] = {
+      hub, name_hint: 'fern', name_bound: false, expires: null, two_factor_ready: true, problems: [],
+      services: [
+        { address: 'echo@hub.example', kind: 'custom', title: 'Echo', description: 'A test service.', extension: null, default_on: true },
+        { address: 'board@hub.example', kind: 'board', title: 'Board', description: 'Posts.', extension: { git: 'https://g.example/x.git', commit: '0'.repeat(40), path: 'b' }, default_on: true },
+      ],
+    }
+    overrides['/api/membership/join'] = new Response('{"error":"no"}', { status: 400 })
+    renderAt('/settings/hub')
+    fireEvent.change(await screen.findByLabelText('Invite'), { target: { value: 'l0w-invite:abc' } })
+    fireEvent.click(screen.getByText('Read invite'))
+    expect(await screen.findByText('Installs an extension.')).toBeTruthy()
+    const echo = screen.getByRole('switch', { name: 'Echo on' })
+    const board = screen.getByRole('switch', { name: 'Board on' })
+    expect(echo.getAttribute('aria-checked')).toBe('true')
+    fireEvent.click(board)
+    expect(board.getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(screen.getByLabelText(/I've made a backup/))
+    fireEvent.click(screen.getByRole('button', { name: 'Join' }))
+    await vi.waitFor(() => expect(calls.some((c) => c.url.includes('/api/membership/join'))).toBe(true))
+    const call = calls.find((c) => c.url.includes('/api/membership/join'))
+    const body = JSON.parse(call?.body || '{}')
+    expect(body.services_off).toEqual(['board@hub.example'])
   })
 
   it('joined shows the address and the tunnel state', async () => {

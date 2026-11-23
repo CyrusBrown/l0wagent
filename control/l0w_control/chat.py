@@ -46,6 +46,7 @@ from .auth import iso, utcnow
 from .backends.base import BadRequest, Conflict, NotFound
 from .budgets import API, OPENCODE_GO, SUBSCRIPTION, price
 from .db import Database
+from .runs.endings import api_error_sentence, explain_error
 
 log = logging.getLogger("l0w.chat")
 PROMPT = Path(__file__).parent / "prompts" / "chat.md"
@@ -168,9 +169,9 @@ class AnthropicClient:
         except ValueError as e:  # a tool input the SDK couldn't parse at all
             raise ChatError(f"The model sent a malformed tool call ({e}); try again.") from e
         except self.anthropic.APIStatusError as e:
-            raise ChatError(f"Anthropic API error {e.status_code}: {str(e.message)[:300]}") from e
+            raise ChatError(api_error_sentence(e.status_code, str(e.message), "Anthropic")) from e
         except self.anthropic.APIConnectionError as e:
-            raise ChatError("Couldn't reach the Anthropic API.") from e
+            raise ChatError("Couldn't reach the Anthropic API. Check the server's internet connection and try again.") from e
         out.stop = msg.stop_reason
         out.model = msg.model or self.model
         out.raw = [b.model_dump(mode="json", exclude_none=True) for b in msg.content]
@@ -237,7 +238,7 @@ class OpenAICompatClient:
             async with httpx.AsyncClient(timeout=httpx.Timeout(300, connect=15)) as c, \
                     c.stream("POST", f"{self.base}/chat/completions", json=body, headers=self.headers) as r:
                 if r.status_code != 200:
-                    raise ChatError(f"opencode Go error {r.status_code}: {(await r.aread()).decode(errors='replace')[:300]}")
+                    raise ChatError(api_error_sentence(r.status_code, (await r.aread()).decode(errors='replace'), "opencode Go"))
                 async for line in r.aiter_lines():
                     if not line.startswith("data:"):
                         continue
@@ -264,7 +265,7 @@ class OpenAICompatClient:
                         if ch.get("finish_reason"):
                             out.stop = ch["finish_reason"]
         except httpx.HTTPError as e:
-            raise ChatError(f"Couldn't reach opencode Go: {e}") from e
+            raise ChatError(f"Couldn't reach opencode Go ({e.__class__.__name__}). Try again in a minute.") from e
         for i, cslot in sorted(calls.items()):
             try:
                 args = json.loads(cslot["args"] or "{}")
@@ -393,15 +394,16 @@ class SidecarClient:
                             if ev.get("result"):
                                 out.text = ev["result"]
                             if ev.get("is_error"):
-                                raise ChatError(f"Claude stopped: {str(ev.get('result') or ev.get('subtype'))[:300]}")
+                                raise ChatError(f"Claude stopped: {explain_error(ev.get('result'), ev.get('subtype'))}")
                         elif t == "runtime" and ev.get("event") == "exit":
                             code, stderr = ev.get("returncode"), ev.get("stderr") or ""
         except httpx.HTTPError as e:
-            raise ChatError(f"Couldn't reach the chat runtime: {type(e).__name__}.") from None
+            raise ChatError(f"Couldn't reach the chat runtime ({type(e).__name__}). Check that the chat-runtime container is running.") from None
         finally:
             self.revoke_token(mcp_token)
         if not got_result:
-            raise ChatError(f"The chat runtime's Claude Code exited ({code}) without a reply: {stderr[-300:].strip() or 'no output'}")
+            why = explain_error("", None, code if code not in (None, 0) else None, stderr)
+            raise ChatError(f"{why} The chat runtime's Claude Code ended without a reply (exit {code}). Try again; if it keeps happening, log in again in Settings → Providers.")
         return out
 
 

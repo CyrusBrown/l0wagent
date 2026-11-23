@@ -701,6 +701,7 @@ class Run(Model):
     wakeup_id: int | None = None
     routine_id: int | None = None
     end_reason: str | None = None
+    ending: str | None = Field(None, description="How a finished run ended, as a plain sentence ('Stopped: 5-hour usage reached your reserve (70%).'). Null while it is active.")
 
 
 class RunStart(Model):
@@ -1743,6 +1744,17 @@ class InvitePreviewRequest(Model):
     invite: str = Field(min_length=1, max_length=2000)
 
 
+class InvitePreviewService(Model):
+    """A service the hub lists (verified), shown at join so the owner can switch it off."""
+
+    address: str
+    kind: str
+    title: str
+    description: str = ""
+    extension: HubServiceExtension | None = None
+    default_on: bool = Field(description="The hub's default: on unless the owner switches it off at join.")
+
+
 class InvitePreview(Model):
     hub: HubInfo
     name_hint: str | None = None
@@ -1752,6 +1764,7 @@ class InvitePreview(Model):
     example_name: str | None = Field(None, description="The name the hub made `example` for; the join screen previews a typed name's hostnames with it (display only).")
     two_factor_ready: bool
     problems: list[str] = Field([], description="Reasons joining would be refused now (fix them first).")
+    services: list[InvitePreviewService] = Field([], description="The hub's services, from its verified capabilities.")
 
 
 class JoinRequest(Model):
@@ -1759,6 +1772,7 @@ class JoinRequest(Model):
     name: str = Field(min_length=3, max_length=32)
     backup: Literal["made", "skipped"] = Field(description="The owner made a backup first, or chose to skip it.")
     idempotency_key: str = Field(min_length=1, max_length=100)
+    services_off: list[str] = Field([], max_length=100, description="Addresses of services the owner switched off at join: the service and its extension stay off.")
 
 
 class JoinResult(Model):

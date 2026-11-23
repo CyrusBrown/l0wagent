@@ -49,7 +49,7 @@ worked examples (two domains, flat, nested), `wrangler.dev.toml` is the local se
 | `ACCEL_DOWN_AFTER` | var, optional | Seconds an active member's tunnel may have no connection before the sweep moves its hostnames back (default 120, at least 60) |
 | `CF_API_TOKEN` | **secret** | The Cloudflare API token (permissions below) |
 | `HUB_SIGNING_SEED` | **secret** | The hub's Ed25519 key: base64url of 32 random bytes. Changing it changes the hub's identity; instances treat that as an alarm |
-| `ADMIN_TOKEN` | **secret** | Bearer token for `POST /v0/admin/invites`. Unset: that endpoint answers 404 |
+| `ADMIN_TOKEN` | **secret** | Bearer token for `POST /v0/admin/invites` and the `/v0/admin/services` endpoints. Unset: those endpoints answer 404 |
 
 Make a seed with `node -e 'console.log(require("crypto").randomBytes(32).toString("base64url"))'`.
 
@@ -123,6 +123,33 @@ itself: the first label of its domain or one in `RESERVED_NAMES` (this is how yo
 spec's fixed list (`admin`, `www`, …) and taken names, or their lookalikes, can't be bound: creation answers `400 bad_request`,
 as it does for `bind` together with `reregister` or with a different `name_hint`. The lookup shows `name_hint` and
 `name_bound: true`.
+
+## Hub services
+
+A hub service (protocol/services.md) is a separate Worker (board, spaces, ...; in the services repo) that the hub
+vouches for. The core does not run it; it registers it, lists it and keeps its hostname out of the member path. Registering
+is the operator's, with the admin token (not part of the spec):
+
+```
+PUT    /v0/admin/services/{name}   {kind, title, description?, docs?, roles: [...], extension?: {git, commit, path}, default: "on"|"off", self: <signed self document>}
+GET    /v0/admin/services          {services: [...]}
+DELETE /v0/admin/services/{name}
+```
+
+- The body is checked as services.md says a service document is (kind well-known or `custom`, role names, `extension.git` and
+  `docs` https, `extension.commit` 40 or 64 lowercase hex, a relative `extension.path`): `400 bad_request`. `self` is the
+  service's own signed self document, checked as a member's is (`address` = `name@domain`, `hostnames` = what the hub assigns
+  for that name, keys and signature valid): `400 bad_self`. A new PUT replaces the entry (its `seq` must not go down).
+- The name may be a reserved one (`board`, `spaces`, ...) but never a member's (`409 name_taken`), and a member can't register
+  a service's name. Migration `0005_services.sql` (apply it before deploying).
+- The capabilities then carry `{"kind": "service", "doc": <service document signed by the hub>}` in `extras` for each service, and
+  `GET /.well-known/l0wagent/members/{name}` serves its self document countersigned by the hub, like a member's. DELETE drops
+  both; instances see the service disappear from the capabilities and forget it.
+- **Routing.** A request whose Host is a service's instance or files hostname is never a member or the hub's API: this Worker
+  answers `404 {"error":"service_not_here"}`. In production a more specific Cloudflare route sends that hostname to the
+  service's own Worker first (see `wrangler.example.toml`: `board.hub.example/*` to the board Worker). A service Worker reaches
+  members through a **service binding** to this Worker: its `fetch` already routes by Host, so a request the service makes to
+  `https://mara.hub.example/...` through the binding goes down Mara's tunnel.
 
 ## The cloudflared accelerator
 

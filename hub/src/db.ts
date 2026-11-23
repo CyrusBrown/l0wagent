@@ -271,3 +271,81 @@ export async function saveAccel(db: D1Database, name: string, patch: AccelPatch)
   const vals = keys.map((k) => (k === "active" ? (patch.active ? 1 : 0) : (patch[k] ?? null)));
   await db.prepare(`UPDATE accelerators SET ${sets} WHERE name = ?1`).bind(name, ...vals).run();
 }
+
+// --- hub services (protocol/services.md) -------------------------------------------------------
+
+export interface Service {
+  name: string;
+  kind: string;
+  title: string;
+  description: string | null;
+  docs: string | null;
+  roles: string[];
+  extension: Obj | null;
+  defaultOn: boolean;
+  selfDoc: Doc;
+  seq: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+function toService(r: Row): Service {
+  return {
+    name: r.name,
+    kind: r.kind,
+    title: r.title,
+    description: r.description ?? null,
+    docs: r.docs ?? null,
+    roles: JSON.parse(r.roles_json),
+    extension: json<Obj>(r.extension_json),
+    defaultOn: r.default_on === 1,
+    selfDoc: JSON.parse(r.self_doc),
+    seq: r.seq,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export async function getService(db: D1Database, name: string): Promise<Service | null> {
+  const r = await db.prepare("SELECT * FROM services WHERE name = ?1").bind(name).first<Row>();
+  return r ? toService(r) : null;
+}
+
+export async function listServices(db: D1Database): Promise<Service[]> {
+  const r = await db.prepare("SELECT * FROM services ORDER BY name").all<Row>();
+  return r.results.map(toService);
+}
+
+export async function serviceExists(db: D1Database, name: string): Promise<boolean> {
+  return (await db.prepare("SELECT 1 AS x FROM services WHERE name = ?1").bind(name).first()) !== null;
+}
+
+/** Insert or replace a service (the operator's PUT); `created_at` is kept on replace. */
+export async function putService(db: D1Database, s: Omit<Service, "createdAt" | "updatedAt">, now: number): Promise<void> {
+  await db
+    .prepare(
+      "INSERT INTO services (name, kind, title, description, docs, roles_json, extension_json, default_on, self_doc, seq, created_at, updated_at) " +
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11) " +
+        "ON CONFLICT(name) DO UPDATE SET kind = ?2, title = ?3, description = ?4, docs = ?5, roles_json = ?6, extension_json = ?7, " +
+        "default_on = ?8, self_doc = ?9, seq = ?10, updated_at = ?11",
+    )
+    .bind(
+      s.name,
+      s.kind,
+      s.title,
+      s.description,
+      s.docs,
+      JSON.stringify(s.roles),
+      s.extension ? JSON.stringify(s.extension) : null,
+      s.defaultOn ? 1 : 0,
+      JSON.stringify(s.selfDoc),
+      s.seq,
+      now,
+    )
+    .run();
+}
+
+export async function deleteService(db: D1Database, name: string): Promise<boolean> {
+  const r = await db.prepare("DELETE FROM services WHERE name = ?1").bind(name).run();
+  return (r.meta.changes ?? 0) === 1;
+}

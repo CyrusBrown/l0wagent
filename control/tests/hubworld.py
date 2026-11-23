@@ -15,7 +15,8 @@ from dataclasses import dataclass, field
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from l0wproto import docs, keys, payloads
+from l0wproto import b64, docs, keys, payloads, spaces
+from l0wproto.errors import ProtocolError
 
 from l0w_control.app import create_app
 from l0w_control.backends.sqlite import SqliteBackend
@@ -39,8 +40,12 @@ class FakeGateway:
     calls: list[tuple[str, str, dict | None]] = field(default_factory=list)
     errors: dict[str, tuple[int, str, str]] = field(default_factory=dict)  # path -> (status, error, detail), for the next call
     sign_keys: dict[str, keys.KeyPair] = field(default_factory=dict)  # service address -> the key its directory entry has
+    seal_keys: dict[str, keys.KeyPair] = field(default_factory=dict)  # member address -> its seal key (made on first pin)
     send_state: str = "queued"
     n: int = 0
+    hostnames: dict[str, dict] = field(default_factory=dict)  # address -> the instance/files hostnames its directory entry has (default x/y)
+    me_sign: keys.KeyPair = field(default_factory=lambda: keys.generate("sign"))  # this instance's keys, which only the gateway holds
+    me_seal: keys.KeyPair = field(default_factory=lambda: keys.generate("seal"))
 
     def bodies(self, path: str, kind: str | None = None) -> list[dict]:
         return [b for _, p, b in self.calls if p == path and b is not None and (kind is None or b.get("kind") == kind)]
@@ -60,8 +65,33 @@ class FakeGateway:
             return httpx.Response(200, json=json.loads(raw))
         if path == "/v0/peer/pin":
             kp = self.sign_keys[body["address"]]
-            return httpx.Response(200, json={"address": body["address"], "fingerprint": "7Q2M-9KXA-4D1F-R0VE", "hostnames": {"instance": "x", "files": "y"},
-                                             "rotated": False, "sign_key": kp.key.to_dict()})
+            return httpx.Response(200, json={"address": body["address"], "fingerprint": "7Q2M-9KXA-4D1F-R0VE", "rotated": False, "sign_key": kp.key.to_dict(),
+                                             "seal_key": self.seal_keys.setdefault(body["address"], keys.generate("seal")).key.to_dict(),
+                                             "hostnames": self.hostnames.get(body["address"], {"instance": "x", "files": "y"})})
+        if path == "/v0/space/open-key":  # as the real gateway: info from the document's own fields, our seal key
+            try:
+                p = spaces.space_key_payload(body["doc"])
+                return httpx.Response(200, json={"key": b64.encode(spaces.open_space_key_payload(self.me_seal.private, p))})
+            except ProtocolError as e:
+                return httpx.Response(422, json={"error": "cannot_open", "detail": e.detail})
+        if path == "/v0/sign/space-version":
+            try:
+                p = {"v": "l0w/0.1", "type": "space-version", "iat": "2026-11-22T10:00:00Z", **body["payload"]}
+                spaces.validate_space_version(p)
+            except ProtocolError as e:
+                return httpx.Response(400, json={"error": "bad_request", "detail": e.detail})
+            if p["author"] != ME:
+                return httpx.Response(403, json={"error": "not_the_author", "detail": "this instance signs only its own versions"})
+            return httpx.Response(200, json={"doc": docs.sign_document("space-version", p, [self.me_sign])})
+        if path == "/v0/sign/space-key":
+            try:
+                p = {"v": "l0w/0.1", "type": "space-key", "iat": "2026-11-22T10:00:00Z", **body["payload"]}
+                spaces.validate_space_key(p)
+            except ProtocolError as e:
+                return httpx.Response(400, json={"error": "bad_request", "detail": e.detail})
+            if p["granter"] != ME or p["granter_kid"] != self.me_sign.kid:
+                return httpx.Response(403, json={"error": "not_the_granter", "detail": "this instance signs only keys it grants"})
+            return httpx.Response(200, json={"doc": docs.sign_document("space-key", p, [self.me_sign])})
         if path == "/v0/peer/send":
             self.n += 1
             return httpx.Response(200, json={"id": f"out-{self.n}", "state": self.send_state, "error": "refused by them" if self.send_state == "failed" else None})

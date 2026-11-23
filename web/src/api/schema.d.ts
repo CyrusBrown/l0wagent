@@ -4718,11 +4718,40 @@ export interface components {
              * @default []
              */
             problems?: string[];
+            /**
+             * Services
+             * @description The hub's services, from its verified capabilities.
+             * @default []
+             */
+            services?: components["schemas"]["InvitePreviewService"][];
         };
         /** InvitePreviewRequest */
         InvitePreviewRequest: {
             /** Invite */
             invite: string;
+        };
+        /**
+         * InvitePreviewService
+         * @description A service the hub lists (verified), shown at join so the owner can switch it off.
+         */
+        InvitePreviewService: {
+            /** Address */
+            address: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            extension?: components["schemas"]["HubServiceExtension"] | null;
+            /**
+             * Default On
+             * @description The hub's default: on unless the owner switches it off at join.
+             */
+            default_on: boolean;
         };
         /** Job */
         Job: {
@@ -4767,6 +4796,12 @@ export interface components {
             backup: "made" | "skipped";
             /** Idempotency Key */
             idempotency_key: string;
+            /**
+             * Services Off
+             * @description Addresses of services the owner switched off at join: the service and its extension stay off.
+             * @default []
+             */
+            services_off?: string[];
         };
         /** JoinResult */
         JoinResult: {
@@ -5935,6 +5970,11 @@ export interface components {
             routine_id?: number | null;
             /** End Reason */
             end_reason?: string | null;
+            /**
+             * Ending
+             * @description How a finished run ended, as a plain sentence ('Stopped: 5-hour usage reached your reserve (70%).'). Null while it is active.
+             */
+            ending?: string | null;
         };
         /** RunBudgetAdd */
         RunBudgetAdd: {

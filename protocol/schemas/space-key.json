@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.l0wagent.invalid/0.1/space-key.json",
+  "title": "space-key",
+  "description": "Payload of a space-key document, signed by the space's creator: the space key sealed to one member (spaces.md)",
+  "type": "object",
+  "required": [
+    "v",
+    "type",
+    "iat",
+    "space",
+    "epoch",
+    "member",
+    "member_kid",
+    "granter",
+    "granter_kid",
+    "sealed"
+  ],
+  "properties": {
+    "v": {
+      "const": "l0w/0.1"
+    },
+    "type": {
+      "const": "space-key"
+    },
+    "iat": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+      "description": "RFC 3339 UTC, whole seconds"
+    },
+    "exp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+      "description": "RFC 3339 UTC, whole seconds"
+    },
+    "space": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+    },
+    "epoch": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "member": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*@[a-z0-9][a-z0-9.-]*(:[0-9]+)?$"
+    },
+    "member_kid": {
+      "type": "string",
+      "pattern": "^k1\\.[A-Za-z0-9_-]{22}$"
+    },
+    "granter": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*@[a-z0-9][a-z0-9.-]*(:[0-9]+)?$"
+    },
+    "granter_kid": {
+      "type": "string",
+      "pattern": "^k1\\.[A-Za-z0-9_-]{22}$"
+    },
+    "sealed": {
+      "type": "object",
+      "required": [
+        "alg",
+        "enc",
+        "ct"
+      ],
+      "properties": {
+        "alg": {
+          "const": "HPKE-v1-X25519-SHA256-ChaCha20Poly1305"
+        },
+        "enc": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "description": "base64url, no padding"
+        },
+        "ct": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "description": "base64url, no padding"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
