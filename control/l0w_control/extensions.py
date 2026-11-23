@@ -806,10 +806,15 @@ def _in_loop(loop: asyncio.AbstractEventLoop) -> bool:
 
 def _write_contained(root: Path, parts: list[str], data: bytes) -> None:
     """Write root/parts... creating folders, never following a symlink and never writing through a hard link
-    (the agent controls this tree)."""
+    (the agent controls this tree). Atomic: the data goes to a new file beside the target, which is then renamed over it,
+    so a reader (the agent, a test) sees the old contents or the new, never a partial file."""
+    import secrets
+    import stat as st_
+
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
     nofollow = getattr(os, "O_NOFOLLOW", 0)
     fds = [os.open(root, flags)]
+    where = "/".join(parts)
     try:
         for part in parts[:-1]:
             try:
@@ -819,19 +824,31 @@ def _write_contained(root: Path, parts: list[str], data: bytes) -> None:
             try:
                 fds.append(os.open(part, flags | nofollow, dir_fd=fds[-1]))
             except OSError as e:
-                raise sdk.ExtensionError(f"{'/'.join(parts)}: {part} isn't a plain folder") from e
+                raise sdk.ExtensionError(f"{where}: {part} isn't a plain folder") from e
+        d, name = fds[-1], parts[-1]
         try:
-            fd = os.open(parts[-1], os.O_WRONLY | os.O_CREAT | nofollow, 0o644, dir_fd=fds[-1])
+            cur = os.stat(name, dir_fd=d, follow_symlinks=False)
+        except FileNotFoundError:
+            cur = None
+        if cur is not None and (not st_.S_ISREG(cur.st_mode) or cur.st_nlink > 1):
+            raise sdk.ExtensionError(f"{where} isn't a plain file")
+        tmp = f".{name[:100]}.l0w-{secrets.token_hex(6)}"
+        try:
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | nofollow, 0o644, dir_fd=d)
         except OSError as e:
-            raise sdk.ExtensionError(f"{'/'.join(parts)} can't be written: {e.strerror}") from e
-        with os.fdopen(fd, "wb") as f:
-            st = os.fstat(f.fileno())
-            import stat as st_
-
-            if not st_.S_ISREG(st.st_mode) or st.st_nlink > 1:
-                raise sdk.ExtensionError(f"{'/'.join(parts)} isn't a plain file")
-            f.truncate(0)
-            f.write(data)
+            raise sdk.ExtensionError(f"{where} can't be written: {e.strerror}") from e
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())
+            os.rename(tmp, name, src_dir_fd=d, dst_dir_fd=d)  # replaces the entry itself: never follows a link put there meanwhile
+        except OSError as e:
+            try:
+                os.unlink(tmp, dir_fd=d)
+            except OSError:
+                pass
+            raise sdk.ExtensionError(f"{where} can't be written: {e.strerror}") from e
     finally:
         for fd in fds:
             os.close(fd)

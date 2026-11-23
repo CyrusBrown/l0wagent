@@ -973,3 +973,22 @@ def test_hub_sdk_signs_a_space_key_this_instance_grants(spacey):
     other = spaces.build_space_key(SPACE, 1, CREATOR, member.kid, CREATOR, hw.gw.me_sign.kid, sealed)
     assert ok(hw.c.post("/api/ext/spacey/sign-key", json={"payload": other}))["code"] == "refused"
     assert ok(hw.c.post("/api/ext/spacey/sign-key", json={"payload": {"space": SPACE}}))["code"] == "bad_args"
+
+
+def test_folders_write_replaces_the_file_whole_and_leaves_nothing_behind(foldery, tmp_path):
+    """(SDK 1.2) A write lands under a temporary name and is renamed over the target: a reader never sees a partial file, an open
+    reader keeps the old contents, and a hard link to the old file is left alone (the write replaces the entry, not the inode)."""
+    root = tmp_path / "work" / "_inbox" / "_ext" / "foldery" / "plain"
+    ok(foldery.post("/api/ext/foldery/write", json={"folder": "plain", "path": "a.json", "text": '{"n": 1}'}))
+    with open(root / "a.json") as reader:
+        ok(foldery.post("/api/ext/foldery/write", json={"folder": "plain", "path": "a.json", "text": '{"n": 2}'}))
+        assert reader.read() == '{"n": 1}'  # the old file, whole
+    assert (root / "a.json").read_text() == '{"n": 2}' and os.listdir(root) == ["a.json"]  # no temporary file left
+    os.link(root / "a.json", tmp_path / "hardlink")
+    r = foldery.post("/api/ext/foldery/write", json={"folder": "plain", "path": "a.json", "text": "x"})
+    assert r.status_code >= 400 and (tmp_path / "hardlink").read_text() == '{"n": 2}'  # still refused, as before
+    os.unlink(tmp_path / "hardlink")
+    os.unlink(root / "a.json")
+    os.symlink(tmp_path / "elsewhere", root / "a.json")
+    r = foldery.post("/api/ext/foldery/write", json={"folder": "plain", "path": "a.json", "text": "x"})
+    assert r.status_code >= 400 and not (tmp_path / "elsewhere").exists()

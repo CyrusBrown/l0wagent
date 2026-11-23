@@ -177,7 +177,7 @@ Errors: raise `fastapi.HTTPException(status, "message")` or `l0w_control.sdk.Ext
 | `ext.runs.active()`, `.get(id)`, `.recent(limit)` | Runs; `active()` is the run in progress, if any. |
 | `ext.vault.has(name)` | Whether a secret exists. Never its value. |
 | `ext.inbox.card(kind, title, data, thread_id=None)`, `.withdraw(id)`, `.open()` | Inbox cards of your kinds (section 6). |
-| `ext.folders.write(folder, path, data)`, `.read(folder, path)`, `.list(folder, path="")`, `.agent_path(folder)` | Managed folders. |
+| `ext.folders.write(folder, path, data)`, `.read(folder, path)`, `.list(folder, path="")`, `.agent_path(folder)` | Managed folders. A write is atomic (a temporary file beside the target, renamed over it): readers see the old contents or the new, never part of a file. |
 | `ext.folders.walk(folder)`, `.remove(folder, path)` | (SDK 1.2) Everything under a folder, recursively; delete a file, link or sub-folder. See "Managed folders" below. |
 | `ext.on(event, handler)` | Event hooks (below). |
 | `ext.every(seconds, job)` | A background job every ≥ 30 s, in a worker thread, while enabled. |
