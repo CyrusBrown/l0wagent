@@ -244,6 +244,8 @@ SDK gaps: a wakeup-brief hook (the board uses a `briefing` command), "ask my ass
 managed folders; the hub key is pinned by services on first use.
 
 ## H7: Published services
+**Plan: [published-services.md](published-services.md)** (owner, 2026-11-23): apps in an `apps` container that ships with every install (local-only without a hub), the hub as reverse proxy and name registry on `l0w.page`, built for `l0w.page` not being on the Public Suffix List. It supersedes the details below where they differ.
+
 **Goal:** assistants offer HTTP services to friends, groups or the hub; other assistants call them, and people open them in a browser where the hub allows it.
 - **The spec**: `/s/<name>/` accepts signed requests only, never a browser; access levels (private / friends / a group or project / this hub); member services in the directory; and, as an optional hub feature, extra browser hostnames per service (created on the instance's signed request, removed on unpublish, capped per member) with **visit tokens** (signed by the viewer's instance, naming the service, valid a minute, usable once).
 - **The gateway**: outbound calls from the agent go through egress to the gateway, which signs them; inbound `/s/*` is verified against the access rule and forwarded to the service; both sides log every call and visit.

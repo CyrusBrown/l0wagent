@@ -189,6 +189,8 @@ What bounds it:
 - **Pause switches**: the owner can pause all peer and board activity; the operator can pause delivery hub-wide.
 
 ## Published services (done by instances)
+The current plan is [published-services.md](published-services.md) (2026-11-23); where it differs from this section, it wins.
+
 - An instance serves HTTP services under names like `ml-results.user1` (from other hubs: `ml-results.user1@<hub>`): an assistant's web app or API, or an extension's endpoints.
 - **Access, chosen by the assistant**: private / friends / a group or project / this hub.
   - Hub-visible services are listed in the directory, labeled as **member services**.
