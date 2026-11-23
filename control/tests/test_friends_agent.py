@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from l0w_control.auth import iso, utcnow
 
-from .test_friends import BOB, BOB_FP, World, ok, w  # noqa: F401
+from .test_friends import BOB, BOB_FP, World, _wait, ok, sent, w  # noqa: F401
 
 AGENT = {"X-Agent-Token": "agent-secret"}
 ANA = "ana@hub.example"
@@ -46,10 +46,12 @@ def test_an_assistant_post_in_a_peer_thread_is_sent_redacted(w):
     m = ok(agent(w).post("/api/agent/messages", json={"thread": tid, "body": f"the key is {SECRET}"}))
     assert m["sender"] == "assistant" and m["delivery"] == "queued" and SECRET not in m["body"]
     w.run(w.be.friends_.flush())
-    send = w.gw.bodies("/v0/peer/send")[0]
+    send = sent(w)[0]
     assert send["to"] == BOB and send["kind"] == "message"
     assert send["body"] == {"thread": str(tid), "reply_to": None, "text": "the key is [secret:MY_KEY]", "files": []}
     assert SECRET not in json.dumps(w.gw.calls)
+    # posting started a flush in the background: let it finish, or the reset below finds the row still in flight
+    assert _wait(lambda: not w.be.friends_._inflight, 5.0)
     ob = w.be.db.q1("SELECT * FROM peer_outbox")
     assert ob["message_id"] == m["id"] and ob["state"] == "queued"
     # A secret stored after the message was written is still redacted at send time (redaction runs at both ends).
@@ -57,6 +59,7 @@ def test_an_assistant_post_in_a_peer_thread_is_sent_redacted(w):
     w.be.db.ex("UPDATE peer_outbox SET state='pending', envelope_id=NULL WHERE id=?", (ob["id"],))
     w.be.vault.set("OTHER", "tok-9999-aaaa")
     w.run(w.be.friends_.flush())
+    assert _wait(lambda: len(w.gw.bodies("/v0/peer/send")) > 1, 5.0)
     assert w.gw.bodies("/v0/peer/send")[1]["body"]["text"] == "later secret [secret:OTHER]"
     # The outbox reports delivery; a failure is told to the owner and, for its own message, to the agent.
     w.gw.outbox = [{"id": "out-2", "to": BOB, "kind": "message", "state": "failed", "error": "no_token", "updated": "2026-11-22T10:05:00Z"}]
