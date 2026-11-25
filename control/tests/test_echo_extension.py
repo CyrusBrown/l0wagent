@@ -27,8 +27,9 @@ def test_echo_extension_loads_calls_echo_and_writes_events(hw):
     # an event from echo ends up in the managed folder
     assert hw.arrive(ECHO, "service-event", {"event": "post.new", "data": {"title": "t"}}).status_code == 202
     folder = Path(hw.be.ext.root).parent / "work" / "_inbox" / "_ext" / "echo" / "events"
-    assert wait_for(lambda: folder.is_dir() and any(folder.iterdir()))
-    [file] = list(folder.iterdir())
+    done = lambda: [f for f in folder.iterdir() if not f.name.startswith(".")] if folder.is_dir() else []  # noqa: E731
+    assert wait_for(lambda: done() and not any(f.name.startswith(".") for f in folder.iterdir()))  # the write is atomic: a temporary dot-file, then renamed
+    [file] = done()
     assert file.name == "0001-post.new.json" and json.loads(file.read_text())["data"] == {"title": "t"}
     time.sleep(0.1)
     assert ok(hw.c.get("/api/ext/echo/events")) == {"count": 1}
