@@ -9,7 +9,11 @@ Every tick (15 s) it:
    the weekly reset and below SWEEP_CEILING_PCT, it adds a sweep wakeup that spends what the
    owner left unused. A sweep run that ends `IDLE` (nothing worthwhile) ends the sweep for
    that reset; otherwise another follows while there's room.
-4. **Due wakeups**: starts the earliest one. One run at a time: a wakeup that can't start
+4. **Pacing** (the Max level; owner, 2026-11-25): each 5-hour window gets an equal share of what's left this
+   week (`Budgets.pace`), and while a window's share isn't spent and nothing else is due, it adds a paced
+   wakeup now, like the old assistant's high-productivity mode. Not while a run is going, the 5-hour or weekly
+   reserve is reached, or for PACE_IDLE_MINUTES after a paced wakeup found nothing worthwhile.
+5. **Due wakeups**: starts the earliest one. One run at a time: a wakeup that can't start
    within WAKEUP_LATE_MINUTES of its time is marked missed, and the agent hears about it.
 
 Budgets: planned, fallback and routine wakeups are capped by the allowance left (and skipped
@@ -95,6 +99,7 @@ class Scheduler:
         # Each step on its own, so one bad routine can't stop wakeups from starting.
         for name, step in (("routines", self.routines_to_plan), ("fallback", self.fallback), ("sweep", self.sweep)):
             self._step(name, step, now)
+        await self._step_async("pace", self.pace, now)
         await self._step_async("start_due", self.start_due, now)
         for job in self.housekeeping:
             await self._step_async(getattr(job, "__name__", "housekeeping"), job, now)
@@ -252,7 +257,7 @@ class Scheduler:
         if gap <= timedelta(0):
             return at
         for _ in range(20):
-            near = self.db.q1("SELECT at FROM wakeups WHERE provider=? AND status IN ('planned','running') AND kind != 'sweep' "
+            near = self.db.q1("SELECT at FROM wakeups WHERE provider=? AND status IN ('planned','running') AND kind NOT IN ('sweep', 'paced') "
                               "AND routine_id IS NOT ? AND at>? AND at<? ORDER BY at DESC LIMIT 1", (pid, routine_id, iso(at - gap), iso(at + gap)))
             if not near:
                 return at
@@ -352,6 +357,43 @@ class Scheduler:
         tier = self._worker_tier(pid, eff, -1)
         self._insert(pid, at, room, tier, f"Sweep: {room:.0f} pts you didn't use this week, before it resets at {self.budgets.local(win[1]):%a %H:%M}", "sweep", "control")
 
+    # ── pacing ─────────────────────────────────────────────────────────────
+    PACE_LOOKAHEAD_MIN = 30   # leave room for a wakeup that's about to be due
+
+    async def pace(self, now: datetime) -> None:
+        pid = SUBSCRIPTION
+        if pid not in self._worker_providers() or not self.budgets.pacing_on(pid, now):
+            return
+        if self.runs.active_run_id() is not None:
+            return
+        if self.db.q1("SELECT 1 FROM wakeups WHERE provider=? AND status IN ('planned','running') AND at<? LIMIT 1",
+                      (pid, iso(now + timedelta(minutes=self.PACE_LOOKAHEAD_MIN)))):
+            return   # something is due (or a paced wakeup is already waiting to start)
+        idle = self.db.q1("SELECT value FROM kv WHERE key='pace_idle_until'")
+        if idle and (parse(json.loads(idle["value"])) or now) > now:
+            return
+        eff = self.budgets.effective(pid, now)
+        if not in_hours(eff.limits.allowed_hours, self.budgets.local(now)):
+            return
+        day = self.budgets.local(now).replace(hour=0, minute=0, second=0, microsecond=0)
+        if self.db.q1("SELECT COUNT(*) AS n FROM runs WHERE kind IN ('wakeup','routine') AND started_at>=?", (iso(day),))["n"] >= eff.limits.max_per_day:
+            return
+        last = self.db.q1("SELECT ended_at FROM runs WHERE ended_at IS NOT NULL ORDER BY ended_at DESC LIMIT 1")
+        if last and now - parse(last["ended_at"]) < timedelta(minutes=2):  # type: ignore[operator]
+            return   # let a run that just ended settle (its ledger, the reviewer's verdict)
+        p = self.budgets.pace(pid, now)
+        if not p or p["left"] < self.settings.get("PACE_MIN_PTS"):
+            return
+        ok, _reason, _ = await self.runs.gate(pid)
+        if not ok:
+            return   # the 5-hour or weekly reserve: wait for the window to reset
+        budget = min(p["left"], eff.limits.max_wakeup or p["left"], self.budgets.left(pid, now))
+        if budget < self.settings.get("PACE_MIN_PTS"):
+            return
+        ends = f", resets {self.budgets.local(parse(p['resets_at'])):%H:%M}" if p.get("resets_at") else ""  # type: ignore[arg-type]
+        self._insert(pid, now, budget, self._worker_tier(pid, eff, 0),
+                     f"Paced: {budget:.0f} of this 5-hour window's {p['share']:g}-pt share{ends}", "paced", "control")
+
     def _worker_tier(self, pid: str, eff, pick: int) -> str:
         """The worker role's tier if this level allows it, else the first (or last) allowed one."""
         tier = self.budgets.role("worker").tier
@@ -400,7 +442,8 @@ class Scheduler:
                     self._note(f"Your wakeup #{w['id']} ({w['reason']}) was skipped: this {unit}'s allowance is used up.")
                 return
         routine = self.db.q1("SELECT * FROM routines WHERE id=?", (w["routine_id"],)) if w["routine_id"] else None
-        label = {"planned": "Planned wakeup", "fallback": "Fallback wakeup", "sweep": "Sweep wakeup", "routine": "Routine", "owner": "Your wakeup"}[kind]
+        label = {"planned": "Planned wakeup", "fallback": "Fallback wakeup", "sweep": "Sweep wakeup", "routine": "Routine", "owner": "Your wakeup",
+                 "paced": "Paced wakeup"}[kind]
         try:
             run = await self.runs.start(s.RunStart(budget=budget, tier=w["tier"], reason=w["reason"]), kind="routine" if routine else "wakeup",
                                         why=kind, provider=pid, bucket=bucket, wakeup_id=w["id"], routine_id=routine and routine["id"], label=label)
@@ -410,6 +453,13 @@ class Scheduler:
             self._set(w["id"], "skipped", e.detail or e.error)
             return
         self._set(w["id"], "running", None, run.id)
+        if kind == "paced":
+            # Longer than a planned wakeup (the old assistant's 5 hours), but ending before the next wakeup that's due.
+            deadline = now + timedelta(minutes=self.settings.get("PACE_MAX_MINUTES"))
+            nxt = self.db.q1("SELECT at FROM wakeups WHERE provider=? AND status='planned' AND kind != 'sweep' AND at>? ORDER BY at LIMIT 1", (pid, iso(now)))
+            if nxt:
+                deadline = min(deadline, max(now + timedelta(minutes=10), parse(nxt["at"]) - timedelta(minutes=2)))  # type: ignore[operator]
+            self.db.ex("UPDATE runs SET deadline=? WHERE id=?", (iso(deadline), run.id))
         if routine:
             self.db.ex("UPDATE routines SET last_run_at=? WHERE id=?", (self.db.now(), routine["id"]))
 
@@ -418,6 +468,9 @@ class Scheduler:
             w = self.db.q1("SELECT * FROM wakeups WHERE id=?", (run["wakeup_id"],))
             if w:
                 self._set(w["id"], "done", f"{run['status']} · used {run['used'] or 0:.1f} pts")
+                if w["kind"] == "paced" and run.get("idle") and run["status"] == "done":
+                    until = self.budgets.now() + timedelta(minutes=self.settings.get("PACE_IDLE_MINUTES"))
+                    self.db.ex("INSERT OR REPLACE INTO kv(key, value, updated_at) VALUES('pace_idle_until', ?, ?)", (json.dumps(iso(until)), self.db.now()))
                 if w["kind"] == "sweep" and (run.get("idle") or run["status"] != "done"):
                     win = self.sweep_window(w["provider"], self.budgets.now())
                     if win:

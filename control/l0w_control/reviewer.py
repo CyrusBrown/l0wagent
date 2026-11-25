@@ -177,6 +177,28 @@ class Reviewer:
                      f"budget {run['budget'] or 0:g} pts.")
         return "\n\n".join(parts)
 
+    def _owner_news(self, key: str, first: bool) -> str:
+        """The owner's messages since this conversation's last turn, in full (a new conversation's orientation
+        already lists the recent ones). Watch updates used to say only "Delivered: 1 message", so the reviewer
+        contradicted directions it never saw (run 40, 2026-11-25: the owner said not to wait, it said wait)."""
+        seen_key = f"{key}:owner_seen"
+        top = self.db.q1("SELECT COALESCE(MAX(id), 0) AS n FROM messages WHERE sender='owner'")["n"]
+        row = self.db.q1("SELECT value FROM kv WHERE key=?", (seen_key,))
+        self.db.ex("INSERT INTO kv(key, value, updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+                   (seen_key, json.dumps(top), self.db.now()))
+        if first or row is None:
+            return ""
+        msgs = self.db.q("SELECT m.body, m.created_at, t.title FROM messages m JOIN threads t ON t.id=m.thread_id "
+                         "WHERE m.sender='owner' AND m.id>? ORDER BY m.id LIMIT 20", (int(json.loads(row["value"])),))
+        if not msgs:
+            return ""
+        lines = []
+        for m in msgs:
+            at = self.budgets.local(parse(m["created_at"]))  # type: ignore[arg-type]
+            lines.append(f"- {at:%H:%M} in “{m['title']}”: {(m['body'] or '').strip()[:2000]}")
+        return ("New from the owner since your last turn (they outrank you; never tell the assistant otherwise):\n"
+                + "\n".join(lines) + "\n\n")
+
     def _owner_text(self) -> str:
         text = (self.budgets.instructions().reviewer_text or "").strip()
         return f"\n\n## Standing instructions from the owner, for you\n\nThe assistant doesn't see these.\n\n{text}" if text else ""
@@ -187,12 +209,14 @@ class Reviewer:
                 f"budget {run['used'] or 0:.1f} of {run['budget'] or 0:g} pts used · your share so far {self._spent_run_pts(run):.1f} pts")
 
     async def turn(self, run_id: int, prompt: str, kind: str) -> tuple[str | None, int | None]:
-        """Run one reviewer turn. Returns (reply or None when quiet/unavailable, the reply's message id)."""
+        """Run one reviewer turn. Returns (reply or None when quiet/unavailable, the reply's message id).
+        The end-of-run verdict ("end") runs even past the reviewer's share: it's the turn that matters most, and
+        skipping it used to end runs with budget left without a word (runs 33 and 36, 2026-11-25)."""
         async with self._lock:
             run = self._run(run_id)
             if not run or run["status"] not in ("starting", "running") or (run["reviewer_mode"] or "off") == "off":
                 return None, None
-            if self._out_of_budget(run):
+            if kind != "end" and self._out_of_budget(run):
                 return None, None
             cfg = self.budgets.reviewer_config()
             pid = cfg.provider if cfg.provider in self.budgets.provider_ids() else run["provider"]
@@ -201,7 +225,8 @@ class Reviewer:
             row = self.db.q1("SELECT value FROM kv WHERE key=?", (key,))
             resume = json.loads(row["value"]) if row else None
             first = f"{self._orientation(run)}\n\n" if resume is None else ""  # a new conversation orients itself first
-            payload = {"run_id": run_id, "prompt": f"{first}{self._header(run)}\n\n{prompt}", "system_append": self._system(), "runtime": spec["runtime"],
+            news = self._owner_news(key, resume is None)
+            payload = {"run_id": run_id, "prompt": f"{first}{self._header(run)}\n\n{news}{prompt}", "system_append": self._system(), "runtime": spec["runtime"],
                        "model": spec["model"], "effort": spec["effort"], "resume_session": resume, "env": self.budgets.provider_env(pid)}
             try:
                 out = await self.runner.consult(payload)
@@ -293,13 +318,14 @@ class Reviewer:
             return "(The reviewer has nothing to add.)" if run and not self._out_of_budget(run) else "(The reviewer is out of its share of this wakeup's budget.)"
         return reply
 
-    async def approve(self, run_id: int, what: str, body: str) -> tuple[bool, str]:
-        """Gate mode: does the reviewer agree (to the end of the run, or a finished task)?"""
+    async def approve(self, run_id: int, what: str, body: str) -> tuple[bool | None, str]:
+        """Gate mode: does the reviewer agree (to the end of the run, or a finished task)? None when it gave no
+        verdict (quiet, failed or out of its share): not an agreement; the caller falls back to its own rule."""
         reply, rid = await self.turn(run_id, f"{what}\n\n{body}", "end" if what.startswith("The assistant wants to end") else "done")
         if rid:
             self.db.ex("UPDATE reviewer_messages SET delivered_at=? WHERE id=?", (self.db.now(), rid))
-        if reply is None:  # quiet, failed or out of budget: don't block the agent
-            return True, ""
+        if reply is None:
+            return None, ""
         return bool(AGREE_RE.search(reply)), reply
 
     # ── watching ───────────────────────────────────────────────────────────

@@ -439,6 +439,17 @@ def clear_boost(provider: str, be: Be) -> s.ProviderBudget:
     return be.clear_boost(provider)
 
 
+@api.post("/budget/{provider}/bonus", tags=["budgets"])
+def add_bonus(provider: str, req: s.BudgetBonus, be: Be) -> s.ProviderBudget:
+    """Bonus points for this period and/or a fresh start of the assistant's count (e.g. after a usage reset)."""
+    return be.add_bonus(provider, req)
+
+
+@api.delete("/budget/{provider}/bonus", tags=["budgets"])
+def clear_bonus(provider: str, be: Be) -> s.ProviderBudget:
+    return be.clear_bonus(provider)
+
+
 @api.patch("/budget", tags=["budgets"])
 def patch_reserve(req: s.ReserveSettings, be: Be) -> s.BudgetOverview:
     """The owner's reserve and the sweep's window and ceiling."""

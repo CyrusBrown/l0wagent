@@ -926,8 +926,10 @@ class MockBackend(Backend):
     def _summary(self) -> s.ProviderBudget:
         level, lim, custom = self._limits()
         used = 48.0
+        bonus, spend_from = self.w.budget.get("bonus", 0.0), self.w.budget.get("spend_from")
+        counted = 0.0 if spend_from else used
         scheduled = sum(w.budget for w in self.w.wakeups.values() if w.status == "planned" and w.kind != "sweep")
-        left = max(0.0, lim.allowance - used)
+        left = max(0.0, lim.allowance + bonus - counted)
         reset = (_now() + timedelta(days=3)).replace(hour=0, minute=0, second=0)
         days = (reset - _now()).total_seconds() / 86400
         return s.ProviderBudget(
@@ -936,7 +938,8 @@ class MockBackend(Backend):
             used_by_owner=300.0, used_by_chat=22.0, room_below_reserve=430.0, reply_allowance=self.w.budget["reply_pts"], reply_left=min(14.0, self.w.budget["reply_pts"]),
             scheduled=scheduled, week_start=reset - timedelta(days=7), resets_at=reset,
             pace=f"{left - scheduled:.0f} pts unscheduled, {days:.1f} days left: ~{max(0, left - scheduled) / days:.0f}/day" if lim.allowance else "Dormant: no scheduled wakeups",
-            native="37% of the week used", pts_per_usd=2.4, fallback_pts=self.w.budget.get("fallback_pts") or 15.0, has_credential=True)
+            native="37% of the week used", pts_per_usd=2.4, bonus_pts=bonus, spend_from=spend_from, allowance_used=counted,
+            fallback_pts=self.w.budget.get("fallback_pts") or 15.0, has_credential=True)
 
     def budget_overview(self) -> s.BudgetOverview:
         from dataclasses import asdict
@@ -970,6 +973,19 @@ class MockBackend(Backend):
 
     def clear_boost(self, provider: str) -> s.ProviderBudget:
         self.w.budget["boost"] = None
+        self._emit(s.LiveEvent(type="budget"))
+        return self._summary()
+
+    def add_bonus(self, provider: str, req: s.BudgetBonus) -> s.ProviderBudget:
+        if req.pts:
+            self.w.budget["bonus"] = self.w.budget.get("bonus", 0.0) + req.pts
+        if req.reset_spend:
+            self.w.budget["spend_from"] = _now()
+        self._emit(s.LiveEvent(type="budget"))
+        return self._summary()
+
+    def clear_bonus(self, provider: str) -> s.ProviderBudget:
+        self.w.budget["bonus"], self.w.budget["spend_from"] = 0.0, None
         self._emit(s.LiveEvent(type="budget"))
         return self._summary()
 

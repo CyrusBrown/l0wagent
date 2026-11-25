@@ -317,7 +317,7 @@
 .ag-num { font: 500 20px var(--serif) }
 .ag-day.today .ag-dow, .ag-day.today .ag-num { color: var(--accentInk) }
 .ag-ev { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; text-align: left; border-width: 1px; border-style: solid; border-radius: 10px; padding: 10px 12px; min-height: 44px; font: 500 13.5px/1.35 var(--sans) }
-.ag-ev.fallback { border-style: dashed }
+.ag-ev.fallback, .ag-ev.paced { border-style: dashed }
 .ag-ev.mine { max-width: none; align-self: stretch; display: grid; gap: 10px; background: var(--okSoft); border-color: var(--okLine); color: var(--okInk) }
 .ag-ev.past { opacity: .6 }
 .ag-time { font: 500 12.5px var(--mono) }

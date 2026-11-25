@@ -10,12 +10,14 @@ Not part of the owner's OpenAPI contract (the CLI is its only client).
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from ..auth import parse, utcnow
 from ..runs.runtime import Item
 from ..urls import clean_links
 from ..vault import store_text
@@ -125,10 +127,35 @@ def notify(body: Notify, request: Request) -> dict:
     return {"id": nid}
 
 
+_note_nudged: dict[int, datetime] = {}  # run → when the hook last reminded it to leave a note
+
+
+def _note_reminder(be: SqliteBackend, run_id: int) -> str | None:
+    """After NOTE_REMINDER_MINUTES without a run note (2 minutes for the first), the hook reminds the agent, at most once per
+    interval (owner, 2026-11-25: the old assistant's reminder, as a setting). Not in Reply-now runs."""
+    every = float(be.settings.get("NOTE_REMINDER_MINUTES")) * 60
+    run = be.db.q1("SELECT kind, started_at FROM runs WHERE id=?", (run_id,))
+    if every <= 0 or not run or run["kind"] == "reply":
+        return None
+    now = utcnow()
+    last = be.db.q1("SELECT at FROM run_notes WHERE run_id=? ORDER BY id DESC LIMIT 1", (run_id,))
+    since = parse(last["at"] if last else run["started_at"])
+    nudged = _note_nudged.get(run_id)
+    quiet = (now - since).total_seconds()  # type: ignore[operator]
+    if quiet < (every if last else min(every, 120)) or (nudged and (now - nudged).total_seconds() < every):
+        return None
+    _note_nudged[run_id] = now
+    be.runs_mgr.timeline(run_id, Item("control", f"Reminded it to leave a run note ({int(quiet // 60)} min without one)", False))
+    if not last:
+        return "Reminder: you haven't left a run note yet. Add one now with `assistant note \"…\"` (one sentence on what you're doing)."
+    return f"Reminder: your last run note was {int(quiet // 60)} min ago. Add a one-sentence `assistant note` about what you've been doing."
+
+
 @router.get("/inbox")
 def inbox(request: Request, peek: bool = False, hook: bool = False) -> dict:
     """Everything new for the agent: owner messages, answers, decisions, finished tasks,
-    suggestion outcomes, new secrets and its own notes. Marked delivered unless peeking."""
+    suggestion outcomes, new secrets and its own notes. Marked delivered unless peeking.
+    From the hook it may also carry a reminder to leave a run note."""
     be = _be(request)
     run_id = be.runs_mgr.active_run_id()
     text, counts = be.conv.deliver(peek=peek, run_id=run_id)
@@ -137,6 +164,9 @@ def inbox(request: Request, peek: bool = False, hook: bool = False) -> dict:
 
         how = "after a tool call" if hook else "on request"
         be.runs_mgr.timeline(run_id, Item("control", f"Delivered mid-run ({how}): {_counts_text(counts)}", True, {"counts": counts}))
+    reminder = _note_reminder(be, run_id) if hook and run_id and not peek else None
+    if reminder:
+        text = f"{text}\n\n{reminder}" if text else reminder
     return {"text": text, "counts": counts}
 
 
@@ -406,7 +436,7 @@ async def claim_done(body: ClaimDoneIn, request: Request) -> dict:
     if body.status == "done" and be.reviewer.mode(run_id) == "gate":
         t = be.conv.thread(body.thread)
         agree, reply = await be.reviewer.approve(run_id, f"The assistant says the task in thread #{t.id} “{t.title}” is done:", body.result or "(no result given)")
-        if not agree:
+        if agree is False:  # None (no verdict: quiet, failed, out of its share) doesn't block the claim
             raise HTTPException(409, f"The reviewer (gate mode) doesn't agree it's done yet:\n\n{reply}")
     return be.conv.close_claim(run_id, body.thread, body.status, body.result).model_dump(mode="json")
 

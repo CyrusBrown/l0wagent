@@ -482,6 +482,41 @@ class Budgets:
         cfg["boost"] = None
         self.save_config(pid, cfg)
 
+    # ── this period's extras: bonus points and a fresh start (owner, 2026-11-25) ──
+    def extras(self, pid: str, now: datetime | None = None) -> tuple[float, datetime | None]:
+        """This period's bonus points, and when the assistant's allowance spend is counted from if the
+        owner restarted it (else None: from the period's start). Both lapse at the period's reset."""
+        now = now or self.now()
+        start, _end = self.week(pid, now)
+        cfg = self.config(pid)
+        b = cfg.get("bonus") or {}
+        until = parse(b.get("until")) if b.get("until") else None
+        bonus = float(b.get("pts") or 0) if until and now < until else 0.0
+        frm = parse(cfg.get("spend_from")) if cfg.get("spend_from") else None
+        return bonus, (frm if frm and start <= frm <= now else None)
+
+    def set_bonus(self, pid: str, req: s.BudgetBonus) -> None:
+        """Add bonus points to this period's allowance, and/or count the assistant's spend from now
+        (e.g. after a usage reset). The owner's reserve still applies: it reads the real meter."""
+        if not req.pts and not req.reset_spend:
+            raise BadRequest("nothing", "Give bonus points, or reset the assistant's spend, or both.")
+        now = self.now()
+        end = self.week(pid, now)[1]
+        cfg = self.config(pid)
+        if req.pts:
+            bonus, _ = self.extras(pid, now)
+            cfg["bonus"] = {"pts": round(bonus + req.pts, 1), "until": iso(end)}
+        if req.reset_spend:
+            cfg["spend_from"] = iso(now)
+        self.save_config(pid, cfg)
+
+    def clear_bonus(self, pid: str) -> None:
+        """Take back this period's bonus points and the fresh start."""
+        cfg = self.config(pid)
+        cfg["bonus"] = None
+        cfg["spend_from"] = None
+        self.save_config(pid, cfg)
+
     # ── points ─────────────────────────────────────────────────────────────
     def pts_per_usd(self, pid: str) -> float:
         if pid != SUBSCRIPTION:
@@ -587,9 +622,46 @@ class Budgets:
 
     # ── the summary ────────────────────────────────────────────────────────
     def scheduled(self, pid: str, start: datetime, end: datetime, exclude_id: int | None = None) -> float:
-        row = self.db.q1("SELECT COALESCE(SUM(budget), 0) AS b FROM wakeups WHERE provider=? AND status='planned' AND kind != 'sweep' AND at>=? AND at<? AND id IS NOT ?",
+        row = self.db.q1("SELECT COALESCE(SUM(budget), 0) AS b FROM wakeups WHERE provider=? AND status='planned' AND kind NOT IN ('sweep', 'paced') "
+                         "AND at>=? AND at<? AND id IS NOT ?",
                          (pid, iso(start), iso(end), exclude_id))
         return float(row["b"])
+
+    # ── pacing (owner, 2026-11-25: the old assistant's high-productivity mode, on the Max level) ──
+    WINDOW_H = 5
+
+    def pacing_on(self, pid: str, now: datetime | None = None) -> bool:
+        return pid == SUBSCRIPTION and bool(self.settings.get("PACE_ON")) and self.effective(pid, now).level == "max"
+
+    def pace(self, pid: str, now: datetime | None = None) -> dict | None:
+        """This 5-hour window's share of what's left this week, or None when pacing is off. Each window left before
+        the weekly reset gets an equal share of the unscheduled points, fixed when the window starts; a window that
+        spends less leaves more for the later ones. Spending counts the assistant and the reviewer, any bucket."""
+        now = now or self.now()
+        if not self.pacing_on(pid, now):
+            return None
+        u = self.usage.cached()
+        if not u or u.seven_day_pct is None:
+            return None
+        start, end = self.week(pid, now)
+        key = None
+        if u.five_hour_resets_at and u.five_hour_resets_at > now:   # rounded: the reported reset time jitters by seconds
+            key = iso(datetime.fromtimestamp(round(u.five_hour_resets_at.timestamp() / 1800) * 1800, UTC))
+        w = self._kv("pace_window") or {}
+        wstart = parse(w.get("start")) if w.get("start") else None
+        same = bool(wstart and wstart >= start and ((key is not None and w.get("key") == key) or
+                                                     (w.get("key") is None and now - wstart < timedelta(hours=self.WINDOW_H))))
+        if not same:
+            windows = max(1.0, (end - now).total_seconds() / 3600 / self.WINDOW_H)
+            unscheduled = max(0.0, self.summary(pid, now).left - self.scheduled(pid, now, end))
+            w = {"key": key, "start": iso(now), "share": round(unscheduled / windows, 1), "windows_left": round(windows, 1)}
+            self._kv_set("pace_window", w)
+        elif w.get("key") != key and key is not None:   # the window our own run opened now has its reset time
+            w["key"] = key
+            self._kv_set("pace_window", w)
+        spent = self.spent(pid, parse(w["start"]), now + timedelta(seconds=1))  # type: ignore[arg-type]
+        return {**w, "spent": round(spent, 1), "left": round(max(0.0, w["share"] - spent), 1),
+                "resets_at": iso(u.five_hour_resets_at) if key else None}
 
     def left(self, pid: str, now: datetime | None = None) -> float:
         """Allowance left this week, after the owner's reserve."""
@@ -606,12 +678,13 @@ class Budgets:
         eff = self.effective(pid, now)
         start, end = self.week(pid, now)
         assistant = self.spent(pid, start, end)
-        allowance_used = self.spent(pid, start, end, bucket="allowance")
+        bonus, spend_from = self.extras(pid, now)
+        allowance_used = self.spent(pid, spend_from or start, end, bucket="allowance")
         chat = self.spent(pid, start, end, who=("chat",))
         reading = self.usage.cached() if pid == SUBSCRIPTION else None
         total = reading.seven_day_pct * 10 if reading and reading.seven_day_pct is not None else None
         owner = max(0.0, total - assistant - chat) if total is not None else 0.0
-        left = eff.limits.allowance - allowance_used
+        left = eff.limits.allowance + bonus - allowance_used
         room = None
         if total is not None:
             room = max(0.0, self.settings.get("RESERVE_WEEKLY_PCT") * 10 - total)
@@ -631,6 +704,7 @@ class Budgets:
             used_by_assistant=round(assistant, 1), used_by_owner=round(owner, 1), used_by_chat=round(chat, 1), room_below_reserve=room and round(room, 1),
             reply_allowance=eff.reply_pts, reply_left=round(max(0.0, eff.reply_pts - self.spent(pid, start, end, bucket="reply")), 1),
             scheduled=round(scheduled, 1), week_start=start, resets_at=end, pace=pace, native=native, pts_per_usd=round(self.pts_per_usd(pid), 3),
+            bonus_pts=round(bonus, 1), spend_from=spend_from, allowance_used=round(allowance_used, 1),
             fallback_pts=self.fallback_pts(pid, now), has_credential=bool(row["credential_enc"]) or pid == SUBSCRIPTION,
             period=eff.period, reset_day=int(self.config(pid).get("reset_day") or 1) if eff.period == "month" else None,  # type: ignore[arg-type]
             caps=s.BudgetCaps(**(self.config(pid).get("caps") or {})) if pid != SUBSCRIPTION and self.config(pid).get("caps") else None,
@@ -707,18 +781,27 @@ class Budgets:
         limits = (f"allowed hours {hours_text(lim.allowed_hours)}; at most {lim.max_per_day}/day, {lim.min_gap_minutes} min apart, "
                   f"{lim.max_wakeup:g} {UNIT} each; " + (f"models {', '.join(lim.tiers) or 'none'} (add /low, /medium or /high for the effort)"
                                                           if self.models(pid) else f"tiers {', '.join(lim.tiers) or 'none'}"))
-        lines = [f"{b.label}: {b.left:.0f} of {b.allowance:.0f} {UNIT} left this {eff.period} (resets {self.local(b.resets_at):%a %b %d %H:%M}); {b.native}.",
+        extra = f" + {b.bonus_pts:g} bonus" if b.bonus_pts else ""
+        fresh = (f" The owner restarted your count at {self.local(b.spend_from):%a %H:%M}: only what you spent since then counts."
+                 if b.spend_from else "")
+        lines = [f"{b.label}: {b.left:.0f} of {b.allowance:.0f}{extra} {UNIT} left this {eff.period} (resets {self.local(b.resets_at):%a %b %d %H:%M}); {b.native}.{fresh}",
                  f"Level {eff.level.capitalize()}{boost}: {limits}.",
                  f"Reply budget: {b.reply_left:.0f} of {b.reply_allowance:.0f} {UNIT} left.",
                  f"Pace: {b.pace}."]
         if b.caps:
             caps = [f"{v:.0%} of the {eff.period}'s allowance in any {lbl}" for v, lbl in ((b.caps.five_hour, "5 hours"), (b.caps.week, "7 days")) if v]
             lines.append(f"Caps: at most {' and '.join(caps)}." + (f" Now: {b.cap_reason}" if b.cap_reason else ""))
-        if b.room_below_reserve is not None and b.room_below_reserve < lim.allowance - b.used_by_assistant:
+        if b.room_below_reserve is not None and b.room_below_reserve < lim.allowance + b.bonus_pts - b.allowance_used:
             lines.append(f"Your allowance is capped by the owner's reserve: {b.room_below_reserve:.0f} {UNIT} of room below {self.settings.get('RESERVE_WEEKLY_PCT'):.0f}% weekly usage.")
         if lim.sweep and pid == SUBSCRIPTION:
             lines.append(f"Sweep is on: in the last {self.settings.get('SWEEP_WINDOW_HOURS'):g} h before the reset, control adds sweep wakeups "
                          f"up to {self.settings.get('SWEEP_CEILING_PCT'):.0f}% weekly usage.")
+        pace = self.pace(pid)
+        if pace:
+            lines.append(f"Pacing is on (Max): control keeps you working through the week. This 5-hour window's share is {pace['share']:g} {UNIT} "
+                         f"({pace['spent']:g} used; about {pace['windows_left']:g} windows left before the reset); control starts paced wakeups to "
+                         "spend it, and the next window brings a new share. Your own planned wakeups keep their points: plan those only for "
+                         "work that needs a particular time.")
         rows = self.db.q("SELECT * FROM wakeups WHERE provider=? AND status='planned' ORDER BY at", (pid,))
         if rows:
             lines.append("\nPlanned:")

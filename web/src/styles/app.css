@@ -459,6 +459,7 @@ a.btn:hover { text-decoration: none; color: var(--fg) }
 .wakeup, .cal-swatch.wakeup { background: var(--accentSoft); border-color: var(--accentLine); color: var(--accentInk) }
 .routine, .cal-swatch.routine { background: var(--infoSoft); border-color: var(--infoLine); color: var(--infoInk) }
 .sweep, .cal-swatch.sweep { background: var(--soft); border-color: var(--line3); color: var(--muted) }
+.paced, .cal-swatch.paced { background: var(--accentSoft); border-color: var(--accentLine); border-style: dashed; color: var(--accentInk) }
 .fallback, .cal-swatch.fallback { background: var(--bg); border-color: var(--dim); border-style: dashed; color: var(--muted) }
 .cal-ev.mine, .cal-swatch.mine { background: var(--okSoft); border-color: var(--okLine); color: var(--okInk) }
 .cal-ev.protected, .cal-swatch.protected { background: repeating-linear-gradient(135deg, var(--soft) 0 5px, var(--bg) 5px 10px); border-color: transparent; color: var(--faint); pointer-events: none }

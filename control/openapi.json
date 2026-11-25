@@ -3015,6 +3015,115 @@
         }
       }
     },
+    "/api/budget/{provider}/bonus": {
+      "post": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Add Bonus",
+        "description": "Bonus points for this period and/or a fresh start of the assistant's count (e.g. after a usage reset).",
+        "operationId": "add_bonus_api_budget__provider__bonus_post",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BudgetBonus"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderBudget"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Clear Bonus",
+        "operationId": "clear_bonus_api_budget__provider__bonus_delete",
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "device": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderBudget"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/providers": {
       "get": {
         "tags": [
@@ -9385,6 +9494,34 @@
           "level"
         ],
         "title": "BoostRequest"
+      },
+      "BudgetBonus": {
+        "properties": {
+          "pts": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1000.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pts",
+            "description": "Add this many bonus points to this period's allowance."
+          },
+          "reset_spend": {
+            "type": "boolean",
+            "title": "Reset Spend",
+            "description": "Count the assistant's allowance spend from now, as if the period had just started.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "BudgetBonus",
+        "description": "Online only. Extra room for the assistant this period, e.g. after a usage reset. Both lapse at the reset."
       },
       "BudgetCaps": {
         "properties": {
@@ -15870,6 +16007,31 @@
             "type": "number",
             "title": "Fallback Pts"
           },
+          "bonus_pts": {
+            "type": "number",
+            "title": "Bonus Pts",
+            "description": "Bonus points the owner added to this period's allowance (they lapse at the reset).",
+            "default": 0
+          },
+          "spend_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spend From",
+            "description": "When the owner restarted the assistant's count this period: allowance spend before it doesn't count."
+          },
+          "allowance_used": {
+            "type": "number",
+            "title": "Allowance Used",
+            "description": "What counts against the allowance: the assistant's spend from the allowance since the period start (or spend_from).",
+            "default": 0
+          },
           "period": {
             "type": "string",
             "enum": [
@@ -19790,7 +19952,8 @@
               "fallback",
               "sweep",
               "routine",
-              "owner"
+              "owner",
+              "paced"
             ],
             "title": "Kind"
           },

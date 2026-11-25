@@ -332,6 +332,8 @@ class RunManager:
         "owner_message": "the owner pressed Reply now",
         "planned": "your planned wakeup: {detail}",
         "fallback": "a fallback wakeup: nothing was planned for the coming nights. Plan your wakeups before you finish",
+        "paced": ("a paced wakeup (the owner's Max level keeps you working through the week). {detail}. Spend it on "
+                  "the most valuable work (owner requests, then follow-ups and claims, then the backlog, projects and new ones)"),
         "sweep": "a sweep wakeup: {detail}. Spend it on the most valuable backlog work, or end with IDLE if nothing is worth it",
         "routine": "a routine: {detail}",
         "owner": "a wakeup the owner added: {detail}",
@@ -444,6 +446,11 @@ class RunManager:
         notes = self.db.q("SELECT text FROM run_notes WHERE run_id=? ORDER BY id DESC LIMIT 3", (pid,))
         if notes:
             lines.append("- Its last notes: " + " | ".join(n["text"] for n in reversed(notes)))
+        last_word = self.db.q1("SELECT body FROM reviewer_messages WHERE run_id=? AND sender='reviewer' AND kind='reply' ORDER BY id DESC LIMIT 1", (pid,))
+        if last_word and last_word["body"]:
+            # What it said as the run ended never reached the agent when it agreed (run 38, 2026-11-25: "do X, then end. AGREE").
+            word = " ".join(last_word["body"].split())
+            lines.append("- The reviewer's last word: " + (word if len(word) <= 900 else word[:897] + "…"))
         left = self.db.q("SELECT thread_id, plan FROM claims WHERE run_id=? AND status='partial' AND result=?", (pid, CLAIM_UNCLOSED))
         if left:
             lines.append("- Claims it left open: " + "; ".join(f"thread #{c['thread_id']} “{c['plan'][:60]}”" for c in left[:5]))
@@ -466,6 +473,12 @@ class RunManager:
 
     async def _start_session(self, run_id: int, resume: str | None = None, reason: str | None = None, prompt: str | None = None) -> Session:
         run = self.db.q1("SELECT * FROM runs WHERE id=?", (run_id,))
+        if run and run["switch_tier"] and resume:
+            # A tier change asked for while no session was running (e.g. in the reviewer's reply at the gate) takes effect
+            # on this resume, not one session late (run 20, 2026-11-21, resumed on sonnet after the reviewer chose opus).
+            self.db.ex("UPDATE runs SET tier=?, switch_tier=NULL, tier_changes=tier_changes+1 WHERE id=?", (run["switch_tier"], run_id))
+            self.timeline(run_id, Item("model", f"Resuming on {run['switch_tier']}", True, {"tier": run["switch_tier"]}))
+            run = self.db.q1("SELECT * FROM runs WHERE id=?", (run_id,))
         pid = run["provider"] or SUBSCRIPTION  # type: ignore[index]
         spec = self.budgets.runtime_spec(pid, run["tier"])  # type: ignore[index]
         adapter = self.adapter(spec["runtime"])
@@ -561,11 +574,12 @@ class RunManager:
                     continue
                 if state == "lost" and await self._should_resume(run_id, sess):
                     continue
-                if state == "exited" and ok and await self._gate(run_id, sess, result):
+                gate = await self._gate(run_id, sess, result) if state == "exited" and ok else "off"
+                if gate == "resumed":
                     continue
                 if state == "exited" and ok and await self._hold(run_id, sess):
                     continue
-                if state == "exited" and ok and await self._nudge(run_id, sess, result):
+                if state == "exited" and ok and gate in ("off", "silent") and await self._nudge(run_id, sess, result):
                     continue
                 break
             await self._finish(run_id, end_state, last_result)
@@ -676,34 +690,39 @@ class RunManager:
         self._run_changed(run_id)
         return True
 
-    async def _gate(self, run_id: int, sess: Session, result: dict | None) -> bool:
+    async def _gate(self, run_id: int, sess: Session, result: dict | None) -> str:
         """Gate mode: the reviewer must agree before a session that ends cleanly ends the run
         (whether or not it wrote `IDLE:`). If it doesn't, resume the conversation with its reply
-        (at most REVIEWER_GATE_MAX_ROUNDS times)."""
+        (at most REVIEWER_GATE_MAX_ROUNDS times). Returns "off" (no gate here), "agreed", "resumed",
+        "done" (the gate is spent or it's too late) or "silent" (the reviewer gave no verdict: that is
+        not an agreement, so control's own carry-on rule, `_nudge`, decides instead)."""
         run = self.db.q1("SELECT * FROM runs WHERE id=?", (run_id,))
         assert run
         text = ((result or {}).get("text") or "").strip()
         if run["reviewer_mode"] != "gate" or not self.reviewer or run["stop_requested_at"] or not sess.runtime_session:
-            return False
+            return "off"
         if run["gate_rounds"] >= self.settings.get("REVIEWER_GATE_MAX_ROUNDS"):
             self.timeline(run_id, Item("control", f"The reviewer gate already sent it back {run['gate_rounds']} times; letting the run end", True))
-            return False
+            return "done"
         if run["deadline"] and parse(run["deadline"]) <= utcnow() + timedelta(minutes=3):  # type: ignore[operator]
-            return False
+            return "done"
         left = (run["budget"] or 0) - (run["used"] or 0)
         idle_note = "" if ends_idle(text) else " (it didn't write IDLE)"
         agree, reply = await self.reviewer.approve(run_id, f"The assistant wants to end the wakeup{idle_note}. Budget left: {left:.1f} pts. Its final message:", text or "(none)")
+        if agree is None:
+            self.timeline(run_id, Item("control", "The reviewer gave no verdict on ending the wakeup; control's own carry-on rule decides", True))
+            return "silent"
         if agree:
             self.timeline(run_id, Item("reviewer", "The reviewer agreed to end the wakeup", True))
-            return False
+            return "agreed"
         self.db.ex("UPDATE runs SET gate_rounds=gate_rounds+1 WHERE id=?", (run_id,))
         try:
             await self._start_session(run_id, resume=sess.runtime_session, prompt=f"[control] The reviewer doesn't agree that you should stop yet:\n\n{reply}")
         except RunnerError as e:
             self.timeline(run_id, Item("error", f"Couldn't resume after the reviewer's reply: {e}", True))
-            return False
+            return "done"
         self.timeline(run_id, Item("control", "Resumed: the reviewer didn't agree to end yet", True))
-        return True
+        return "resumed"
 
     def _reached_out(self, run_id: int, sess: Session, run: dict) -> bool:
         started = (self.db.q1("SELECT started_at FROM run_sessions WHERE id=?", (sess.id,)) or {}).get("started_at", run["started_at"])
@@ -711,14 +730,12 @@ class RunManager:
             self.db.q1(f"SELECT 1 FROM {t} WHERE run_id=? AND status='open' LIMIT 1", (run_id,)) for t in ("questions", "permissions", "tasks")))
 
     async def _nudge(self, run_id: int, sess: Session, result: dict | None) -> bool:
-        """Outside gate mode: a wakeup that stopped on its own without `IDLE:` while more than
+        """Outside gate mode (or when the gate's reviewer gave no verdict): a wakeup that stopped on its own without `IDLE:` while more than
         NUDGE_MIN_LEFT_PCT of its budget is left is told to carry on, up to NUDGE_MAX times. With
         USE_WHOLE_BUDGET on, an `IDLE:` with budget left is nudged too (the owner's use-it-or-lose-it)."""
         run = self.db.q1("SELECT * FROM runs WHERE id=?", (run_id,))
         assert run
         if run["kind"] == "reply" or run["bucket"] == "reply" or run["stop_requested_at"] or not sess.runtime_session or not run["budget"]:
-            return False
-        if run["reviewer_mode"] == "gate" and self.reviewer:
             return False
         use_it = bool(self.settings.get("USE_WHOLE_BUDGET")) or run["bucket"] == "sweep"
         text = (result or {}).get("text")

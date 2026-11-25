@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from l0w_control.api import schemas as s
 from l0w_control.app import create_app
-from l0w_control.auth import iso
+from l0w_control.auth import iso, parse
 from l0w_control.backends.base import BadRequest
 from l0w_control.backends.sqlite import SqliteBackend
 from l0w_control.config import Env
@@ -94,6 +94,36 @@ def test_levels_overrides_and_boost(be):
     with pytest.raises(BadRequest) as e:
         be.boost("claude-subscription", s.BoostRequest(level="dormant"))
     assert "raises the level" in e.value.detail
+
+
+def test_bonus_points_and_fresh_start(be):
+    """The owner's extra room for this period (owner, 2026-11-25: after a usage reset): bonus points add to the
+    allowance, a fresh start counts the assistant's spend from now; both lapse at the reset; the reserve still applies."""
+    usage(be, weekly=40, resets_in_h=48)
+    rid = be.db.ex("INSERT INTO runs(kind, why, provider, tier, budget, status, started_at, bucket) VALUES('wakeup','manual','claude-subscription','sonnet',100,'running',?,'allowance')",
+                   (iso(be.clock()),))
+    finish(be, rid, 120)
+    assert be.budgets.summary("claude-subscription").left == 30
+    b = be.add_bonus("claude-subscription", s.BudgetBonus(pts=50))
+    assert (b.bonus_pts, b.left, b.allowance) == (50, 80, 150)
+    assert "+ 50 bonus" in be.budgets.check_text("claude-subscription")
+    be.add_bonus("claude-subscription", s.BudgetBonus(pts=10))  # adds up
+    be.clock.t += timedelta(minutes=5)
+    b = be.add_bonus("claude-subscription", s.BudgetBonus(reset_spend=True))
+    assert (b.bonus_pts, b.allowance_used, b.left, b.used_by_assistant) == (60, 0, 210, 120) and b.spend_from
+    assert "restarted your count" in be.budgets.check_text("claude-subscription")
+    usage(be, weekly=95, resets_in_h=47.9)  # the reserve (80% by default) still caps it
+    assert be.budgets.summary("claude-subscription").left == 0
+    usage(be, weekly=40, resets_in_h=47.9)
+    be.clock.t += timedelta(hours=49)  # the next period: both lapse
+    usage(be, weekly=0, resets_in_h=7 * 24 - 1)
+    b = be.budgets.summary("claude-subscription")
+    assert (b.bonus_pts, b.spend_from, b.left) == (0, None, 150)
+    be.add_bonus("claude-subscription", s.BudgetBonus(pts=5, reset_spend=True))
+    b = be.clear_bonus("claude-subscription")
+    assert (b.bonus_pts, b.spend_from) == (0, None)
+    with pytest.raises(BadRequest):
+        be.add_bonus("claude-subscription", s.BudgetBonus())
 
 
 def test_ledger_attribution_and_reserve(be):
@@ -328,9 +358,13 @@ def test_reviewer_gate_tier_changes_and_budget_share(be):
     assert switched == ["opus/high"]
     run = be.db.q1("SELECT used, reviewer_used FROM runs WHERE id=?", (rid,))
     assert run["reviewer_used"] == pytest.approx(4.0) and run["used"] == pytest.approx(4.0)  # 4 turns × $0.50 × 2 pts/$
-    # At its share (25% of 20 pts = 5) it goes quiet rather than spending more.
+    # At its share (25% of 20 pts = 5) it stops answering asks, but still gives the end-of-run verdict (2026-11-25:
+    # skipping it ended runs early without a word), and a verdict it doesn't give is no verdict, not an agreement.
     be.db.ex("UPDATE usage_ledger SET pts=5, cost_usd=2.5 WHERE who='reviewer'")
-    assert asyncio.run(be.reviewer.approve(rid, "The assistant wants to end the wakeup.", "IDLE")) == (True, "")
+    assert "out of its share" in asyncio.run(be.reviewer.from_agent(rid, "ask", "Anything?"))
+    replies = iter(["Not yet: write the summary first.", "QUIET"])
+    assert asyncio.run(be.reviewer.approve(rid, "The assistant wants to end the wakeup.", "IDLE"))[0] is False
+    assert asyncio.run(be.reviewer.approve(rid, "The assistant wants to end the wakeup.", "IDLE")) == (None, "")
 
 
 # ── budget periods (M6) ───────────────────────────────────────────────────
@@ -462,8 +496,17 @@ def test_a_new_reviewer_conversation_orients_itself_first(be):
     assert first[1] is None and "# Start of your day as reviewer" in first[0] and "/workspace/NOW.md" in first[0]
     assert "Please move the pump test to Friday." in first[0] and "“Pump schedule”" in first[0]
     assert "use it or lose it" in first[0] and first[0].rstrip().endswith("Writing the export")
-    assert second[1] == "rv-day" and "Start of your day" not in second[0]
+    assert second[1] == "rv-day" and "Start of your day" not in second[0] and "New from the owner" not in second[0]
     assert "give it the next task" in first[2] and "skipping the protocol" in first[2]
+    # What the owner writes mid-run reaches the reviewer's next turn in full, once (run 40, 2026-11-25).
+    be.conv.post_owner_message(tid, "Don't wait on jobs; do other work meanwhile.", [], None)
+    asyncio.run(be.reviewer.from_agent(rid, "ask", "May I wait for the job?"))
+    asyncio.run(be.reviewer.from_agent(rid, "ask", "And now?"))
+    third, fourth = prompts[2][0], prompts[3][0]
+    assert "New from the owner" in third and "Don't wait on jobs; do other work meanwhile." in third and "Please move the pump" not in third
+    assert third.index("Don't wait on jobs") < third.index("May I wait for the job?")
+    assert "New from the owner" not in fourth
+    assert "never tell the assistant something that contradicts them" in first[2] and "`AGREE` ends the run at once" in first[2]
 
 
 def test_a_resumed_claude_code_conversation_is_charged_per_turn(be):
@@ -511,3 +554,59 @@ def test_claude_prices_match_what_claude_code_reports():
     assert model_prices("claude-haiku-5-5") == (0.10, 0.50, 0.01)
     assert model_prices("claude-fable-5-2") == (8.0, 40.0, 0.20)
     assert model_prices("opus") == (4.0, 20.0, 0.20) and model_prices(None) == (2.0, 10.0, 0.10)  # a family name or nothing: the current model
+
+
+# ── pacing on Max (owner, 2026-11-25: the old assistant's high-productivity mode) ──
+def test_max_paces_the_week_per_five_hour_window(be):
+    def paced():
+        return be.db.q("SELECT * FROM wakeups WHERE kind='paced' ORDER BY id")
+
+    usage(be, weekly=40, resets_in_h=50)
+    tick(be)
+    assert paced() == []                                     # Steady: no pacing
+    be.patch_budget("claude-subscription", s.BudgetPatch(level="max"))
+    be.settings.set("PACE_ON", False)
+    tick(be)
+    assert paced() == []                                     # the owner's switch
+    be.settings.set("PACE_ON", True)
+    tick(be)
+    [w] = paced()
+    # 400 pts of room below the 80% reserve, less the weekly review's 40 planned, over 10 windows before the reset: 36 a window.
+    assert (w["budget"], w["status"], w["created_by"]) == (36, "running", "control") and "36-pt share" in w["reason"]
+    run = be.db.q1("SELECT * FROM runs WHERE id=?", (w["run_id"],))
+    assert run["why"] == "paced" and parse(run["deadline"]) == be.clock() + timedelta(minutes=300)
+    assert "Pacing is on (Max)" in be.budgets.check_text("claude-subscription")
+    tick(be)
+    assert len(paced()) == 1                                 # one run at a time
+    finish(be, w["run_id"], 30, idle=False)
+    be.clock.t += timedelta(minutes=5)
+    usage(be, weekly=43, resets_in_h=50 - 5 / 60)
+    be.usage._cache = be.usage._cache.model_copy(update={"five_hour_resets_at": be.clock() + timedelta(hours=2) - timedelta(minutes=5)})
+    tick(be)
+    assert len(paced()) == 1                                 # 6 left in this window: under PACE_MIN_PTS
+    be.settings.set("PACE_MIN_PTS", 5)
+    tick(be)
+    w2 = paced()[-1]
+    assert len(paced()) == 2 and w2["budget"] == 6
+    be.settings.set("PACE_IDLE_MINUTES", 240)
+    finish(be, w2["run_id"], 6, idle=True)                  # nothing worthwhile left: wait PACE_IDLE_MINUTES
+    be.clock.t += timedelta(hours=3)                         # a new window
+    usage(be, weekly=44, resets_in_h=47)
+    tick(be)
+    assert len(paced()) == 2 and "Pacing is on" in be.budgets.check_text("claude-subscription")
+    be.db.ex("DELETE FROM kv WHERE key='pace_idle_until'")
+    # A planned wakeup due soon goes first, and a paced run ends before the next planned one.
+    be.scheduler._insert("claude-subscription", be.clock() + timedelta(minutes=20), 5, "sonnet/medium", "pump check", "planned", "assistant")
+    tick(be)
+    assert len(paced()) == 2
+    be.db.ex("UPDATE wakeups SET at=? WHERE kind='planned' AND status='planned'", (iso(be.clock() + timedelta(hours=1)),))
+    tick(be)
+    w3 = paced()[-1]
+    assert len(paced()) == 3
+    assert parse(be.db.q1("SELECT deadline FROM runs WHERE id=?", (w3["run_id"],))["deadline"]) == be.clock() + timedelta(minutes=58)
+    finish(be, w3["run_id"], 1, idle=False)
+    be.clock.t += timedelta(minutes=5)
+    usage(be, weekly=80, resets_in_h=46.9)                   # at the weekly reserve: nothing more
+    be.db.ex("DELETE FROM wakeups WHERE kind='planned'")
+    tick(be)
+    assert len(paced()) == 3

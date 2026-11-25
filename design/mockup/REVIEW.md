@@ -54,6 +54,8 @@ Resolutions: **plan** = update the plan to match the mockup. **owner** = needs y
 | 47 | The shelf has no copy control. | **Added:** each item has the Files screen's copy menu (contents or path). |
 | 48 | Every card offers "+ Add comment". | **The security card doesn't:** an alert is acknowledged or acted on, there's nobody to leave a note for. |
 | 49 | Date and time fields use the browser's pickers. | **Added:** the app's own date and time picker (Calendar, notification quiet hours), on the tokens, with Escape to close. |
+| 50 | Wakeup kinds: planned, routine, sweep, fallback, yours. | **Added:** *Paced* (Max level, added by control): the planned wakeup's accent colours with a dashed border, in the legend after Planned. |
+| 51 | Budget settings: level, limits, Boost. | **Added:** an "Extra room this week" box under Boost (bonus points, start the assistant's count over, take back), in the Boost box's style. |
 
 ## Product decisions shown by the mockup's data
 

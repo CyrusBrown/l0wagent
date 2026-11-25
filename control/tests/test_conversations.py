@@ -234,6 +234,10 @@ def test_uploads_are_contained(c, be, tmp_path):
 def test_harness_news_announces_the_new_commands(c):
     news = ok(agent(c, "GET", "/news"))
     titles = [n["title"] for n in news]  # newest first
+    assert titles[0] == "Pacing on the Max level" and "paced wakeups" in news[0]["body"]
+    news, titles = news[1:], titles[1:]
+    assert titles[0] == "Waiting, the week's budget, and the reviewer" and "Never sit and wait" in news[0]["body"]
+    news, titles = news[1:], titles[1:]
     assert titles[0] == "Extension folders at /external" and "/external/<extension>/<folder>/" in news[0]["body"]
     news, titles = news[1:], titles[1:]
     assert titles[0] == "Hub services" and "assistant hubnet call SERVICE METHOD" in news[0]["body"] and "untrusted" in news[0]["body"]

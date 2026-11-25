@@ -839,6 +839,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/budget/{provider}/bonus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Bonus
+         * @description Bonus points for this period and/or a fresh start of the assistant's count (e.g. after a usage reset).
+         */
+        post: operations["add_bonus_api_budget__provider__bonus_post"];
+        /** Clear Bonus */
+        delete: operations["clear_bonus_api_budget__provider__bonus_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/providers": {
         parameters: {
             query?: never;
@@ -2921,6 +2942,23 @@ export interface components {
              * @default false
              */
             until_reset?: boolean;
+        };
+        /**
+         * BudgetBonus
+         * @description Online only. Extra room for the assistant this period, e.g. after a usage reset. Both lapse at the reset.
+         */
+        BudgetBonus: {
+            /**
+             * Pts
+             * @description Add this many bonus points to this period's allowance.
+             */
+            pts?: number | null;
+            /**
+             * Reset Spend
+             * @description Count the assistant's allowance spend from now, as if the period had just started.
+             * @default false
+             */
+            reset_spend?: boolean;
         };
         /**
          * BudgetCaps
@@ -5491,6 +5529,23 @@ export interface components {
             /** Fallback Pts */
             fallback_pts: number;
             /**
+             * Bonus Pts
+             * @description Bonus points the owner added to this period's allowance (they lapse at the reset).
+             * @default 0
+             */
+            bonus_pts?: number;
+            /**
+             * Spend From
+             * @description When the owner restarted the assistant's count this period: allowance spend before it doesn't count.
+             */
+            spend_from?: string | null;
+            /**
+             * Allowance Used
+             * @description What counts against the allowance: the assistant's spend from the allowance since the period start (or spend_from).
+             * @default 0
+             */
+            allowance_used?: number;
+            /**
              * Period
              * @description The budget period: week, or month from reset_day. Fields named week_* mean the period.
              * @default week
@@ -6977,7 +7032,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "planned" | "fallback" | "sweep" | "routine" | "owner";
+            kind: "planned" | "fallback" | "sweep" | "routine" | "owner" | "paced";
             /**
              * Created By
              * @enum {string}
@@ -8766,6 +8821,72 @@ export interface operations {
         };
     };
     clear_boost_api_budget__provider__boost_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderBudget"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_bonus_api_budget__provider__bonus_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BudgetBonus"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderBudget"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_bonus_api_budget__provider__bonus_delete: {
         parameters: {
             query?: never;
             header?: never;

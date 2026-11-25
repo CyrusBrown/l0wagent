@@ -269,6 +269,10 @@ export const useBoost = () =>
   useInvalidating(({ provider = P, ...b }: S['BoostRequest'] & { provider?: string }) => ok(api.POST('/api/budget/{provider}/boost', { params: { path: { provider } }, body: b })), budgetKeys)
 export const useClearBoost = () =>
   useInvalidating((provider: string = P) => ok(api.DELETE('/api/budget/{provider}/boost', { params: { path: { provider } } })), budgetKeys)
+export const useAddBonus = () =>
+  useInvalidating(({ provider = P, ...b }: S['BudgetBonus'] & { provider?: string }) => ok(api.POST('/api/budget/{provider}/bonus', { params: { path: { provider } }, body: b })), budgetKeys)
+export const useClearBonus = () =>
+  useInvalidating((provider: string = P) => ok(api.DELETE('/api/budget/{provider}/bonus', { params: { path: { provider } } })), budgetKeys)
 export const usePatchReserve = () => useInvalidating((b: S['ReserveSettings']) => ok(api.PATCH('/api/budget', { body: b })), budgetKeys)
 
 export const useProviderCatalog = (id: string, enabled = true) =>

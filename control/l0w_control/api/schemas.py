@@ -841,6 +841,9 @@ class ProviderBudget(Model):
     native: str = Field(description="The provider's own unit, e.g. '46% of the week used' or '$3.10 this period'.")
     pts_per_usd: float = Field(description="Subscription: the learned calibration from API-priced tokens to points.")
     fallback_pts: float
+    bonus_pts: float = Field(0, description="Bonus points the owner added to this period's allowance (they lapse at the reset).")
+    spend_from: datetime | None = Field(None, description="When the owner restarted the assistant's count this period: allowance spend before it doesn't count.")
+    allowance_used: float = Field(0, description="What counts against the allowance: the assistant's spend from the allowance since the period start (or spend_from).")
     period: Literal["week", "month"] = Field("week", description="The budget period: week, or month from reset_day. Fields named week_* mean the period.")
     reset_day: int | None = Field(None, description="Monthly periods: the day of the month they reset (1–28).")
     caps: BudgetCaps | None = None
@@ -882,6 +885,13 @@ class BoostRequest(Model):
     hours: float | None = Field(None, description="Boost for this many hours (default 24).")
     until: datetime | None = None
     until_reset: bool = False
+
+
+class BudgetBonus(Model):
+    """Online only. Extra room for the assistant this period, e.g. after a usage reset. Both lapse at the reset."""
+
+    pts: float | None = Field(None, gt=0, le=1000, description="Add this many bonus points to this period's allowance.")
+    reset_spend: bool = Field(False, description="Count the assistant's allowance spend from now, as if the period had just started.")
 
 
 class ReserveSettings(Model):
@@ -985,7 +995,7 @@ class AdvancedSettingsUpdate(Model):
 
 
 # ── Wakeups, the calendar, routines ────────────────────────────────────────
-WakeupKind = Literal["planned", "fallback", "sweep", "routine", "owner"]
+WakeupKind = Literal["planned", "fallback", "sweep", "routine", "owner", "paced"]
 
 
 class Wakeup(Model):

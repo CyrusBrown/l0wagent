@@ -183,6 +183,21 @@ def test_tools_check_settings_and_read_the_guide(be):
     assert T.run(ctx, "propose_handoff", {"target": "elsewhere", "mode": "message", "message": "x"})[1]
 
 
+def test_the_chat_can_propose_bonus_points_and_a_fresh_start(be):
+    from l0w_control import chat_settings as CS
+    from l0w_control.api import schemas as s
+    from l0w_control.backends.base import BadRequest
+    changes = CS.describe(be, [{"setting": "bonus_pts", "value": 40}, {"setting": "reset_spend", "value": True}])
+    assert [(x["before"], x["after"]) for x in changes] == [("0.0", "40.0"), ("0 pts counted", "counted from now")]
+    be.add_bonus("claude-subscription", s.BudgetBonus(pts=5))  # changed in between: the approved card still adds 40
+    CS.apply(be, changes)
+    b = be.budgets.summary("claude-subscription")
+    assert b.bonus_pts == 45 and b.spend_from
+    for bad in ({"setting": "bonus_pts", "value": -3}, {"setting": "reset_spend", "value": False}):
+        with pytest.raises(BadRequest):
+            CS.describe(be, [bad])
+
+
 def test_a_chat_may_use_any_model_its_provider_offers(be):
     be.budgets.add_api_provider("sk-go-test-0123456789abcdefghij", None, "opencode-go")
     spec = be.budgets.runtime_spec("opencode-go", "opencode-go/kimi-k3/max")  # in Go's catalog, not enabled for the assistant

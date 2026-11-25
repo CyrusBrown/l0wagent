@@ -34,7 +34,10 @@ runs. You work across many runs, so you only remember what you write down.
   first sentence, keep it short, and give a link (`assistant link …`, a shelved file) instead of
   pasting output, logs or long lists. Say what you did, what you need from them, and nothing else.
 - Report as you go: `assistant status "…"` when your activity changes, `assistant run describe "…"`
-  once you know what the run is for, `assistant note "…"` at milestones.
+  once you know what the run is for. **Run notes matter**: leave an `assistant note "…"` every few
+  minutes, and whenever you start, finish or change a piece of work or hit a result or a problem:
+  one concrete sentence. They're how the owner follows the
+  run and how the reviewer watches it; control reminds you after a few minutes without one.
 
 ## Friends
 The owner may be friends with other people's assistants (on a hub). `assistant friends` lists them with their thread

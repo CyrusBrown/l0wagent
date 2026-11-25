@@ -73,6 +73,12 @@ SPECS: dict[str, Spec] = {
     "WAKEUP_MAX_MINUTES": Spec("int", 180, "Wall-clock cap for a planned wakeup or routine run.", "agent", 1, 1440),
     "MANUAL_RUN_PTS": Spec("float", 20.0, "Budget (pts) for a run you start with Wake now, unless you give one.", lo=0, hi=1000),
     "REPLY_RUN_MAX_PTS": Spec("float", 6.0, "Most a single Reply-now run may spend from the reply budget (pts).", lo=0, hi=1000),
+    "PACE_ON": Spec("bool", True, "Max level: keep the assistant working through the week. Each 5-hour window left before the weekly reset gets an "
+                    "equal share of the unscheduled points, and control starts paced wakeups until the window's share is spent (the old "
+                    "assistant's high-productivity mode). Your reserve still applies."),
+    "PACE_MIN_PTS": Spec("float", 10.0, "Pacing: don't start a paced wakeup for less than this much of the window's share.", lo=1, hi=500),
+    "PACE_IDLE_MINUTES": Spec("int", 60, "Pacing: after a paced wakeup ends with nothing worthwhile left (IDLE, agreed), wait this long before the next.", lo=0, hi=1440),
+    "PACE_MAX_MINUTES": Spec("int", 300, "Pacing: wall-clock cap for one paced wakeup (the next starts a fresh conversation).", lo=10, hi=1440),
     "SWEEP_WINDOW_HOURS": Spec("float", 5.0, "Sweep: how many hours before the weekly reset sweep wakeups may run.", lo=0, hi=48),
     "SWEEP_CEILING_PCT": Spec("float", 95.0, "Sweep: the weekly usage (%) sweep wakeups won't go past.", lo=0, hi=100),
     "WAKEUP_LATE_MINUTES": Spec("int", 30, "A planned wakeup that can't start within this many minutes of its time (another run is busy) is marked missed.", lo=1, hi=1440),
@@ -85,6 +91,8 @@ SPECS: dict[str, Spec] = {
     "HOLD_MAX_ROUNDS": Spec("int", 10, "How many times one run may wait for and resume on your replies.", "agent", 0, 50),
     "USE_WHOLE_BUDGET": Spec("bool", True, "Use it or lose it: a wakeup keeps working (backlog, free-time queue, new tasks it writes) until its budget is spent, "
                              "instead of stopping when the planned work is done. Busywork still doesn't count. Off: a wakeup's budget is planned and it may stop early."),
+    "NOTE_REMINDER_MINUTES": Spec("float", 5.0, "Remind the assistant (after its next tool call) when it has gone this long in a wakeup without a run note "
+                                  "(0 = off). Its notes are how you and the reviewer follow a run (the old assistant's 5 minutes).", lo=0, hi=120),
     "NUDGE_MAX": Spec("int", 2, "How many times a wakeup that stops on its own with budget left is told to carry on.", lo=0, hi=10),
     "NUDGE_MIN_LEFT_PCT": Spec("float", 15.0, "Only nudge a wakeup that stopped with more than this share of its budget left (%).", lo=0, hi=100),
     "RUN_MAX_RESUMES": Spec("int", 3, "How many times a run is resumed after the agent computer restarts mid-run.", lo=0, hi=20),
@@ -146,6 +154,7 @@ ADVANCED: dict[str, tuple[str, str, str | None]] = {
     "PROMOTE_WAIT_MINUTES": ("Conversation", "Promote request stays open", "min"),
     "MAX_OPEN_ASKS_PER_RUN": ("Conversation", "Open asks one run may file", None),
     "USE_WHOLE_BUDGET": ("Runs", "Use the whole budget (use it or lose it)", None),
+    "NOTE_REMINDER_MINUTES": ("Runs", "Remind it to leave a run note after", "min"),
     "NUDGE_MAX": ("Runs", "Times a wakeup that stops early is told to carry on", None),
     "NUDGE_MIN_LEFT_PCT": ("Runs", "Carry on only if more than this is left", "%"),
     "REPLY_RUN_MAX_PTS": ("Runs", "Most one Reply now may spend", "pts"),
@@ -157,6 +166,10 @@ ADVANCED: dict[str, tuple[str, str, str | None]] = {
     "RUN_MAX_RESUMES": ("Runs", "Resumes after the agent computer restarts", None),
     "STOP_GRACE_SECONDS": ("Runs", "Force a stop after", "s"),
     "LOST_CONTACT_GIVE_UP_MINUTES": ("Runs", "Give up on a silent agent computer after", "min"),
+    "PACE_ON": ("Pacing (Max)", "Keep it working through the week", None),
+    "PACE_MIN_PTS": ("Pacing (Max)", "Smallest paced wakeup", "pts"),
+    "PACE_IDLE_MINUTES": ("Pacing (Max)", "After an idle paced wakeup, wait", "min"),
+    "PACE_MAX_MINUTES": ("Pacing (Max)", "Paced wakeup time limit", "min"),
     "BRIEF_LIST_CAP": ("Wakeups", "Items per list in the brief", None),
     "NEWS_CAP": ("Wakeups", "News entries per brief", None),
     "FALLBACK_NIGHTS": ("Wakeups", "Fallback when nothing is planned for", "nights"),

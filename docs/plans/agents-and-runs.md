@@ -108,6 +108,8 @@ This replaces today's nightly, review, turbo and chat modes.
 | **Busy** | 400 pts (40%); nightly plus off-hours wakeups; sweep on. |
 | **Max** | 850 pts (85%); around the clock, paced per 5-hour window; sweep on. |
 
+**Pacing** (built 2026-11-25, owner's request after comparing with the old assistant's high-productivity mode): on Max, the scheduler's `pace` step gives each 5-hour window left before the reset an equal share of the unscheduled points (`Budgets.pace`, fixed when the window starts) and adds a `paced` wakeup whenever a share is left (≥ `PACE_MIN_PTS`), nothing else is due within 30 minutes, no run is going and the reserve allows it. A paced run has up to `PACE_MAX_MINUTES` (300) but ends 2 minutes before the next planned wakeup; one that ends with an agreed `IDLE` pauses pacing for `PACE_IDLE_MINUTES`. `PACE_ON` switches it off.
+
 **Boost** is a temporary raise ("Busy until Friday's reset", "Max for 6 hours").
 
 ### Reply now

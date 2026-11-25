@@ -130,3 +130,12 @@ def test_the_next_brief_uses_the_readable_ending(be):
     new = add_run(be, status="running", ended=False)
     assert "was stopped (5-hour usage reached your reserve (70%))" in be.runs_mgr._since_last_run(new)
     assert old
+
+
+def test_the_next_brief_carries_the_reviewers_last_word(be):
+    """Run 38, 2026-11-25: "do X, then you can end. AGREE" ended the run and X never reached the agent."""
+    old = add_run(be, status="done", end_reason="idle", used=3)
+    be.db.ex("INSERT INTO reviewer_messages(run_id, sender, kind, body, created_at) VALUES(?,?,?,?,?)",
+             (old, "reviewer", "reply", "Check the K3 output format first.\n\nAGREE", be.db.now()))
+    new = add_run(be, status="running", ended=False)
+    assert "The reviewer's last word: Check the K3 output format first. AGREE" in be.runs_mgr._since_last_run(new)

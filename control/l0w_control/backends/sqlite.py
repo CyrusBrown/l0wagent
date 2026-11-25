@@ -1148,6 +1148,16 @@ class SqliteBackend(Backend):
         self._budget_changed()
         return self.budgets.summary(provider)
 
+    def add_bonus(self, provider: str, req: s.BudgetBonus) -> s.ProviderBudget:
+        self.budgets.set_bonus(provider, req)
+        self._budget_changed()
+        return self.budgets.summary(provider)
+
+    def clear_bonus(self, provider: str) -> s.ProviderBudget:
+        self.budgets.clear_bonus(provider)
+        self._budget_changed()
+        return self.budgets.summary(provider)
+
     def patch_reserve(self, req: s.ReserveSettings) -> s.BudgetOverview:
         for key, v, lo, hi in (("RESERVE_WEEKLY_PCT", req.reserve_weekly_pct, 0, 100), ("RESERVE_FIVE_HOUR_PCT", req.reserve_five_hour_pct, 0, 100),
                                ("SWEEP_WINDOW_HOURS", req.sweep_window_hours, 0, 48), ("SWEEP_CEILING_PCT", req.sweep_ceiling_pct, 0, 100)):

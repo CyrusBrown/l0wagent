@@ -10,7 +10,7 @@ import { usePresence } from '../components/motion'
 import { Select } from '../components/Select'
 import { useEscape } from '../components/useEscape'
 import {
-  problem, useAddApiProvider, useBoost, useBudget, useClearBoost, useDeleteProvider, useInstructions, usePatchBudget, usePatchProvider, usePatchReserve,
+  problem, useAddApiProvider, useAddBonus, useBoost, useBudget, useClearBonus, useClearBoost, useDeleteProvider, useInstructions, usePatchBudget, usePatchProvider, usePatchReserve,
   useProviderCatalog, useProviders, useReviewer, useSystem, useRoles, useSetInstructions, useSetReviewer, useSetRoles,
 } from '../api/queries'
 
@@ -59,6 +59,9 @@ export function Budgets() {
   const reserve = usePatchReserve()
   const boost = useBoost()
   const endBoost = useClearBoost()
+  const addBonus = useAddBonus()
+  const clearBonus = useClearBonus()
+  const [bonusPts, setBonusPts] = useState(100)
   const [err, setErr] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState(0)
   const [draft, setDraft] = useState<Draft>({})
@@ -156,7 +159,7 @@ export function Budgets() {
                   {p.kind === 'claude-subscription' && <div style={{ width: `${Math.max(0, 100 - o.reserve_weekly_pct)}%`, background: 'var(--accentLine2)', marginLeft: 'auto' }} />}
                 </div>
                 <span className="sub" style={{ fontSize: 12.5, justifySelf: 'end', textAlign: 'right' }}>
-                  {p.native} · {Math.round(p.left)} of {Math.round(p.allowance)} pts left
+                  {p.native} · {Math.round(p.left)} of {Math.round(p.allowance)}{p.bonus_pts ? ` + ${Math.round(p.bonus_pts)} bonus` : ''} pts left
                 </span>
               </div>
             )
@@ -268,6 +271,21 @@ export function Budgets() {
             </div>
           </>
         )}
+      </div>
+
+      <div className="boost-box">
+        <div className="stack" style={{ gap: 2 }}><span style={{ font: '500 14px var(--sans)' }}>Extra room this {per}</span>
+          <span className="sub" style={{ fontSize: 12.5 }}>
+            {b.bonus_pts || b.spend_from
+              ? <>{b.bonus_pts ? `+${Math.round(b.bonus_pts)} bonus pts` : 'No bonus points'}{b.spend_from ? `; the assistant's spend counts from ${stamp(b.spend_from)}` : ''}. Both end at the reset ({stamp(b.resets_at)}).</>
+              : <>Used a usage reset, or want to give it more this {per}? Add bonus points, or start the assistant's count over. Both end at the reset; your reserve still applies.</>}
+          </span></div>
+        <div className="btns">
+          <NumberField label="Bonus points" value={bonusPts} min={1} max={1000} suffix="pts" width={64} onCommit={setBonusPts} />
+          <button className="btn" disabled={addBonus.isPending} onClick={() => addBonus.mutate({ provider: b.provider, pts: bonusPts }, done)}>Add</button>
+          <button className="btn" disabled={addBonus.isPending} onClick={() => addBonus.mutate({ provider: b.provider, reset_spend: true }, done)}>Start its count over</button>
+          {((b.bonus_pts ?? 0) > 0 || b.spend_from) && <button className="btn" disabled={clearBonus.isPending} onClick={() => clearBonus.mutate(b.provider, done)}>Take back</button>}
+        </div>
       </div>
     </div>
   )

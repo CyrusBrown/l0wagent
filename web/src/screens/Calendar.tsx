@@ -18,8 +18,8 @@ import {
 // you vs. the assistant, and routines.
 const H = 28
 const DAY_H = 24 * H
-const KIND_CLASS: Record<S['Wakeup']['kind'], string> = { planned: 'wakeup', fallback: 'fallback', sweep: 'sweep', routine: 'routine', owner: 'mine' }
-const LEGEND: [string, string][] = [['Planned wakeup', 'wakeup'], ['Routine', 'routine'], ['Sweep', 'sweep'], ['Fallback', 'fallback'], ['Yours', 'mine'], ['Protected hours', 'protected']]
+const KIND_CLASS: Record<S['Wakeup']['kind'], string> = { planned: 'wakeup', fallback: 'fallback', sweep: 'sweep', routine: 'routine', owner: 'mine', paced: 'paced' }
+const LEGEND: [string, string][] = [['Planned wakeup', 'wakeup'], ['Routine', 'routine'], ['Paced', 'paced'], ['Sweep', 'sweep'], ['Fallback', 'fallback'], ['Yours', 'mine'], ['Protected hours', 'protected']]
 
 /** Wall-clock parts of an instant in a time zone. */
 function parts(iso: string | Date, tz: string) {
@@ -181,7 +181,7 @@ function Week({ c, days, today, onOpen }: { c: S['Calendar']; days: Day[]; today
                   }}
                   onPointerMove={(e) => isDrag && setDrag({ ...drag, dx: e.clientX - drag.x0, dy: e.clientY - drag.y0 })}
                   onPointerUp={(e) => isDrag && drop(e, w)}>
-                  <span>{w.kind === 'routine' ? w.reason.replace(/^Routine: /, '') : w.kind === 'fallback' ? 'Fallback' : w.kind === 'sweep' ? 'Sweep' : w.reason}</span>
+                  <span>{w.kind === 'routine' ? w.reason.replace(/^Routine: /, '') : w.kind === 'fallback' ? 'Fallback' : w.kind === 'sweep' ? 'Sweep' : w.kind === 'paced' ? 'Paced' : w.reason}</span>
                 </div>
               )
             })}
@@ -212,7 +212,7 @@ function Agenda({ c, days, today, onOpen }: { c: S['Calendar']; days: Day[]; tod
             {list.map((w) => (
               <button key={w.id} className={`ag-ev ${KIND_CLASS[w.kind]} ${w.status !== 'planned' ? 'past' : ''}`} onClick={() => onOpen(w.id)}>
                 <span className="ag-time">{clockIn(w.at, tz)}</span>
-                <span className="ag-text">{w.kind === 'routine' ? w.reason.replace(/^Routine: /, '') : w.kind === 'fallback' ? 'Fallback' : w.kind === 'sweep' ? 'Sweep' : w.reason}</span>
+                <span className="ag-text">{w.kind === 'routine' ? w.reason.replace(/^Routine: /, '') : w.kind === 'fallback' ? 'Fallback' : w.kind === 'sweep' ? 'Sweep' : w.kind === 'paced' ? 'Paced' : w.reason}</span>
                 <span className="ag-pts">{w.budget} pts</span>
               </button>
             ))}
@@ -362,7 +362,7 @@ function WakeupEditor({ w, tz, tiers, onClose }: { w?: S['Wakeup']; tz: string; 
       <div className="scrim" onClick={onClose} />
       <div ref={box} tabIndex={-1} className="cal-editor card" role="dialog" aria-modal="true" aria-label={w ? 'Wakeup' : 'Add wakeup'}>
         <div className="row-between"><div style={{ font: '500 15px var(--sans)' }}>{w ? `Wakeup #${w.id}` : 'Add a wakeup'}</div><button className="icon-btn" onClick={onClose} aria-label="Close">×</button></div>
-        {w && <div className="sub" style={{ fontSize: 12.5 }}>{{ planned: 'Planned by the assistant', fallback: 'Fallback, added by control', sweep: 'Sweep, added by control', routine: 'A routine', owner: 'Yours' }[w.kind]} · {w.status}{w.status_reason ? ` · ${w.status_reason}` : ''}</div>}
+        {w && <div className="sub" style={{ fontSize: 12.5 }}>{{ planned: 'Planned by the assistant', fallback: 'Fallback, added by control', sweep: 'Sweep, added by control', paced: 'Paced, added by control (Max)', routine: 'A routine', owner: 'Yours' }[w.kind]} · {w.status}{w.status_reason ? ` · ${w.status_reason}` : ''}</div>}
         <div style={{ display: 'flex', gap: 6 }}>
           <DatePicker label="Date" value={date} onChange={setDate} disabled={!editable} className="dtp-grow" />
           <TimePicker label="Time" value={time} onChange={setTime} disabled={!editable} className="dtp-grow" hour12={hour12} />

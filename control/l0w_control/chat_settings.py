@@ -6,7 +6,9 @@ approval applies it, through the same backend methods the Settings screens use.
 A change is {"setting": name, "value": ..., "provider"?: id}. Settings:
 - per provider (default: the worker's): level, allowance, allowed_hours, max_per_day,
   min_gap_minutes, max_wakeup, tiers, fallback, sweep (the level's limits; null resets one to
-  the level's), reply_pts, fallback_pts, period, reset_day, caps, models (opencode providers)
+  the level's), reply_pts, fallback_pts, period, reset_day, caps, models (opencode providers),
+  bonus_pts (points to add to this period's allowance), reset_spend (true: count the assistant's
+  spend from now, e.g. after a usage reset); both lapse at the period's reset
 - role.<worker|reviewer|replier|chat|utility>: {"provider", "tier"}
 - reviewer.<mode|provider|tier|interval_minutes|budget_share|change_tier>
 - reserve_weekly_pct, reserve_five_hour_pct (the Claude subscription's reserve)
@@ -52,6 +54,7 @@ def snapshot(be) -> dict:
             "provider": p.provider, "label": p.label, "level": p.level, "limits": p.limits.model_dump(), "customized": p.custom,
             "period": p.period, "reset_day": p.reset_day, "caps": p.caps.model_dump() if p.caps else None, "reply_pts": p.reply_allowance,
             "fallback_pts": p.fallback_pts, "left": p.left, "used_by_assistant": p.used_by_assistant, "model_options": p.model_options,
+            "bonus_pts": p.bonus_pts, "spend_from": p.spend_from.isoformat() if p.spend_from else None, "allowance_used": p.allowance_used,
         })
     return {
         "budgets": providers,
@@ -101,6 +104,20 @@ def describe(be, changes: list[dict]) -> list[dict]:
                 before = b["level"] if name == "level" else b["limits"].get(name) if name in LIMITS else \
                     {"reply_pts": b["reply_pts"], "fallback_pts": b["fallback_pts"], "period": b["period"], "reset_day": b["reset_day"], "caps": b["caps"]}[name]
             label = f"{name.replace('_', ' ')} ({b['label'] if b else provider})"
+        elif name in ("bonus_pts", "reset_spend"):
+            b = next((p for p in snap["budgets"] if p["provider"] == provider), None)
+            if not b:
+                raise BadRequest("bad_setting", f"Unknown or disabled provider {provider}.")
+            if name == "bonus_pts" and (isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 < value <= 1000):
+                raise BadRequest("bad_setting", "bonus_pts is the number of points to add (more than 0, at most 1000).")
+            if name == "reset_spend" and value is not True:
+                raise BadRequest("bad_setting", "reset_spend takes true.")
+            if name == "bonus_pts":
+                before, label = b["bonus_pts"], f"bonus points this period ({b['label']})"
+                value = before + value  # shown as the total after
+            else:
+                before, label = f"{b['allowance_used']:g} pts counted", f"assistant's spend this period ({b['label']})"
+                value = "counted from now"
         elif name.startswith("role."):
             role = name[5:]
             if role not in ROLES or not isinstance(value, dict) or not value.get("provider") or not value.get("tier"):
@@ -143,7 +160,8 @@ def describe(be, changes: list[dict]) -> list[dict]:
                 raise BadRequest("bad_setting", f"notifications.<{'|'.join(events)}> (true/false) or notifications.quiet.")
         else:
             raise BadRequest("bad_setting", f"Unknown setting {name}. See this tool's description.")
-        out.append({"setting": name, "provider": provider, "value": value, "label": label, "before": _short(before), "after": _short(value)})
+        out.append({"setting": name, "provider": provider, "value": value, "label": label, "before": _short(before), "after": _short(value),
+                    **({"before_value": before} if name == "bonus_pts" else {})})
     return out
 
 
@@ -160,6 +178,10 @@ def apply(be, changes: list[dict]) -> list[str]:
             be.patch_budget(provider, s.BudgetPatch(**{name: value}))
         elif name == "caps":
             be.patch_budget(provider, s.BudgetPatch(caps=s.BudgetCaps(**(value or {}))))
+        elif name == "bonus_pts":
+            be.add_bonus(provider, s.BudgetBonus(pts=value - (c["before_value"] or 0)))
+        elif name == "reset_spend":
+            be.add_bonus(provider, s.BudgetBonus(reset_spend=True))
         elif name == "models":
             be.patch_provider(provider, s.ProviderPatch(models=value))
         elif name.startswith("role."):

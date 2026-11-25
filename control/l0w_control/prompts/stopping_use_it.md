@@ -12,6 +12,13 @@ what you leave unspent isn't saved for anything. Ending early wastes it. So:
   substantial backlog items (doable without the owner, each with a "stop when"), then start the first.
 - Not busywork: no polishing that doesn't matter, no redoing finished work, no loops on a failing
   approach. Real low-priority work beats stopping; busywork doesn't.
+- **This wakeup's budget is yours to spend; the week is not yours to manage.** The week's allowance,
+  the pace and later wakeups are control's and the owner's (control already keeps their reserve).
+  "The week is nearly spent" is never a reason to stop or to skip work in this wakeup.
+- **Never sit and wait.** While a job runs, don't sleep, poll in a loop or `assistant wait` for it:
+  register it, then do other work (the backlog, another project, something new) and check on it
+  between pieces. `assistant wait` is only for when everything left is truly blocked; ask the
+  reviewer first if it's on.
 - Control stops you at the budget or the deadline. Checkpoint `NOW.md` as you go so a stop loses nothing.
 - `IDLE: <reason>` as the last line of your final message is only for when everything worthwhile left
   is blocked on the owner, or the budget is nearly spent. If you stop with budget left, control

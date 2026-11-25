@@ -58,7 +58,7 @@ def test_new_settings_are_declared():
         if not seen or seen[-1] != g:
             seen.append(g)
     assert len(seen) == len(set(seen))  # each group's items are together
-    assert seen == ["Conversation", "Runs", "Wakeups", "Reviewer", "Chat", "Files", "Notifications", "Friends", "System"]
+    assert seen == ["Conversation", "Runs", "Pacing (Max)", "Wakeups", "Reviewer", "Chat", "Files", "Notifications", "Friends", "System"]
 
 
 def test_ask_cap_follows_the_setting(be):
@@ -104,11 +104,33 @@ def test_gate_rounds_follow_the_setting(be):
     be.reviewer.approve = approve
     sess = SimpleNamespace(runtime_session="s1")
     be.settings.set("REVIEWER_GATE_MAX_ROUNDS", 1)
-    assert asyncio.run(be.runs_mgr._gate(rid, sess, {"text": "IDLE: done"})) is False
+    assert asyncio.run(be.runs_mgr._gate(rid, sess, {"text": "IDLE: done"})) == "done"
     assert asked == []  # already sent back once: the reviewer isn't asked again
     be.settings.set("REVIEWER_GATE_MAX_ROUNDS", 3)
-    asyncio.run(be.runs_mgr._gate(rid, sess, {"text": "IDLE: done"}))
+    assert asyncio.run(be.runs_mgr._gate(rid, sess, {"text": "IDLE: done"})) == "agreed"
     assert asked == [rid]
+
+
+def test_a_silent_gate_falls_back_to_the_carry_on_nudge(be):
+    """2026-11-25: a reviewer out of its share (or quiet, or failing) used to count as agreeing, ending runs with budget left."""
+    rid = be.db.ex("INSERT INTO runs(kind, why, provider, tier, budget, status, started_at, deadline, reviewer_mode, bucket) "
+                   "VALUES('wakeup','planned','claude-subscription','sonnet/medium',20,'running',?,?,'gate','allowance')",
+                   (be.db.now(), "2099-01-01T00:00:00Z"))
+
+    async def approve(run_id, intro, text):
+        return None, ""
+
+    started = []
+
+    async def start_session(run_id, resume=None, reason=None, prompt=None):
+        started.append(prompt)
+
+    be.reviewer.approve = approve
+    be.runs_mgr._start_session = start_session
+    sess = SimpleNamespace(runtime_session="s1", id=0)
+    assert asyncio.run(be.runs_mgr._gate(rid, sess, {"text": "IDLE: done"})) == "silent"
+    assert asyncio.run(be.runs_mgr._nudge(rid, sess, {"text": "IDLE: done"})) is True  # gate mode no longer skips the nudge
+    assert started and "use it or lose it" in started[0]
 
 
 def test_second_batch_of_settings_is_declared():
@@ -117,3 +139,35 @@ def test_second_batch_of_settings_is_declared():
     for key, default in {"FALLBACK_NIGHTS": 2, "BRIEF_LIST_CAP": 15, "NEWS_CAP": 6, "CHAT_MAX_TOKENS": 32000, "INTEGRATION_TIMEOUT_S": 60,
                          "ZIP_MAX_MB": 1024, "ZIP_MAX_FILES": 50000}.items():
         assert SPECS[key].default == default and key in ADVANCED
+
+
+def test_the_hook_reminds_it_to_leave_run_notes(be, monkeypatch):
+    """Owner, 2026-11-25: the old assistant's reminder after 5 minutes without a run note, as a setting (0 = off)."""
+    from datetime import UTC, datetime
+
+    from l0w_control.api import agent as A
+    from l0w_control.auth import iso
+
+    t0 = datetime(2027, 3, 1, 12, tzinfo=UTC)
+    now = {"t": t0}
+    monkeypatch.setattr(A, "utcnow", lambda: now["t"])
+    rid = be.db.ex("INSERT INTO runs(kind, why, provider, tier, budget, status, started_at, bucket) "
+                   "VALUES('wakeup','planned','claude-subscription','sonnet/medium',20,'running',?,'allowance')", (iso(t0),))
+    assert be.settings.get("NOTE_REMINDER_MINUTES") == 5 and ADVANCED["NOTE_REMINDER_MINUTES"][0] == "Runs"
+    now["t"] = t0 + timedelta(minutes=1)
+    assert A._note_reminder(be, rid) is None
+    now["t"] = t0 + timedelta(minutes=3)
+    assert "haven't left a run note yet" in A._note_reminder(be, rid)   # the first one after 2 minutes
+    be.db.ex("INSERT INTO run_notes(run_id, at, text) VALUES(?,?,?)", (rid, iso(now["t"]), "Writing the export"))
+    now["t"] += timedelta(minutes=4)
+    assert A._note_reminder(be, rid) is None
+    now["t"] += timedelta(minutes=2)
+    assert "6 min ago" in A._note_reminder(be, rid)
+    now["t"] += timedelta(minutes=1)
+    assert A._note_reminder(be, rid) is None                              # at most once per interval
+    be.settings.set("NOTE_REMINDER_MINUTES", 0)
+    now["t"] += timedelta(minutes=30)
+    assert A._note_reminder(be, rid) is None                              # off
+    be.settings.set("NOTE_REMINDER_MINUTES", 5)
+    be.db.ex("UPDATE runs SET kind='reply' WHERE id=?", (rid,))
+    assert A._note_reminder(be, rid) is None                              # not in Reply-now runs

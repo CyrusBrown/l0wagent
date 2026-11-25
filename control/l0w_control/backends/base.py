@@ -116,6 +116,8 @@ class Backend:
     def patch_budget(self, provider: str, req: s.BudgetPatch) -> s.ProviderBudget: raise NotImplementedError
     def boost(self, provider: str, req: s.BoostRequest) -> s.ProviderBudget: raise NotImplementedError
     def clear_boost(self, provider: str) -> s.ProviderBudget: raise NotImplementedError
+    def add_bonus(self, provider: str, req: s.BudgetBonus) -> s.ProviderBudget: raise NotImplementedError
+    def clear_bonus(self, provider: str) -> s.ProviderBudget: raise NotImplementedError
     def patch_reserve(self, req: s.ReserveSettings) -> s.BudgetOverview: raise NotImplementedError
     def providers(self) -> list[s.ProviderInfo]: raise NotImplementedError
     def add_api_provider(self, req: s.ApiProviderCreate) -> s.ProviderInfo: raise NotImplementedError

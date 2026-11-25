@@ -17,6 +17,17 @@ on an Anthropic API key or opencode Go, 1 pt is $0.10.
   **caps**: at most 20% of the month in any 5 hours and 50% in any 7 days, like Go's own limits.
   Level presets are per week and scale to a month; an allowance you set is per period.
 - **Boost**: use the next level's limits until the reset or for 24 hours.
+- **Extra room this week** (under Boost): **add bonus points** to this period's allowance, or
+  **start the assistant's count over** (what it spent so far stops counting), for example after
+  you used a usage reset. Both end at the reset, and **Take back** undoes them. The reserve still
+  applies: it reads the real usage meter, which a usage reset clears on its own. The chat can
+  propose either (`bonus_pts`, `reset_spend`).
+- **Pacing** (Max, Claude subscription; Settings → Advanced → Pacing): control keeps the assistant
+  working through the week. Each 5-hour window left before the reset gets an equal share of the
+  points that aren't planned yet, and control starts **paced wakeups** (up to 5 hours each, ending
+  before the next planned wakeup) until the window's share is spent; the next window brings a new
+  share. It pauses at your 5-hour or weekly reserve, and for an hour after a paced wakeup finds
+  nothing worthwhile. Paced wakeups show on the Calendar with a dashed border.
 - **Sweep** (Claude subscription, Busy and Max): near the weekly reset, extra wakeups spend what
   you didn't use, up to a ceiling.
 - **Usage**: Settings and Home show your own use, your 1:1 chats, and the assistant's. 1:1 chats
