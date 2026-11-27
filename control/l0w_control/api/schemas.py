@@ -1376,6 +1376,8 @@ class RunnerHealth(Model):
     busy: bool | None = None
     runtime_version: str | None = None
     logged_in: bool | None = None
+    login_problem: str | None = Field(None, description="Set when the agent has a Claude login but Anthropic turned it down "
+                                                         "(expired or signed out): sign in again.")
     error: str | None = None
     setting_up: bool = Field(False, description="The agent computer is up but still setting itself up (after an update it reinstalls the "
                                                 "agent's tools); runs wait for it. `error` says which step.")

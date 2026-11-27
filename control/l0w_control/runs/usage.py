@@ -68,6 +68,9 @@ class Usage:
         self.db = db
         self.settings = settings
         self._cache: s.UsageReading | None = None
+        # Set when Anthropic turned the agent's Claude login down (a 401, or still expired after a
+        # refresh); cleared by the next good reading. None also when nothing is known yet.
+        self.login_problem: str | None = None
 
     # ── readings ───────────────────────────────────────────────────────────
     def _credentials(self) -> tuple[str | None, str | None, bool]:
@@ -88,25 +91,27 @@ class Usage:
             return token, "the agent's Claude login token expired", True
         return token, None, False
 
-    async def _oauth(self) -> tuple[s.UsageReading, bool]:
+    async def _oauth(self) -> tuple[s.UsageReading, str]:
+        """The reading and how the login fared: ok, missing, expired (by its own date, not yet
+        tried), rejected (Anthropic said 401) or error (anything else)."""
         now = utcnow()
         token, err, expired = self._credentials()
         reading = s.UsageReading(provider=PROVIDER, source="oauth", fetched_at=now, five_hour_pct=None, five_hour_resets_at=None,
                                  seven_day_pct=None, seven_day_resets_at=None, error=err)
         if err:
-            return reading, expired
+            return reading, "expired" if expired else ("missing" if token is None else "error")
         try:
             async with httpx.AsyncClient(timeout=15) as c:
                 r = await c.get(self.env.usage_url, headers={"Authorization": f"Bearer {token}", "anthropic-beta": "oauth-2025-04-20"})
         except httpx.HTTPError as e:
             reading.error = f"usage request failed: {e}"
-            return reading, False
+            return reading, "error"
         if r.status_code == 401:
             reading.error = "usage endpoint: 401 (login expired or revoked)"
-            return reading, True
+            return reading, "rejected"
         if r.status_code != 200:
             reading.error = f"usage endpoint: HTTP {r.status_code}"
-            return reading, False
+            return reading, "error"
         data = r.json()
         five, week = data.get("five_hour") or {}, data.get("seven_day") or {}
         reading.five_hour_pct = _pct(five.get("utilization"))
@@ -115,7 +120,7 @@ class Usage:
         reading.seven_day_resets_at = _dt(week.get("resets_at"))
         if reading.seven_day_pct is None:
             reading.error = "the usage response had no weekly figure"
-        return reading, False
+        return reading, "ok"
 
     def _stream(self) -> s.UsageReading:
         reading = s.UsageReading(provider=PROVIDER, source="stream", fetched_at=utcnow(), five_hour_pct=None, five_hour_resets_at=None,
@@ -139,13 +144,20 @@ class Usage:
         once when the agent's login token has expired."""
         if self._cache and (utcnow() - self._cache.fetched_at).total_seconds() < max_age:
             return self._cache
-        reading, expired = await self._oauth()
-        if expired and refresh is not None:
+        reading, state = await self._oauth()
+        if state == "expired" and refresh is not None:
             try:
                 await refresh()
-                reading, _ = await self._oauth()
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001  (a run in progress, no lease: says nothing about the login)
                 reading.error = f"{reading.error}; refreshing the login failed: {e}"
+            else:
+                reading, state = await self._oauth()
+                if state == "expired":
+                    state = "rejected"  # refreshed and still expired: the refresh token no longer works
+        if state == "rejected":
+            self.login_problem = "Anthropic turned the assistant's Claude login down (expired or signed out)."
+        elif state in ("ok", "missing"):
+            self.login_problem = None
         if reading.seven_day_pct is None:
             fallback = self._stream()
             if fallback.seven_day_pct is not None:

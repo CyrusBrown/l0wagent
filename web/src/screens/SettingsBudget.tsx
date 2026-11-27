@@ -306,8 +306,10 @@ export function Providers() {
   const patch = usePatchProvider()
   const del = useDeleteProvider()
   const [adding, setAdding] = useState(false)
+  const [relogin, setRelogin] = useState(false)
   const addBtn = useRef<HTMLButtonElement>(null)
   const loggedIn = !!sys.data?.runner.logged_in
+  const signedOut = !!sys.data?.runner.login_problem  // a login Anthropic turned down: offer the sign-in right away
   const connected = (providers.data ?? []).filter((p) => p.kind !== 'claude-subscription' || loggedIn)
   const available = ADDABLE.filter(([k]) => !connected.some((p) => p.kind === k))
   return (
@@ -322,13 +324,20 @@ export function Providers() {
         <div key={p.id} className="provider-card">
           <div className="stack" style={{ gap: 2, minWidth: 0 }}>
             <span style={{ font: '500 14px var(--sans)' }}>{p.label} {!p.enabled && <span className="pill mute" style={{ marginLeft: 6 }}>off</span>}</span>
-            <span className="sub" style={{ fontSize: 12.5 }}>{p.status}</span>
+            <span className="sub" style={{ fontSize: 12.5, ...(p.kind === 'claude-subscription' && signedOut ? { color: 'var(--badInk)' } : {}) }}>{p.status}</span>
           </div>
           <div className="btns">
             {p.kind !== 'claude-subscription' && <ReplaceKey p={p} />}
+            {p.kind === 'claude-subscription' && !signedOut && <button className="btn small" aria-expanded={relogin} onClick={() => setRelogin(!relogin)}>{relogin ? 'Cancel' : 'Sign in again'}</button>}
             <button className="btn small" onClick={() => patch.mutate({ id: p.id, enabled: !p.enabled })}>{p.enabled ? 'Turn off' : 'Turn on'}</button>
             {p.kind !== 'claude-subscription' && <button className="btn small danger" onClick={() => del.mutate(p.id)}>Remove</button>}
           </div>
+          {p.kind === 'claude-subscription' && (relogin || signedOut) && (
+            <div className="stack" style={{ gap: 8, flexBasis: '100%' }}>
+              <span className="sub" style={{ fontSize: 12.5 }}>Signs the assistant's computer in again (or into a different Claude account); the new login replaces the old one.</span>
+              {sys.data?.runner.reachable ? <ClaudeLogin /> : <span className="sub">The assistant's computer isn't reachable yet; try again when it is.</span>}
+            </div>
+          )}
           {p.models && <ModelList provider={p} />}
         </div>
       ))}

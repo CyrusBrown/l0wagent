@@ -17550,6 +17550,18 @@
             ],
             "title": "Logged In"
           },
+          "login_problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login Problem",
+            "description": "Set when the agent has a Claude login but Anthropic turned it down (expired or signed out): sign in again."
+          },
           "error": {
             "anyOf": [
               {

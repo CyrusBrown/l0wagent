@@ -40,5 +40,5 @@ own (with "nothing more to do" when it said IDLE). **Stopped** means control sto
 sentence says why: your reserve was reached (with the percentage), its budget was used up, it hit
 its deadline, you pressed Stop or paused everything, or the server is updating. A stop is not an
 error, even though the session is interrupted. Real errors say what happened and what to do, for
-example "Claude's login expired: run ./l0w claude-login on the server". The runtime's own words are
+example "Claude's login expired: sign in again in Settings → Providers". The runtime's own words are
 kept in the run's detailed timeline under the sentence.

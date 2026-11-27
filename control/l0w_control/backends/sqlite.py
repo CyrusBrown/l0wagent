@@ -1175,7 +1175,8 @@ class SqliteBackend(Backend):
         if r["kind"] == SUBSCRIPTION:
             u = self.usage.cached()
             source = u.source if u else "none"
-            status = (f"Weekly usage {u.seven_day_pct:.0f}% (read {u.source})" if u and u.seven_day_pct is not None
+            status = (f"Signed out: {self.usage.login_problem} Sign in again." if self.usage.login_problem
+                      else f"Weekly usage {u.seven_day_pct:.0f}% (read {u.source})" if u and u.seven_day_pct is not None
                       else f"Usage unknown: {(u and u.error) or 'not read yet'}. The agent logs in to Claude on its own computer (see System).")
         elif r["kind"] == OPENCODE_GO:
             source = "ledger"
@@ -1366,6 +1367,8 @@ class SqliteBackend(Backend):
         except RunnerError as e:
             egress = s.EgressHealth(reachable=False, error=str(e))
         reading = await self.usage.read(max_age=120)
+        if runner.logged_in:
+            runner.login_problem = self.usage.login_problem
         g = self.usage.gate(reading)
         gate = s.GateState(open=g.open, reason=g.reason)
         if self.runs_mgr.active_run_id() is not None:
@@ -1389,8 +1392,9 @@ class SqliteBackend(Backend):
             s.SelfTestCheck(id="runner", label="Agent computer reachable", result="ok" if sysst.runner.reachable else "fail",
                             detail=sysst.runner.runtime_version if sysst.runner.reachable else sysst.runner.error),
             s.SelfTestCheck(id="egress", label="Egress proxy reachable", result="ok" if sysst.egress.reachable else "fail", detail=sysst.egress.error),
-            s.SelfTestCheck(id="provider_login", label="Provider login", result="ok" if sysst.runner.logged_in else "warn",
-                            detail="Claude" if sysst.runner.logged_in else "the agent isn't logged in to Claude yet"),
+            s.SelfTestCheck(id="provider_login", label="Provider login", result="ok" if sysst.runner.logged_in and not sysst.runner.login_problem else "warn",
+                            detail=(f"{sysst.runner.login_problem} Settings → Providers → Sign in again." if sysst.runner.login_problem
+                                    else "Claude" if sysst.runner.logged_in else "the agent isn't logged in to Claude yet")),
             s.SelfTestCheck(id="usage", label="Usage readable", result="ok" if sysst.usage and sysst.usage.seven_day_pct is not None else "warn",
                             detail=(sysst.usage.error if sysst.usage else None) or (f"{sysst.usage.source}" if sysst.usage else None)),
         ]

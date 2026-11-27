@@ -6113,6 +6113,11 @@ export interface components {
             runtime_version?: string | null;
             /** Logged In */
             logged_in?: boolean | null;
+            /**
+             * Login Problem
+             * @description Set when the agent has a Claude login but Anthropic turned it down (expired or signed out): sign in again.
+             */
+            login_problem?: string | null;
             /** Error */
             error?: string | null;
             /**

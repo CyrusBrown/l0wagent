@@ -1,7 +1,8 @@
 # Providers, models and roles
 
 **Providers** (Settings → Providers): the **Claude subscription** (the assistant's own login on
-its computer; set up in the setup wizard or with `./l0w claude-login`), an **Anthropic API key**,
+its computer; set up in the setup wizard or with `./l0w claude-login`; to sign in again or switch
+accounts, use **Sign in again** on its card), an **Anthropic API key**,
 and **opencode Go** (a subscription to open models, run with opencode instead of Claude Code;
 paste the key from opencode.ai → your workspace → API keys). Keys are write-only and stored
 encrypted; only sessions on that provider get them.

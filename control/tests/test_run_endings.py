@@ -34,10 +34,10 @@ def test_stopped_sentences(reason, end_reason, expected):
 
 
 @pytest.mark.parametrize("text,subtype,rc,stderr,expected", [
-    ("API Error: 401 {\"type\":\"authentication_error\"}", "success", None, None, "Claude's login expired: run ./l0w claude-login on the server."),
-    ("OAuth token has expired. Please run /login", None, None, None, "Claude's login expired: run ./l0w claude-login on the server."),
-    ("Invalid API key", None, None, None, "Claude's login expired: run ./l0w claude-login on the server."),
-    ("", "error_during_execution", None, "Please run /login", "Claude's login expired: run ./l0w claude-login on the server."),
+    ("API Error: 401 {\"type\":\"authentication_error\"}", "success", None, None, "Claude's login expired: sign in again in Settings → Providers (or run ./l0w claude-login on the server)."),
+    ("OAuth token has expired. Please run /login", None, None, None, "Claude's login expired: sign in again in Settings → Providers (or run ./l0w claude-login on the server)."),
+    ("Invalid API key", None, None, None, "Claude's login expired: sign in again in Settings → Providers (or run ./l0w claude-login on the server)."),
+    ("", "error_during_execution", None, "Please run /login", "Claude's login expired: sign in again in Settings → Providers (or run ./l0w claude-login on the server)."),
     ("API Error: 529 overloaded_error", None, None, None, "Claude was overloaded or rate-limited; it'll retry next run."),
     ("429 rate limit", None, None, None, "Claude was overloaded or rate-limited; it'll retry next run."),
     ("error_max_turns", "error_max_turns", None, None, "The session hit its turn limit before it finished."),
@@ -122,7 +122,7 @@ def test_an_unstopped_error_during_execution_is_still_an_error(be):
 def test_a_login_error_names_the_fix(be):
     rid = add_run(be, status="running")
     feed(be, rid, result_event(subtype="success", result="OAuth token has expired. Please run /login"))
-    assert be.db.q1("SELECT result FROM runs WHERE id=?", (rid,))["result"] == "Claude's login expired: run ./l0w claude-login on the server."
+    assert be.db.q1("SELECT result FROM runs WHERE id=?", (rid,))["result"] == "Claude's login expired: sign in again in Settings → Providers (or run ./l0w claude-login on the server)."
 
 
 def test_the_next_brief_uses_the_readable_ending(be):

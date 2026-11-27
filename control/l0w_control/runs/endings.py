@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import re
 
-LOGIN_SENTENCE = "Claude's login expired: run ./l0w claude-login on the server."
+LOGIN_SENTENCE = "Claude's login expired: sign in again in Settings → Providers (or run ./l0w claude-login on the server)."
 BUSY_SENTENCE = "Claude was overloaded or rate-limited; it'll retry next run."
 UNEXPECTED_SENTENCE = "The session stopped unexpectedly"
 
