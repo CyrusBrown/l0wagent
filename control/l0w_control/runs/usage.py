@@ -99,7 +99,11 @@ class Usage:
         reading = s.UsageReading(provider=PROVIDER, source="oauth", fetched_at=now, five_hour_pct=None, five_hour_resets_at=None,
                                  seven_day_pct=None, seven_day_resets_at=None, error=err)
         if err:
-            return reading, "expired" if expired else ("missing" if token is None else "error")
+            if expired:
+                return reading, "expired"
+            if token is None and (self.env.agent_home / ".claude" / ".credentials.json").exists():
+                return reading, "rejected"  # a login file without a usable token: signed in on paper only
+            return reading, "missing" if token is None else "error"
         try:
             async with httpx.AsyncClient(timeout=15) as c:
                 r = await c.get(self.env.usage_url, headers={"Authorization": f"Bearer {token}", "anthropic-beta": "oauth-2025-04-20"})

@@ -71,3 +71,14 @@ def test_a_network_error_keeps_what_was_known(tmp_path, monkeypatch):
     answer(monkeypatch, 503)
     asyncio.run(be.usage.read(max_age=0))
     assert be.usage.login_problem
+
+
+def test_a_login_file_without_a_token_is_a_problem_and_no_file_is_not(tmp_path, monkeypatch):
+    be, home = make(tmp_path, monkeypatch)
+    creds = home / ".claude" / ".credentials.json"
+    creds.write_text(json.dumps({"claudeAiOauth": {}}))
+    asyncio.run(be.usage.read(max_age=0))
+    assert be.usage.login_problem
+    creds.unlink()
+    asyncio.run(be.usage.read(max_age=0))
+    assert be.usage.login_problem is None  # not logged in at all: the runner says so, and Add provider offers the sign-in
